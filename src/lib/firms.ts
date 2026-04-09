@@ -1,10 +1,14 @@
 /**
  * NASA FIRMS client — fetches active fire hotspots for Argentina.
  *
- * Uses the VIIRS SNPP sensor (375m resolution, best for small fires).
- * Bounding box covers continental Argentina.
- * Cache: 15 min in-memory to avoid rate limits.
+ * FIRMS blocks datacenter IPs (Vercel, AWS, etc), so we use a two-layer strategy:
+ * 1. fetchFiresFromFirms() — direct call, works from residential IPs only
+ * 2. fetchFires() — reads from Supabase fires_cache table (works everywhere)
+ *
+ * A sync endpoint (/api/fires/sync) is called externally to populate the cache.
  */
+
+import { getSupabase } from "./supabase";
 
 export interface FirePoint {
   latitude: number;
@@ -24,29 +28,61 @@ const BBOX = {
   north: -21.8,
 };
 
-let _cache: { data: FirePoint[]; timestamp: number } | null = null;
-const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
-
 function getFirmsUrl(): string {
   const key = process.env.FIRMS_API_KEY || "OPEN_KEY";
   return `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${key}/VIIRS_SNPP_NRT/${BBOX.west},${BBOX.south},${BBOX.east},${BBOX.north}/1`;
 }
 
+/**
+ * Reads cached fire data from Supabase. Used by all server-side code on Vercel.
+ */
 export async function fetchFires(): Promise<FirePoint[]> {
-  if (_cache && Date.now() - _cache.timestamp < CACHE_TTL_MS) {
-    return _cache.data;
-  }
+  try {
+    const { data } = await getSupabase()
+      .from("fires_cache")
+      .select("fires")
+      .eq("id", 1)
+      .single();
 
+    if (data?.fires) {
+      return data.fires as FirePoint[];
+    }
+  } catch (e) {
+    console.error("fires_cache read error:", e);
+  }
+  return [];
+}
+
+/**
+ * Fetches directly from NASA FIRMS and writes to Supabase cache.
+ * Only works from residential IPs (local machine, not Vercel).
+ */
+export async function syncFiresFromFirms(): Promise<{
+  count: number;
+  error?: string;
+}> {
   const res = await fetch(getFirmsUrl());
   if (!res.ok) {
-    console.error(`FIRMS responded ${res.status}`);
-    return _cache?.data ?? [];
+    return { count: 0, error: `FIRMS responded ${res.status}` };
   }
 
   const csv = await res.text();
   const fires = parseFirmsCSV(csv);
-  _cache = { data: fires, timestamp: Date.now() };
-  return fires;
+
+  const { error } = await getSupabase()
+    .from("fires_cache")
+    .upsert({
+      id: 1,
+      fires: JSON.parse(JSON.stringify(fires)),
+      count: fires.length,
+      fetched_at: new Date().toISOString(),
+    });
+
+  if (error) {
+    return { count: fires.length, error: error.message };
+  }
+
+  return { count: fires.length };
 }
 
 function parseFirmsCSV(csv: string): FirePoint[] {

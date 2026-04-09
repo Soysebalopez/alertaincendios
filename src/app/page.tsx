@@ -14,23 +14,26 @@ import { StatusBeacon } from "@/components/status-beacon";
 import { StaggerReveal } from "@/components/stagger-reveal";
 import { EmberParticles } from "@/components/ember-particles";
 
+export const revalidate = 900; // 15 min — matches FIRMS sync cadence
+
 const FIRMS_MAP_URL =
   "https://firms.modaps.eosdis.nasa.gov/map/#d:24hrs;l:noaa21-viirs-c2,viirs-i-fires;@-64,-38,5z";
 
 const TELEGRAM_BOT_URL = "https://t.me/AlertaIncendiosArgBot";
 
-const FIRMS_API_KEY = process.env.FIRMS_API_KEY || "OPEN_KEY";
-
 async function getFireCount(): Promise<number> {
   try {
-    const res = await fetch(
-      `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${FIRMS_API_KEY}/VIIRS_SNPP_NRT/-73.6,-55.1,-53.6,-21.8/1`,
-      { next: { revalidate: 900 } }
-    );
-    if (!res.ok) return 0;
-    const text = await res.text();
-    const lines = text.trim().split("\n");
-    return Math.max(0, lines.length - 1);
+    const { createClient } = await import("@supabase/supabase-js");
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !key) return 0;
+    const sb = createClient(url, key);
+    const { data } = await sb
+      .from("fires_cache")
+      .select("count")
+      .eq("id", 1)
+      .single();
+    return data?.count ?? 0;
   } catch {
     return 0;
   }
