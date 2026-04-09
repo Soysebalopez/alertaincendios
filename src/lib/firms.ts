@@ -35,6 +35,7 @@ function getFirmsUrl(): string {
 
 /**
  * Reads cached fire data from Supabase. Used by all server-side code on Vercel.
+ * Deduplicates by lat_lng_date key to guard against accumulation in fires_cache.
  */
 export async function fetchFires(): Promise<FirePoint[]> {
   try {
@@ -45,12 +46,23 @@ export async function fetchFires(): Promise<FirePoint[]> {
       .single();
 
     if (data?.fires) {
-      return data.fires as FirePoint[];
+      return deduplicateFires(data.fires as FirePoint[]);
     }
   } catch (e) {
     console.error("fires_cache read error:", e);
   }
   return [];
+}
+
+/** Remove duplicate fire points (same lat/lng/date = same detection). */
+function deduplicateFires(fires: FirePoint[]): FirePoint[] {
+  const seen = new Set<string>();
+  return fires.filter((f) => {
+    const key = `${f.latitude.toFixed(3)}_${f.longitude.toFixed(3)}_${f.acqDate}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 /**
@@ -67,16 +79,19 @@ export async function syncFiresFromFirms(): Promise<{
   }
 
   const csv = await res.text();
-  const fires = parseFirmsCSV(csv);
+  const fires = deduplicateFires(parseFirmsCSV(csv));
 
   const { error } = await getSupabase()
     .from("fires_cache")
-    .upsert({
-      id: 1,
-      fires: JSON.parse(JSON.stringify(fires)),
-      count: fires.length,
-      fetched_at: new Date().toISOString(),
-    });
+    .upsert(
+      {
+        id: 1,
+        fires: JSON.parse(JSON.stringify(fires)),
+        count: fires.length,
+        fetched_at: new Date().toISOString(),
+      },
+      { onConflict: "id" }
+    );
 
   if (error) {
     return { count: fires.length, error: error.message };
