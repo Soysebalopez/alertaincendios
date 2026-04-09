@@ -6,21 +6,23 @@ Bot de Telegram que alerta sobre focos de calor en Argentina usando NASA FIRMS.
 
 ## Stack
 - Next.js 16 + TypeScript
-- Tailwind CSS v4
+- Tailwind CSS v4 + Motion (animations)
+- Phosphor Icons
 - Supabase (shared with SatAI, ref: qmzuwnilehldvobjsbcs)
-- Netlify (deploy + scheduled functions)
+- Vercel (deploy)
 
 ## Servicios
 - GitHub: https://github.com/Soysebalopez/alertaincendios
 - Linear: AlertaIncendios — Bot de Alertas de Incendios Forestales (Whitebay team)
-- Deploy: Netlify (pending setup)
+- Deploy: Vercel (https://alertaincendios.vercel.app)
 - Supabase: project ref qmzuwnilehldvobjsbcs (shared with SatAI)
-- Telegram Bot: @AlertaIncendiosArgBot (pending BotFather setup)
+- Telegram Bot: @AlertaIncendiosArgBot
 
 ## Architecture
-- Landing: `/` — mapa de focos activos + CTA al bot
+- Landing: `/` — thermal operations console with FIRMS map + animated fire count
 - API routes:
-  - `/api/fires` — NASA FIRMS VIIRS para toda Argentina (cache 15min)
+  - `/api/fires` — reads fire data from Supabase fires_cache
+  - `/api/fires/sync?secret=...` — fetches FIRMS data and writes to Supabase (must be called from residential IP)
   - `/api/alerts?secret=...` — cron endpoint, evalúa focos vs suscriptores, envía alertas
   - `/api/bot/telegram` — Telegram webhook (commands: /start, /ciudad, /estado, /cancelar)
 
@@ -32,10 +34,12 @@ Bot de Telegram que alerta sobre focos de calor en Argentina usando NASA FIRMS.
 ## Supabase Tables (shared project, separate tables)
 - `subscribers` (chat_id bigint PK, lat float, lng float, city_name text, created_at timestamptz)
 - `ai_alerted_fires` (fire_key text, chat_id bigint, alerted_at timestamptz) — PK: (fire_key, chat_id)
+- `fires_cache` (id int PK=1, fires jsonb, count int, fetched_at timestamptz) — single-row cache
 
 ## Key Patterns
-- Supabase client uses lazy init (getSupabase()) — NOT module scope (Netlify build crash)
-- FIRMS data cached 15min in-memory to avoid rate limits
+- FIRMS blocks datacenter IPs (Vercel, AWS) — fire data is cached in Supabase via /api/fires/sync
+- Sync must be called from residential IP every 15min (local cron or external service)
+- Supabase client uses lazy init (getSupabase()) — NOT module scope
 - Geo utilities in src/lib/geo.ts (haversine, isUpwind, smokeEta)
 - Bot accepts GPS location OR /ciudad <name> (geocoded via Open-Meteo)
 - Alert dedup: fire_key = lat_lng_date, checked per subscriber

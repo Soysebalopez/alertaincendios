@@ -3,7 +3,6 @@ import {
   MapPin,
   Wind,
   GlobeHemisphereWest,
-  Timer,
   ArrowRight,
   TelegramLogo,
   Fire,
@@ -13,11 +12,9 @@ import { FireCounter } from "@/components/fire-counter";
 import { StatusBeacon } from "@/components/status-beacon";
 import { StaggerReveal } from "@/components/stagger-reveal";
 import { EmberParticles } from "@/components/ember-particles";
+import { FireMapLoader } from "@/components/fire-map-loader";
 
 export const revalidate = 900; // 15 min — matches FIRMS sync cadence
-
-const FIRMS_MAP_URL =
-  "https://firms.modaps.eosdis.nasa.gov/map/#d:24hrs;l:noaa21-viirs-c2,viirs-i-fires;@-64,-38,5z";
 
 const TELEGRAM_BOT_URL = "https://t.me/AlertaIncendiosArgBot";
 
@@ -163,16 +160,9 @@ export default async function Home() {
 
         {/* Right: Map */}
         <div className="relative border-t lg:border-t-0 lg:border-l border-border min-h-[400px] lg:min-h-0">
-          <div className="absolute inset-0">
-            <iframe
-              src={FIRMS_MAP_URL}
-              className="w-full h-full border-0"
-              title="Mapa de focos de calor — NASA FIRMS"
-              loading="lazy"
-            />
-          </div>
+          <FireMapLoader />
           {/* Map overlay badge */}
-          <div className="absolute top-4 left-4 flex items-center gap-2 bg-background/80 backdrop-blur-sm border border-border rounded-lg px-3 py-2 z-10">
+          <div className="absolute top-4 left-4 flex items-center gap-2 bg-background/80 backdrop-blur-sm border border-border rounded-lg px-3 py-2 z-[1000]">
             <Eye size={14} className="text-accent" />
             <span className="font-mono text-[11px] text-muted">
               NASA FIRMS VIIRS — NRT
