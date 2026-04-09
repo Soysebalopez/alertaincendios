@@ -55,7 +55,10 @@ export default async function Home() {
         <div className="flex items-center gap-3">
           <Fire size={20} weight="fill" className="text-accent" />
           <span className="font-semibold tracking-tight text-foreground/90">
-            AlertaIncendios
+            CLARA
+          </span>
+          <span className="hidden md:inline font-mono text-[10px] text-foreground/30 tracking-wide">
+            Central de Localizacion y Alerta de Riesgo Ambiental
           </span>
         </div>
 
@@ -276,7 +279,7 @@ export default async function Home() {
           Datos: NASA FIRMS VIIRS / Open-Meteo / ESA Copernicus
         </p>
         <p className="font-mono text-[11px] text-muted/60">
-          Proyecto Whitebay — Codigo abierto
+          Proyecto CLARA — Whitebay
         </p>
       </footer>
     </div>

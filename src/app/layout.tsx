@@ -15,11 +15,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AlertaIncendios Argentina — Deteccion satelital de focos de calor",
+  title: "CLARA — Central de Localizacion y Alerta de Riesgo Ambiental",
   description:
     "Sistema de alerta temprana de incendios forestales para Argentina. Deteccion via NASA FIRMS VIIRS. Alertas por Telegram con modelo de dispersion de humo.",
   openGraph: {
-    title: "AlertaIncendios Argentina",
+    title: "CLARA — Alerta de Incendios Argentina",
     description:
       "Recibí alertas de incendios forestales en tu zona via Telegram. Datos satelitales de NASA FIRMS.",
   },

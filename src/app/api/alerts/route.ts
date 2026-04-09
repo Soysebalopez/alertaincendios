@@ -69,7 +69,7 @@ export async function GET(request: Request) {
         if (level === "none") continue;
 
         // Send alert
-        const message = formatAlert(fire, sub, distKm, eta, level);
+        const message = await formatAlert(fire, sub, distKm, eta, level);
         await sendMessage(sub.chat_id, message);
 
         // Record to avoid duplicate alerts
@@ -122,30 +122,80 @@ function frpBars(frp: number): string {
   return "🟧".repeat(level) + "⬛".repeat(5 - level);
 }
 
-function formatAlert(
+async function formatAlert(
   fire: FirePoint,
   sub: { city_name: string },
   distKm: number,
   etaMinutes: number,
   level: "danger" | "warning" | "info"
-): string {
+): Promise<string> {
   const dist = Math.round(distKm * 10) / 10;
   const emoji = level === "danger" ? "🚨" : level === "warning" ? "⚠️" : "ℹ️";
   const gMapsUrl = `https://www.google.com/maps?q=${fire.latitude},${fire.longitude}&z=12`;
 
-  let msg = `${emoji} <b>Foco de calor detectado</b>\n\n`;
-  msg += `📍 A <b>${dist} km</b> de ${sub.city_name}\n`;
+  // AI interpretation
+  const interpretation = await interpretFire(fire, sub.city_name, dist, etaMinutes, level);
+
+  let msg = `${emoji} <b>CLARA — Alerta de Incendio</b>\n\n`;
+  msg += `📍 Foco detectado a <b>${dist} km</b> de ${sub.city_name}\n`;
 
   if (etaMinutes > 0) {
     msg += `💨 El viento dirige el humo hacia tu zona\n`;
     msg += `⏱ ETA del humo: ~${etaMinutes} minutos\n`;
   }
 
-  msg += `\n${frpBars(fire.frp)} <b>${fire.frp} MW</b>\n`;
-  msg += `Potencia: ${frpLabel(fire.frp)}\n`;
+  msg += `\n${frpBars(fire.frp)} <b>${fire.frp} MW</b> — Potencia ${frpLabel(fire.frp).split(" (")[0]}\n`;
 
-  msg += `\n📌 <a href="${gMapsUrl}">Ver ubicacion en Google Maps</a>`;
-  msg += `\n\n<i>Fuente: NASA FIRMS VIIRS</i>`;
+  if (interpretation) {
+    msg += `\n<i>${interpretation}</i>\n`;
+  }
+
+  msg += `\n📌 <a href="${gMapsUrl}">Ver en Google Maps</a>`;
+  msg += `\n\n—\nCentral de Localizacion y Alerta de Riesgo Ambiental (CLARA)`;
+  msg += `\n<i>Datos: NASA FIRMS VIIRS · Open-Meteo</i>`;
 
   return msg;
+}
+
+async function interpretFire(
+  fire: FirePoint,
+  cityName: string,
+  distKm: number,
+  etaMinutes: number,
+  level: "danger" | "warning" | "info"
+): Promise<string> {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) return "";
+
+  try {
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        messages: [
+          {
+            role: "system",
+            content:
+              "Sos CLARA, un sistema de alerta de incendios. Interpreta este foco de calor en 2-3 oraciones breves para un ciudadano argentino. Considera la potencia (FRP), distancia, y si el viento lo afecta. Si el FRP es bajo (<5 MW) en zona petrolera de Neuquen/Mendoza, menciona que puede ser flaring. Si es alto, se directo sobre el riesgo. No uses markdown ni emojis. Habla en tercera persona.",
+          },
+          {
+            role: "user",
+            content: `Foco: ${fire.frp} MW, ${distKm} km de ${cityName}, confianza ${fire.confidence}, coordenadas ${fire.latitude},${fire.longitude}. Nivel: ${level}. ${etaMinutes > 0 ? `ETA humo: ${etaMinutes} min.` : "Viento no dirige humo hacia la zona."}`,
+          },
+        ],
+        max_tokens: 150,
+        temperature: 0.3,
+      }),
+    });
+
+    if (!res.ok) return "";
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content?.trim() || "";
+  } catch {
+    return "";
+  }
 }
