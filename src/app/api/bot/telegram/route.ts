@@ -8,7 +8,7 @@ import { haversineKm } from "@/lib/geo";
 /**
  * POST /api/bot/telegram
  *
- * Telegram webhook for @AlertaIncendiosArgBot.
+ * Telegram webhook for @AlertaIncendiosBot.
  * Commands: /start, /ciudad <name>, /estado, /cancelar
  * Also accepts shared location (GPS pin).
  */
@@ -152,22 +152,98 @@ async function handleEstado(chatId: number) {
     .filter((f) => f.distKm <= 100)
     .sort((a, b) => a.distKm - b.distKm);
 
-  let msg = `📍 Suscripción: <b>${sub.city_name}</b>\n\n`;
-
   if (nearby.length === 0) {
-    msg += "✅ No hay focos de calor en un radio de 100 km.";
-  } else {
-    msg += `🔥 <b>${nearby.length} foco(s)</b> en un radio de 100 km:\n\n`;
-    for (const f of nearby.slice(0, 5)) {
-      msg += `  • ${Math.round(f.distKm)} km — confianza: ${f.confidence}\n`;
-    }
-    if (nearby.length > 5) {
-      msg += `  ... y ${nearby.length - 5} más\n`;
-    }
+    await sendMessage(
+      chatId,
+      `📍 Suscripción: <b>${sub.city_name}</b>\n\n` +
+        "✅ No hay focos de calor en un radio de 100 km.\n\n" +
+        "<i>Fuente: NASA FIRMS (últimas 24h)</i>"
+    );
+    return;
+  }
+
+  // Build fire data for AI interpretation
+  const fireData = nearby.slice(0, 5).map((f) => ({
+    distKm: Math.round(f.distKm),
+    frp: f.frp,
+    confidence: f.confidence,
+    lat: f.latitude,
+    lng: f.longitude,
+  }));
+
+  const interpretation = await interpretFires(sub.city_name, fireData, nearby.length);
+
+  let msg = `📍 <b>${sub.city_name}</b> — ${nearby.length} foco(s) en 100 km\n\n`;
+  msg += interpretation;
+  msg += "\n\n";
+
+  // Add Google Maps links for top 3
+  for (const f of nearby.slice(0, 3)) {
+    const bars = frpBars(f.frp);
+    const gMapsUrl = `https://www.google.com/maps?q=${f.latitude},${f.longitude}&z=12`;
+    msg += `${bars} <b>${f.frp} MW</b> a ${Math.round(f.distKm)} km — <a href="${gMapsUrl}">ver</a>\n`;
+  }
+  if (nearby.length > 3) {
+    msg += `... y ${nearby.length - 3} más\n`;
   }
 
   msg += "\n<i>Fuente: NASA FIRMS (últimas 24h)</i>";
   await sendMessage(chatId, msg);
+}
+
+function frpBars(frp: number): string {
+  const level = frp < 1 ? 1 : frp < 5 ? 2 : frp < 20 ? 3 : frp < 50 ? 4 : 5;
+  return "🟧".repeat(level) + "⬛".repeat(5 - level);
+}
+
+async function interpretFires(
+  cityName: string,
+  fires: { distKm: number; frp: number; confidence: string }[],
+  totalCount: number
+): Promise<string> {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) {
+    // Fallback without AI
+    const nearest = fires[0];
+    const maxFrp = Math.max(...fires.map((f) => f.frp));
+    return maxFrp > 20
+      ? `Atencion: hay focos de alta potencia (${maxFrp} MW) cerca de tu zona.`
+      : `Se detectaron ${totalCount} focos, el mas cercano a ${nearest.distKm} km.`;
+  }
+
+  try {
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        messages: [
+          {
+            role: "system",
+            content:
+              "Sos un analista de incendios. Interpretá los datos de focos de calor para un ciudadano de Argentina. Sé breve (3-4 lineas max), claro, y usá un tono informativo pero no alarmista. Mencioná si parece quema agricola, flaring industrial o incendio real segun la potencia (FRP). No uses markdown. No uses emojis.",
+          },
+          {
+            role: "user",
+            content: `Ciudad: ${cityName}. Focos cercanos (${totalCount} total): ${JSON.stringify(fires)}. Interpretá brevemente la situacion para el usuario.`,
+          },
+        ],
+        max_tokens: 200,
+        temperature: 0.3,
+      }),
+    });
+
+    if (!res.ok) throw new Error(`Groq ${res.status}`);
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content || "";
+  } catch (e) {
+    console.error("Groq error:", e);
+    const nearest = fires[0];
+    return `Se detectaron ${totalCount} focos, el mas cercano a ${nearest.distKm} km.`;
+  }
 }
 
 async function handleCancelar(chatId: number) {

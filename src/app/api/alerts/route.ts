@@ -104,6 +104,20 @@ function classifyAlert(
   return "none";
 }
 
+function frpLabel(frp: number): string {
+  if (frp < 1) return "Muy baja (posible flaring industrial)";
+  if (frp < 5) return "Baja (quema agricola o foco menor)";
+  if (frp < 20) return "Moderada (incendio activo)";
+  if (frp < 50) return "Alta (incendio forestal significativo)";
+  return "Muy alta (incendio de gran magnitud)";
+}
+
+function frpBars(frp: number): string {
+  const level =
+    frp < 1 ? 1 : frp < 5 ? 2 : frp < 20 ? 3 : frp < 50 ? 4 : 5;
+  return "🟧".repeat(level) + "⬛".repeat(5 - level);
+}
+
 function formatAlert(
   fire: FirePoint,
   sub: { city_name: string },
@@ -113,16 +127,20 @@ function formatAlert(
 ): string {
   const dist = Math.round(distKm * 10) / 10;
   const emoji = level === "danger" ? "🚨" : level === "warning" ? "⚠️" : "ℹ️";
+  const gMapsUrl = `https://www.google.com/maps?q=${fire.latitude},${fire.longitude}&z=12`;
 
   let msg = `${emoji} <b>Foco de calor detectado</b>\n\n`;
-  msg += `📍 A ${dist} km de ${sub.city_name}\n`;
+  msg += `📍 A <b>${dist} km</b> de ${sub.city_name}\n`;
 
   if (etaMinutes > 0) {
     msg += `💨 El viento dirige el humo hacia tu zona\n`;
     msg += `⏱ ETA del humo: ~${etaMinutes} minutos\n`;
   }
 
-  msg += `\n🔗 <a href="https://firms.modaps.eosdis.nasa.gov/map/#d:24hrs;l:noaa21-viirs-c2,viirs-i-fires;@${fire.longitude},${fire.latitude},10z">Ver en mapa FIRMS</a>`;
+  msg += `\n${frpBars(fire.frp)} <b>${fire.frp} MW</b>\n`;
+  msg += `Potencia: ${frpLabel(fire.frp)}\n`;
+
+  msg += `\n📌 <a href="${gMapsUrl}">Ver ubicacion en Google Maps</a>`;
   msg += `\n\n<i>Fuente: NASA FIRMS VIIRS</i>`;
 
   return msg;

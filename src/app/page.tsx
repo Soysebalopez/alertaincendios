@@ -16,7 +16,7 @@ import { FireMapLoader } from "@/components/fire-map-loader";
 
 export const revalidate = 900; // 15 min — matches FIRMS sync cadence
 
-const TELEGRAM_BOT_URL = "https://t.me/AlertaIncendiosArgBot";
+const TELEGRAM_BOT_URL = "https://t.me/AlertaIncendiosBot";
 
 async function getFireCount(): Promise<number> {
   try {
