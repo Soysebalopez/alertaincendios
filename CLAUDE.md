@@ -31,7 +31,7 @@ Bot de Telegram que alerta sobre focos de calor en Argentina usando NASA FIRMS.
 
 ## Supabase Tables (shared project, separate tables)
 - `subscribers` (chat_id bigint PK, lat float, lng float, city_name text, created_at timestamptz)
-- `alerted_fires` (fire_key text, chat_id bigint, alerted_at timestamptz) — PK: (fire_key, chat_id)
+- `ai_alerted_fires` (fire_key text, chat_id bigint, alerted_at timestamptz) — PK: (fire_key, chat_id)
 
 ## Key Patterns
 - Supabase client uses lazy init (getSupabase()) — NOT module scope (Netlify build crash)

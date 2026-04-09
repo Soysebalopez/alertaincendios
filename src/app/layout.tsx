@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Outfit } from "next/font/google";
+import { Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const outfit = Outfit({
+  variable: "--font-outfit",
   subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700", "800"],
 });
 
 const geistMono = Geist_Mono({
@@ -13,9 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AlertaIncendios Argentina",
+  title: "AlertaIncendios Argentina — Deteccion satelital de focos de calor",
   description:
-    "Bot de alertas de incendios forestales para Argentina. Detecta focos de calor via NASA FIRMS y alerta por Telegram.",
+    "Sistema de alerta temprana de incendios forestales para Argentina. Deteccion via NASA FIRMS VIIRS. Alertas por Telegram con modelo de dispersion de humo.",
   openGraph: {
     title: "AlertaIncendios Argentina",
     description:
@@ -31,9 +33,9 @@ export default function RootLayout({
   return (
     <html
       lang="es"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${outfit.variable} ${geistMono.variable} antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-[100dvh] flex flex-col grain">{children}</body>
     </html>
   );
 }

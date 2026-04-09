@@ -1,28 +1,97 @@
 @import "tailwindcss";
 
 :root {
-  --background: #0c0c0c;
-  --foreground: #e5e5e5;
-  --accent: #ef4444;
-  --accent-muted: #dc2626;
-  --surface: #161616;
-  --surface-2: #1e1e1e;
-  --border: #2a2a2a;
+  --background: #0a0a08;
+  --foreground: #d4d4cc;
+  --accent: #e8622c;
+  --accent-warm: #d4531f;
+  --accent-glow: rgba(232, 98, 44, 0.15);
+  --surface: #131311;
+  --surface-2: #1a1a17;
+  --border: #252520;
+  --muted: #6b6b60;
+  --danger: #ef4444;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-accent: var(--accent);
-  --color-accent-muted: var(--accent-muted);
+  --color-accent-warm: var(--accent-warm);
+  --color-accent-glow: var(--accent-glow);
   --color-surface: var(--surface);
   --color-surface-2: var(--surface-2);
   --color-border: var(--border);
-  --font-sans: var(--font-geist-sans);
+  --color-muted: var(--muted);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-outfit);
   --font-mono: var(--font-geist-mono);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
+}
+
+/* Coordinate grid overlay */
+.grid-overlay {
+  background-image:
+    linear-gradient(rgba(232, 98, 44, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(232, 98, 44, 0.03) 1px, transparent 1px);
+  background-size: 60px 60px;
+}
+
+/* Grain texture */
+.grain::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  opacity: 0.4;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+}
+
+/* Thermal pulse for active fire indicators */
+@keyframes thermal-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.thermal-pulse {
+  animation: thermal-pulse 2s ease-in-out infinite;
+}
+
+/* Shimmer for loading states */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Scan line effect */
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+
+.scanline::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    transparent 0%,
+    rgba(232, 98, 44, 0.015) 50%,
+    transparent 100%
+  );
+  height: 8px;
+  animation: scanline 8s linear infinite;
+}
+
+/* Ember float */
+@keyframes ember-float {
+  0% { transform: translateY(0) scale(1); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { transform: translateY(-120px) scale(0.3); opacity: 0; }
 }

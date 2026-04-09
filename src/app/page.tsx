@@ -1,14 +1,30 @@
-import Link from "next/link";
+import {
+  Broadcast,
+  MapPin,
+  Wind,
+  GlobeHemisphereWest,
+  Timer,
+  ArrowRight,
+  TelegramLogo,
+  Fire,
+  Eye,
+} from "@phosphor-icons/react/dist/ssr";
+import { FireCounter } from "@/components/fire-counter";
+import { StatusBeacon } from "@/components/status-beacon";
+import { StaggerReveal } from "@/components/stagger-reveal";
+import { EmberParticles } from "@/components/ember-particles";
 
 const FIRMS_MAP_URL =
   "https://firms.modaps.eosdis.nasa.gov/map/#d:24hrs;l:noaa21-viirs-c2,viirs-i-fires;@-64,-38,5z";
 
 const TELEGRAM_BOT_URL = "https://t.me/AlertaIncendiosArgBot";
 
+const FIRMS_API_KEY = process.env.FIRMS_API_KEY || "OPEN_KEY";
+
 async function getFireCount(): Promise<number> {
   try {
     const res = await fetch(
-      "https://firms.modaps.eosdis.nasa.gov/api/area/csv/OPEN_KEY/VIIRS_SNPP_NRT/-73.6,-55.1,-53.6,-21.8/1",
+      `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${FIRMS_API_KEY}/VIIRS_SNPP_NRT/-73.6,-55.1,-53.6,-21.8/1`,
       { next: { revalidate: 900 } }
     );
     if (!res.ok) return 0;
@@ -22,117 +38,296 @@ async function getFireCount(): Promise<number> {
 
 export default async function Home() {
   const fireCount = await getFireCount();
+  const timestamp = new Date().toLocaleString("es-AR", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
   return (
-    <div className="flex flex-col min-h-screen">
-      {/* Header */}
-      <header className="border-b border-border px-6 py-4 flex items-center justify-between">
+    <div className="flex flex-col min-h-[100dvh] grid-overlay scanline relative">
+      <EmberParticles />
+
+      {/* ─── Nav ─── */}
+      <nav className="relative z-10 flex items-center justify-between px-6 md:px-10 py-5 border-b border-border">
         <div className="flex items-center gap-3">
-          <span className="text-2xl">🔥</span>
-          <h1 className="text-lg font-semibold tracking-tight">
+          <Fire size={20} weight="fill" className="text-accent" />
+          <span className="font-semibold tracking-tight text-foreground/90">
             AlertaIncendios
-          </h1>
+          </span>
         </div>
-        <a
-          href={TELEGRAM_BOT_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="bg-accent hover:bg-accent-muted text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-        >
-          Recibir alertas
-        </a>
-      </header>
 
-      {/* Hero section */}
-      <section className="px-6 py-12 max-w-2xl">
-        <p className="font-mono text-xs text-accent uppercase tracking-widest mb-3">
-          Argentina — últimas 24h
-        </p>
-        <h2 className="text-4xl font-bold tracking-tight leading-tight mb-4">
-          {fireCount > 0 ? (
-            <>
-              <span className="text-accent">{fireCount}</span> focos de calor
-              detectados
-            </>
-          ) : (
-            "Monitoreo de incendios en tiempo real"
-          )}
-        </h2>
-        <p className="text-lg text-foreground/60 leading-relaxed max-w-lg">
-          Detectamos focos de calor en toda Argentina via satélite y te alertamos
-          por Telegram si hay uno cerca de tu ubicación.
-        </p>
-      </section>
-
-      {/* Map */}
-      <section className="flex-1 min-h-[500px] border-t border-b border-border relative">
-        <iframe
-          src={FIRMS_MAP_URL}
-          className="w-full h-full min-h-[500px] border-0"
-          title="Mapa de focos de calor — NASA FIRMS"
-          loading="lazy"
-        />
-      </section>
-
-      {/* How it works */}
-      <section className="px-6 py-16 max-w-3xl">
-        <h3 className="font-mono text-xs text-foreground/40 uppercase tracking-widest mb-8">
-          Cómo funciona
-        </h3>
-        <div className="grid gap-8 sm:grid-cols-3">
-          <div>
-            <p className="font-mono text-accent text-sm mb-2">01</p>
-            <p className="font-medium mb-1">Suscribite</p>
-            <p className="text-sm text-foreground/50">
-              Abrí el bot en Telegram y compartí tu ubicación o escribí tu
-              ciudad.
-            </p>
+        <div className="flex items-center gap-6">
+          <div className="hidden sm:flex items-center gap-2 text-xs font-mono text-muted">
+            <StatusBeacon />
+            <span>Monitoreo activo</span>
           </div>
-          <div>
-            <p className="font-mono text-accent text-sm mb-2">02</p>
-            <p className="font-medium mb-1">Monitoreamos</p>
-            <p className="text-sm text-foreground/50">
-              Cada 15 minutos consultamos los satélites de NASA para detectar
-              focos de calor nuevos.
-            </p>
-          </div>
-          <div>
-            <p className="font-mono text-accent text-sm mb-2">03</p>
-            <p className="font-medium mb-1">Te alertamos</p>
-            <p className="text-sm text-foreground/50">
-              Si hay un foco cerca tuyo y el viento lo dirige hacia tu zona,
-              recibís una alerta con distancia y ETA del humo.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* CTA */}
-      <section className="px-6 py-12 border-t border-border">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
           <a
             href={TELEGRAM_BOT_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="bg-accent hover:bg-accent-muted text-white font-medium px-6 py-3 rounded-lg transition-colors"
+            className="group flex items-center gap-2 bg-accent/10 hover:bg-accent/20 text-accent text-sm font-medium px-4 py-2 rounded-lg border border-accent/20 transition-all duration-300 active:scale-[0.98]"
           >
-            Abrir bot en Telegram
+            <TelegramLogo size={16} weight="fill" />
+            <span>Recibir alertas</span>
           </a>
-          <p className="text-sm text-foreground/40">
-            Gratis. Sin registro. Solo necesitás Telegram.
-          </p>
+        </div>
+      </nav>
+
+      {/* ─── Hero: Split-screen ─── */}
+      <section className="relative z-10 grid grid-cols-1 lg:grid-cols-2 min-h-[85dvh]">
+        {/* Left: Content */}
+        <div className="flex flex-col justify-center px-6 md:px-10 lg:px-16 py-16 lg:py-0">
+          <StaggerReveal delay={0.1}>
+            <div className="flex items-center gap-3 mb-8">
+              <div className="flex items-center gap-2 bg-surface-2 border border-border rounded-full px-3 py-1.5">
+                <StatusBeacon />
+                <span className="font-mono text-xs text-muted tracking-wide uppercase">
+                  En vivo
+                </span>
+              </div>
+              <span className="font-mono text-xs text-muted">
+                {timestamp} ART
+              </span>
+            </div>
+          </StaggerReveal>
+
+          <StaggerReveal delay={0.25}>
+            <div className="mb-6">
+              <p className="font-mono text-xs text-accent uppercase tracking-[0.2em] mb-4">
+                Argentina / ultimas 24h
+              </p>
+              {fireCount > 0 ? (
+                <h1 className="text-6xl md:text-7xl lg:text-8xl font-extrabold tracking-tighter leading-none">
+                  <span className="text-accent">
+                    <FireCounter count={fireCount} />
+                  </span>
+                  <br />
+                  <span className="text-foreground/80 text-4xl md:text-5xl lg:text-6xl font-light">
+                    focos de calor
+                  </span>
+                </h1>
+              ) : (
+                <h1 className="text-5xl md:text-6xl font-bold tracking-tighter leading-none text-foreground/80">
+                  Monitoreo activo
+                  <br />
+                  <span className="text-accent">sin focos detectados</span>
+                </h1>
+              )}
+            </div>
+          </StaggerReveal>
+
+          <StaggerReveal delay={0.45}>
+            <p className="text-base text-muted leading-relaxed max-w-[48ch] mb-10">
+              Detectamos focos de calor en toda Argentina con satelites de la
+              NASA. Si hay uno cerca tuyo, te alertamos por Telegram con la
+              distancia y la direccion del humo.
+            </p>
+          </StaggerReveal>
+
+          <StaggerReveal delay={0.6}>
+            <div className="flex flex-col sm:flex-row items-start gap-4">
+              <a
+                href={TELEGRAM_BOT_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group flex items-center gap-3 bg-accent hover:bg-accent-warm text-white font-medium px-6 py-3.5 rounded-xl transition-all duration-300 active:scale-[0.98]"
+              >
+                <TelegramLogo size={20} weight="fill" />
+                <span>Activar alertas</span>
+                <ArrowRight
+                  size={16}
+                  className="transition-transform group-hover:translate-x-1"
+                />
+              </a>
+              <span className="text-xs text-muted self-center">
+                Gratis. Sin registro.
+              </span>
+            </div>
+          </StaggerReveal>
+
+          {/* Live data strip */}
+          <StaggerReveal delay={0.8}>
+            <div className="mt-16 pt-6 border-t border-border flex gap-8 md:gap-12">
+              <DataPoint label="Sensor" value="VIIRS 375m" />
+              <DataPoint label="Actualizacion" value="15 min" />
+              <DataPoint label="Cobertura" value="3.761.274 km2" />
+            </div>
+          </StaggerReveal>
+        </div>
+
+        {/* Right: Map */}
+        <div className="relative border-t lg:border-t-0 lg:border-l border-border min-h-[400px] lg:min-h-0">
+          <div className="absolute inset-0">
+            <iframe
+              src={FIRMS_MAP_URL}
+              className="w-full h-full border-0"
+              title="Mapa de focos de calor — NASA FIRMS"
+              loading="lazy"
+            />
+          </div>
+          {/* Map overlay badge */}
+          <div className="absolute top-4 left-4 flex items-center gap-2 bg-background/80 backdrop-blur-sm border border-border rounded-lg px-3 py-2 z-10">
+            <Eye size={14} className="text-accent" />
+            <span className="font-mono text-[11px] text-muted">
+              NASA FIRMS VIIRS — NRT
+            </span>
+          </div>
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-border px-6 py-6 text-xs text-foreground/30">
-        <p>
-          Datos: NASA FIRMS VIIRS · Open-Meteo · Proyecto{" "}
-          <Link href="https://monitorbb.netlify.app" className="underline">
-            Whitebay
-          </Link>
+      {/* ─── How it works ─── */}
+      <section className="relative z-10 border-t border-border">
+        <div className="px-6 md:px-10 lg:px-16 py-20 max-w-6xl">
+          <StaggerReveal>
+            <p className="font-mono text-xs text-muted uppercase tracking-[0.2em] mb-12">
+              Como funciona
+            </p>
+          </StaggerReveal>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-16 gap-y-12">
+            <StepCard
+              number="01"
+              icon={<MapPin size={20} weight="duotone" />}
+              title="Comparti tu ubicacion"
+              description="Abri el bot en Telegram y manda tu ubicacion GPS o escribi el nombre de tu ciudad. Nos sirve para calcular la distancia a cada foco."
+              delay={0.1}
+            />
+            <StepCard
+              number="02"
+              icon={<GlobeHemisphereWest size={20} weight="duotone" />}
+              title="Monitoreamos con satelites"
+              description="Cada 15 minutos consultamos NASA FIRMS — el sistema VIIRS detecta puntos de calor anomalos con resolucion de 375 metros."
+              delay={0.2}
+            />
+            <StepCard
+              number="03"
+              icon={<Wind size={20} weight="duotone" />}
+              title="Modelo de dispersion"
+              description="Cruzamos la posicion del foco con datos de viento en tiempo real. Calculamos si el humo se dirige hacia tu zona y en cuanto tiempo."
+              delay={0.3}
+            />
+            <StepCard
+              number="04"
+              icon={<Broadcast size={20} weight="duotone" />}
+              title="Te alertamos"
+              description="Si un foco esta a menos de 100 km y el viento lo empuja hacia tu ubicacion, recibis una alerta instantanea con distancia, direccion y ETA."
+              delay={0.4}
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* ─── Data sources ─── */}
+      <section className="relative z-10 border-t border-border">
+        <div className="px-6 md:px-10 lg:px-16 py-16">
+          <p className="font-mono text-xs text-muted uppercase tracking-[0.2em] mb-8">
+            Fuentes de datos
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {[
+              "NASA FIRMS VIIRS",
+              "Open-Meteo Wind",
+              "Sentinel SNPP",
+              "Open-Meteo Geocoding",
+            ].map((source) => (
+              <span
+                key={source}
+                className="font-mono text-xs text-muted/80 border border-border rounded-full px-4 py-2"
+              >
+                {source}
+              </span>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ─── Final CTA ─── */}
+      <section className="relative z-10 border-t border-border">
+        <div className="px-6 md:px-10 lg:px-16 py-20">
+          <StaggerReveal>
+            <div className="flex flex-col md:flex-row items-start md:items-end gap-8 md:gap-16">
+              <div>
+                <p className="font-mono text-xs text-accent uppercase tracking-[0.2em] mb-4">
+                  Protege tu zona
+                </p>
+                <h2 className="text-3xl md:text-4xl font-bold tracking-tighter leading-tight max-w-md">
+                  Recibi la alerta antes
+                  <br />
+                  de que llegue el humo
+                </h2>
+              </div>
+              <a
+                href={TELEGRAM_BOT_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group flex items-center gap-3 bg-accent hover:bg-accent-warm text-white font-medium px-8 py-4 rounded-xl transition-all duration-300 active:scale-[0.98]"
+              >
+                <TelegramLogo size={22} weight="fill" />
+                <span>Abrir en Telegram</span>
+                <ArrowRight
+                  size={16}
+                  className="transition-transform group-hover:translate-x-1"
+                />
+              </a>
+            </div>
+          </StaggerReveal>
+        </div>
+      </section>
+
+      {/* ─── Footer ─── */}
+      <footer className="relative z-10 border-t border-border px-6 md:px-10 lg:px-16 py-6 flex flex-col sm:flex-row justify-between gap-4">
+        <p className="font-mono text-[11px] text-muted/60">
+          Datos: NASA FIRMS VIIRS / Open-Meteo / ESA Copernicus
+        </p>
+        <p className="font-mono text-[11px] text-muted/60">
+          Proyecto Whitebay — Codigo abierto
         </p>
       </footer>
     </div>
+  );
+}
+
+/* ─── Sub-components ─── */
+
+function DataPoint({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="font-mono text-[10px] text-muted/60 uppercase tracking-widest mb-1">
+        {label}
+      </p>
+      <p className="font-mono text-sm text-foreground/70">{value}</p>
+    </div>
+  );
+}
+
+function StepCard({
+  number,
+  icon,
+  title,
+  description,
+  delay = 0,
+}: {
+  number: string;
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  delay?: number;
+}) {
+  return (
+    <StaggerReveal delay={delay}>
+      <div className="group">
+        <div className="flex items-center gap-3 mb-3">
+          <span className="font-mono text-xs text-accent/50">{number}</span>
+          <span className="text-accent">{icon}</span>
+          <h3 className="font-semibold text-foreground/90">{title}</h3>
+        </div>
+        <p className="text-sm text-muted leading-relaxed max-w-[50ch] pl-[52px]">
+          {description}
+        </p>
+      </div>
+    </StaggerReveal>
   );
 }

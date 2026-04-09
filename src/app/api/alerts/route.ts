@@ -45,7 +45,7 @@ export async function GET(request: Request) {
       for (const sub of subscribers) {
         // Check if already alerted
         const { data: existing } = await db
-          .from("alerted_fires")
+          .from("ai_alerted_fires")
           .select("fire_key")
           .eq("fire_key", fireKey)
           .eq("chat_id", sub.chat_id)
@@ -69,7 +69,7 @@ export async function GET(request: Request) {
         await sendMessage(sub.chat_id, message);
 
         // Record to avoid duplicate alerts
-        await db.from("alerted_fires").insert({
+        await db.from("ai_alerted_fires").insert({
           fire_key: fireKey,
           chat_id: sub.chat_id,
           alerted_at: new Date().toISOString(),
