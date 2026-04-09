@@ -6,17 +6,21 @@ import { haversineKm, isUpwind, smokeEtaMinutes } from "@/lib/geo";
 import { sendMessage } from "@/lib/telegram";
 
 /**
- * GET /api/alerts?secret=...
+ * GET /api/alerts
  *
- * Cron endpoint — runs every 15 minutes via Netlify scheduled function.
- * 1. Fetches new fires from FIRMS
+ * Cron endpoint — called by Vercel Cron or manually with ?secret=...
+ * 1. Reads cached fires from Supabase
  * 2. For each fire, evaluates all subscribers (dispersion model)
  * 3. Sends Telegram alerts to affected subscribers
- * 4. Deduplicates via alerted_fires table
+ * 4. Deduplicates via ai_alerted_fires table
  */
 export async function GET(request: Request) {
   const secret = new URL(request.url).searchParams.get("secret");
-  if (secret !== process.env.CRON_SECRET) {
+  const bearerToken = request.headers.get("authorization")?.replace("Bearer ", "");
+  const isAuthorized =
+    secret === process.env.CRON_SECRET || bearerToken === process.env.CRON_SECRET;
+
+  if (!isAuthorized) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
