@@ -60,22 +60,24 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ ok: true });
 }
 
+const CLARA_FOOTER = "\n—\nCentral de Localizacion y Alerta de Riesgo Ambiental (CLARA)";
+
 async function handleStart(chatId: number) {
   await sendMessage(
     chatId,
-    "<b>AlertaIncendios Argentina</b> 🔥\n\n" +
-      "Recibí alertas cuando se detecten focos de calor cerca de tu ubicación.\n\n" +
-      "<b>¿Cómo suscribirte?</b>\n" +
-      "📍 Enviá tu ubicación (clip 📎 → Ubicación)\n" +
-      "🏙 O escribí /ciudad Buenos Aires\n\n" +
+    "🔥 <b>CLARA — Alerta de Incendios</b>\n\n" +
+      "Detectamos focos de calor en toda Argentina con satelites de la NASA y te alertamos por Telegram.\n\n" +
+      "<b>Suscribite:</b>\n" +
+      "📍 Envia tu ubicacion (clip 📎 → Ubicacion)\n" +
+      "🏙 O escribi /ciudad Buenos Aires\n\n" +
       "<b>Comandos:</b>\n" +
       "/ciudad &lt;nombre&gt; — Suscribirte por ciudad\n" +
-      "/estado — Ver tu suscripción y focos cercanos\n" +
-      "/cancelar — Eliminar suscripción\n\n" +
-      "<i>Fuente: NASA FIRMS VIIRS (actualización cada 15 min)</i>",
+      "/estado — Ver focos cercanos\n" +
+      "/cancelar — Eliminar suscripcion\n" +
+      CLARA_FOOTER,
     {
       reply_markup: {
-        keyboard: [[{ text: "📍 Compartir ubicación", request_location: true }]],
+        keyboard: [[{ text: "📍 Compartir ubicacion", request_location: true }]],
         resize_keyboard: true,
         one_time_keyboard: true,
       },
@@ -94,9 +96,11 @@ async function handleLocation(chatId: number, lat: number, lng: number) {
   const label = province ? `${cityName}, ${province}` : cityName;
   await sendMessage(
     chatId,
-    `✅ Suscripción activada para <b>${label}</b>\n\n` +
-      "Vas a recibir alertas cuando se detecten focos de calor cerca de tu ubicación.\n\n" +
-      "Usa /estado para ver focos activos cerca tuyo."
+    `🔥 <b>CLARA — Suscripcion activada</b>\n\n` +
+      `📍 Ubicacion: <b>${label}</b>\n\n` +
+      "Vas a recibir alertas cuando se detecten focos de calor en un radio de 100 km de tu ubicacion.\n\n" +
+      "Usa /estado para ver focos activos cerca tuyo." +
+      CLARA_FOOTER
   );
 }
 
@@ -120,9 +124,11 @@ async function handleCiudad(chatId: number, query: string) {
   const label = geo.admin1 ? `${geo.name}, ${geo.admin1}` : geo.name;
   await sendMessage(
     chatId,
-    `✅ Suscripción activada para <b>${label}</b>\n\n` +
-      "Vas a recibir alertas cuando se detecten focos de calor en un radio de 100 km.\n\n" +
-      "Usa /estado para ver focos activos cerca tuyo."
+    `🔥 <b>CLARA — Suscripcion activada</b>\n\n` +
+      `📍 Ubicacion: <b>${label}</b>\n\n` +
+      "Vas a recibir alertas cuando se detecten focos de calor en un radio de 100 km de tu ubicacion.\n\n" +
+      "Usa /estado para ver focos activos cerca tuyo." +
+      CLARA_FOOTER
   );
 }
 
@@ -138,7 +144,8 @@ async function handleEstado(chatId: number) {
   if (!sub) {
     await sendMessage(
       chatId,
-      "No tenés suscripción activa.\nUsá /ciudad o compartí tu ubicación para suscribirte."
+      "🔥 <b>CLARA</b>\n\nNo tenes suscripcion activa.\nUsa /ciudad o comparti tu ubicacion para suscribirte." +
+        CLARA_FOOTER
     );
     return;
   }
@@ -155,9 +162,11 @@ async function handleEstado(chatId: number) {
   if (nearby.length === 0) {
     await sendMessage(
       chatId,
-      `📍 Suscripción: <b>${sub.city_name}</b>\n\n` +
-        "✅ No hay focos de calor en un radio de 100 km.\n\n" +
-        "<i>Fuente: NASA FIRMS (últimas 24h)</i>"
+      `🔥 <b>CLARA — Estado</b>\n\n` +
+        `📍 <b>${sub.city_name}</b>\n\n` +
+        "✅ No hay focos de calor en un radio de 100 km." +
+        CLARA_FOOTER +
+        "\n<i>Datos: NASA FIRMS VIIRS · Open-Meteo</i>"
     );
     return;
   }
@@ -173,9 +182,12 @@ async function handleEstado(chatId: number) {
 
   const interpretation = await interpretFires(sub.city_name, fireData, nearby.length);
 
-  let msg = `📍 <b>${sub.city_name}</b> — ${nearby.length} foco(s) en 100 km\n\n`;
-  msg += interpretation;
-  msg += "\n\n";
+  let msg = `🔥 <b>CLARA — Estado</b>\n\n`;
+  msg += `📍 <b>${sub.city_name}</b> — ${nearby.length} foco(s) en 100 km\n\n`;
+
+  if (interpretation) {
+    msg += `<i>${interpretation}</i>\n\n`;
+  }
 
   // Add Google Maps links for top 3
   for (const f of nearby.slice(0, 3)) {
@@ -184,10 +196,11 @@ async function handleEstado(chatId: number) {
     msg += `${bars} <b>${f.frp} MW</b> a ${Math.round(f.distKm)} km — <a href="${gMapsUrl}">ver</a>\n`;
   }
   if (nearby.length > 3) {
-    msg += `... y ${nearby.length - 3} más\n`;
+    msg += `... y ${nearby.length - 3} mas\n`;
   }
 
-  msg += "\n<i>Fuente: NASA FIRMS (últimas 24h)</i>";
+  msg += CLARA_FOOTER;
+  msg += "\n<i>Datos: NASA FIRMS VIIRS · Open-Meteo</i>";
   await sendMessage(chatId, msg);
 }
 
@@ -224,7 +237,7 @@ async function interpretFires(
           {
             role: "system",
             content:
-              "Sos un analista de incendios. Interpretá los datos de focos de calor para un ciudadano de Argentina. Sé breve (3-4 lineas max), claro, y usá un tono informativo pero no alarmista. Mencioná si parece quema agricola, flaring industrial o incendio real segun la potencia (FRP). No uses markdown. No uses emojis.",
+              "Sos CLARA, un sistema de alerta de incendios forestales. Interpreta los datos de focos de calor para un ciudadano argentino. Se breve (2-3 lineas max), claro, y usa un tono informativo pero no alarmista. Menciona si parece quema agricola, flaring industrial o incendio real segun la potencia (FRP). No uses markdown ni emojis. Habla en tercera persona.",
           },
           {
             role: "user",
@@ -249,7 +262,13 @@ async function interpretFires(
 async function handleCancelar(chatId: number) {
   const db = getSupabase();
   await db.from("subscribers").delete().eq("chat_id", chatId);
-  await sendMessage(chatId, "🗑 Suscripción eliminada. Ya no recibirás alertas.");
+  await sendMessage(
+    chatId,
+    "🔥 <b>CLARA — Suscripcion cancelada</b>\n\n" +
+      "Tu suscripcion fue eliminada. Ya no recibiras alertas.\n\n" +
+      "Para volver a suscribirte, envia tu ubicacion o usa /ciudad." +
+      CLARA_FOOTER
+  );
 }
 
 async function upsertSubscriber(

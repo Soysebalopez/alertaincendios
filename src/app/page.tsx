@@ -57,7 +57,7 @@ export default async function Home() {
           <span className="font-semibold tracking-tight text-foreground/90">
             CLARA
           </span>
-          <span className="hidden md:inline font-mono text-[10px] text-foreground/30 tracking-wide">
+          <span className="hidden md:inline font-mono text-[10px] text-muted tracking-wide">
             Central de Localizacion y Alerta de Riesgo Ambiental
           </span>
         </div>
