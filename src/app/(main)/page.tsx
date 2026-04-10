@@ -5,14 +5,16 @@ import {
   GlobeHemisphereWest,
   ArrowRight,
   TelegramLogo,
-  Fire,
   Eye,
+  ClockCounterClockwise,
+  Drop,
 } from "@phosphor-icons/react/dist/ssr";
+import Link from "next/link";
 import { FireCounter } from "@/components/fire-counter";
 import { StatusBeacon } from "@/components/status-beacon";
 import { StaggerReveal } from "@/components/stagger-reveal";
-import { EmberParticles } from "@/components/ember-particles";
 import { FireMapLoader } from "@/components/fire-map-loader";
+import { LiveStatus } from "@/components/live-status";
 
 export const revalidate = 900; // 15 min — matches FIRMS sync cadence
 
@@ -47,38 +49,7 @@ export default async function Home() {
   });
 
   return (
-    <div className="flex flex-col min-h-[100dvh] grid-overlay scanline relative">
-      <EmberParticles />
-
-      {/* ─── Nav ─── */}
-      <nav className="relative z-10 flex items-center justify-between px-6 md:px-10 py-5 border-b border-border">
-        <div className="flex items-center gap-3">
-          <Fire size={20} weight="fill" className="text-accent" />
-          <span className="font-semibold tracking-tight text-foreground/90">
-            CLARA
-          </span>
-          <span className="hidden md:inline font-mono text-[10px] text-muted tracking-wide">
-            Central de Localizacion y Alerta de Riesgo Ambiental
-          </span>
-        </div>
-
-        <div className="flex items-center gap-6">
-          <div className="hidden sm:flex items-center gap-2 text-xs font-mono text-muted">
-            <StatusBeacon />
-            <span>Monitoreo activo</span>
-          </div>
-          <a
-            href={TELEGRAM_BOT_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="group flex items-center gap-2 bg-accent/10 hover:bg-accent/20 text-accent text-sm font-medium px-4 py-2 rounded-lg border border-accent/20 transition-all duration-300 active:scale-[0.98]"
-          >
-            <TelegramLogo size={16} weight="fill" />
-            <span>Recibir alertas</span>
-          </a>
-        </div>
-      </nav>
-
+    <>
       {/* ─── Hero: Split-screen ─── */}
       <section className="relative z-10 grid grid-cols-1 lg:grid-cols-2 min-h-[85dvh]">
         {/* Left: Content */}
@@ -174,9 +145,23 @@ export default async function Home() {
         </div>
       </section>
 
+      {/* ─── Live environmental status ─── */}
+      <section className="relative z-10 border-t border-border">
+        <div className="px-6 md:px-10 lg:px-16 py-10 max-w-6xl mx-auto">
+          <StaggerReveal delay={0.1}>
+            <p className="font-mono text-xs text-muted uppercase tracking-[0.2em] mb-4">
+              Monitoreo ambiental ciudadano
+            </p>
+            <div className="max-w-xl">
+              <LiveStatus />
+            </div>
+          </StaggerReveal>
+        </div>
+      </section>
+
       {/* ─── How it works ─── */}
       <section className="relative z-10 border-t border-border">
-        <div className="px-6 md:px-10 lg:px-16 py-20 max-w-6xl">
+        <div className="px-6 md:px-10 lg:px-16 py-20 max-w-6xl mx-auto">
           <StaggerReveal>
             <p className="font-mono text-xs text-muted uppercase tracking-[0.2em] mb-12">
               Como funciona
@@ -218,7 +203,7 @@ export default async function Home() {
 
       {/* ─── Data sources ─── */}
       <section className="relative z-10 border-t border-border">
-        <div className="px-6 md:px-10 lg:px-16 py-16">
+        <div className="px-6 md:px-10 lg:px-16 py-16 max-w-6xl mx-auto">
           <p className="font-mono text-xs text-muted uppercase tracking-[0.2em] mb-8">
             Fuentes de datos
           </p>
@@ -228,6 +213,7 @@ export default async function Home() {
               "Open-Meteo Wind",
               "Sentinel SNPP",
               "Open-Meteo Geocoding",
+              "Open-Meteo Air Quality",
             ].map((source) => (
               <span
                 key={source}
@@ -240,9 +226,70 @@ export default async function Home() {
         </div>
       </section>
 
+      {/* ─── Explore CTAs ─── */}
+      <section className="relative z-10 border-t border-border">
+        <div className="px-6 md:px-10 lg:px-16 py-16 max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Link
+            href="/historial"
+            className="group flex items-center justify-between bg-surface-2 border border-border rounded-xl p-6 hover:border-accent/30 transition-all duration-300"
+          >
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <ClockCounterClockwise
+                  size={16}
+                  weight="duotone"
+                  className="text-accent"
+                />
+                <p className="font-mono text-xs text-accent uppercase tracking-[0.15em]">
+                  Historial
+                </p>
+              </div>
+              <p className="font-semibold text-foreground/90">
+                Actividad historica de incendios
+              </p>
+              <p className="text-xs text-muted mt-1">
+                Datos desde 2012 — NASA FIRMS VIIRS
+              </p>
+            </div>
+            <ArrowRight
+              size={18}
+              className="text-accent transition-transform group-hover:translate-x-1 shrink-0 ml-4"
+            />
+          </Link>
+
+          <Link
+            href="/calidad-aire"
+            className="group flex items-center justify-between bg-surface-2 border border-border rounded-xl p-6 hover:border-accent/30 transition-all duration-300"
+          >
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <Drop
+                  size={16}
+                  weight="duotone"
+                  className="text-accent"
+                />
+                <p className="font-mono text-xs text-accent uppercase tracking-[0.15em]">
+                  Calidad del aire
+                </p>
+              </div>
+              <p className="font-semibold text-foreground/90">
+                Monitoreo por provincia y ciudad
+              </p>
+              <p className="text-xs text-muted mt-1">
+                NO₂, SO₂, O₃, PM2.5 — CAMS / Sentinel-5P
+              </p>
+            </div>
+            <ArrowRight
+              size={18}
+              className="text-accent transition-transform group-hover:translate-x-1 shrink-0 ml-4"
+            />
+          </Link>
+        </div>
+      </section>
+
       {/* ─── Final CTA ─── */}
       <section className="relative z-10 border-t border-border">
-        <div className="px-6 md:px-10 lg:px-16 py-20">
+        <div className="px-6 md:px-10 lg:px-16 py-20 max-w-6xl mx-auto">
           <StaggerReveal>
             <div className="flex flex-col md:flex-row items-start md:items-end gap-8 md:gap-16">
               <div>
@@ -272,17 +319,7 @@ export default async function Home() {
           </StaggerReveal>
         </div>
       </section>
-
-      {/* ─── Footer ─── */}
-      <footer className="relative z-10 border-t border-border px-6 md:px-10 lg:px-16 py-6 flex flex-col sm:flex-row justify-between gap-4">
-        <p className="font-mono text-[11px] text-muted/60">
-          Datos: NASA FIRMS VIIRS / Open-Meteo / ESA Copernicus
-        </p>
-        <p className="font-mono text-[11px] text-muted/60">
-          Proyecto CLARA — Whitebay
-        </p>
-      </footer>
-    </div>
+    </>
   );
 }
 
