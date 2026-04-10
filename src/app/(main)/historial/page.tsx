@@ -3,9 +3,18 @@ import { FireHistoryDashboard } from "@/components/fire-history-dashboard";
 import { StaggerReveal } from "@/components/stagger-reveal";
 
 export const metadata: Metadata = {
-  title: "Historial de Incendios — CLARA",
+  title: "Historial de Incendios",
   description:
     "Actividad historica de focos de calor en Argentina. Datos satelitales NASA FIRMS VIIRS.",
+  openGraph: {
+    title: "Historial de Incendios — CLARA",
+    description: "Evolucion diaria de detecciones satelitales en todo el territorio argentino.",
+  },
+  twitter: {
+    card: "summary",
+    title: "Historial de Incendios — CLARA",
+    description: "Evolucion diaria de detecciones satelitales en Argentina.",
+  },
 };
 
 export default function HistorialPage() {

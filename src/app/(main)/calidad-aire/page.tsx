@@ -3,9 +3,18 @@ import { AirDashboard } from "@/components/air-quality/air-dashboard";
 import { StaggerReveal } from "@/components/stagger-reveal";
 
 export const metadata: Metadata = {
-  title: "Calidad del Aire — CLARA",
+  title: "Calidad del Aire",
   description:
     "Monitoreo de calidad del aire por provincia y ciudad en Argentina. Datos CAMS / Sentinel-5P via Open-Meteo.",
+  openGraph: {
+    title: "Calidad del Aire — CLARA",
+    description: "NO₂, SO₂, O₃, PM2.5 y mas en las principales ciudades argentinas. Umbrales OMS.",
+  },
+  twitter: {
+    card: "summary",
+    title: "Calidad del Aire — CLARA",
+    description: "Monitoreo de calidad del aire por provincia y ciudad en Argentina.",
+  },
 };
 
 export default function CalidadAirePage() {

@@ -3,9 +3,18 @@ import { MapLoader } from "@/components/map/map-loader";
 import { Eye } from "@phosphor-icons/react/dist/ssr";
 
 export const metadata: Metadata = {
-  title: "Mapa — CLARA",
+  title: "Mapa",
   description:
     "Mapa interactivo de Argentina con focos de calor, calidad del aire y datos de viento en tiempo real.",
+  openGraph: {
+    title: "Mapa — CLARA",
+    description: "Mapa interactivo con focos de calor, calidad del aire y viento en tiempo real.",
+  },
+  twitter: {
+    card: "summary",
+    title: "Mapa — CLARA",
+    description: "Mapa interactivo de monitoreo ambiental para Argentina.",
+  },
 };
 
 export default function MapaPage() {

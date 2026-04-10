@@ -36,7 +36,6 @@ export function Nav() {
               href={link.href}
               className="font-mono text-sm hover:text-foreground px-3 py-1.5 rounded-lg border border-foreground/30 hover:border-foreground/50 transition-colors"
               style={{ color: fg80 }}
-              style={{ color: fg80 }}
             >
               {link.label}
             </Link>

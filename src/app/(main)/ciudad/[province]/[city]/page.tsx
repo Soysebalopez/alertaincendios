@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowLeft } from "@phosphor-icons/react/dist/ssr";
 import { PROVINCES } from "@/lib/argentina-cities";
 import { CityDashboard } from "@/components/city/city-dashboard";
+import { CityJsonLd } from "@/components/jsonld";
 import { StaggerReveal } from "@/components/stagger-reveal";
 
 interface PageProps {
@@ -46,9 +47,21 @@ export async function generateMetadata({
   const match = findCity(province, city);
   if (!match) return { title: "Ciudad no encontrada — CLARA" };
 
+  const title = `${match.city.name}, ${match.province.name} — Calidad del Aire`;
+  const description = `Monitoreo ambiental ciudadano para ${match.city.name}. Calidad del aire, viento y resumen en lenguaje simple.`;
+
   return {
-    title: `${match.city.name}, ${match.province.name} — Calidad del Aire — CLARA`,
-    description: `Monitoreo ambiental ciudadano para ${match.city.name}. Calidad del aire, viento y resumen en lenguaje simple.`,
+    title,
+    description,
+    openGraph: {
+      title: `${match.city.name} — Calidad del Aire — CLARA`,
+      description,
+    },
+    twitter: {
+      card: "summary",
+      title: `${match.city.name} — CLARA`,
+      description,
+    },
   };
 }
 
@@ -61,8 +74,17 @@ export default async function CiudadPage({ params }: PageProps) {
     (c) => slugify(c.name) !== city,
   );
 
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://alertaincendios.vercel.app";
+
   return (
     <main className="relative z-10 flex-1">
+      <CityJsonLd
+        cityName={match.city.name}
+        provinceName={match.province.name}
+        lat={match.city.lat}
+        lng={match.city.lng}
+        url={`${siteUrl}/ciudad/${match.province.id}/${city}`}
+      />
       <div className="px-6 md:px-10 lg:px-16 py-16 max-w-6xl mx-auto">
         <StaggerReveal delay={0.1}>
           <Link
