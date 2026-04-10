@@ -177,7 +177,7 @@ const FireHistoryChart = React.memo(function FireHistoryChart({
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="font-mono text-[10px] text-muted/60 uppercase tracking-widest mb-1">
+      <p className="font-mono text-[11px] text-muted uppercase tracking-widest mb-1">
         {label}
       </p>
       <p className="font-mono text-sm text-foreground/80">{value}</p>

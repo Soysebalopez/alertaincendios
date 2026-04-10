@@ -94,7 +94,7 @@ export default async function Home() {
           </StaggerReveal>
 
           <StaggerReveal delay={0.45}>
-            <p className="text-base text-muted leading-relaxed max-w-[48ch] mb-10">
+            <p className="text-base text-foreground/60 leading-relaxed max-w-[48ch] mb-10">
               Detectamos focos de calor en toda Argentina con satelites de la
               NASA. Si hay uno cerca tuyo, te alertamos por Telegram con la
               distancia y la direccion del humo.
@@ -152,9 +152,7 @@ export default async function Home() {
             <p className="font-mono text-xs text-muted uppercase tracking-[0.2em] mb-4">
               Monitoreo ambiental ciudadano
             </p>
-            <div className="max-w-xl">
-              <LiveStatus />
-            </div>
+            <LiveStatus />
           </StaggerReveal>
         </div>
       </section>
@@ -217,7 +215,7 @@ export default async function Home() {
             ].map((source) => (
               <span
                 key={source}
-                className="font-mono text-xs text-muted/80 border border-border rounded-full px-4 py-2"
+                className="font-mono text-xs text-foreground/60 border border-border rounded-full px-4 py-2"
               >
                 {source}
               </span>
@@ -328,10 +326,10 @@ export default async function Home() {
 function DataPoint({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="font-mono text-[10px] text-muted/60 uppercase tracking-widest mb-1">
+      <p className="font-mono text-[11px] text-muted uppercase tracking-widest mb-1">
         {label}
       </p>
-      <p className="font-mono text-sm text-foreground/70">{value}</p>
+      <p className="font-mono text-sm text-foreground/80">{value}</p>
     </div>
   );
 }
@@ -357,7 +355,7 @@ function StepCard({
           <span className="text-accent">{icon}</span>
           <h3 className="font-semibold text-foreground/90">{title}</h3>
         </div>
-        <p className="text-sm text-muted leading-relaxed max-w-[50ch] pl-[52px]">
+        <p className="text-sm text-foreground/60 leading-relaxed max-w-[50ch] pl-[52px]">
           {description}
         </p>
       </div>

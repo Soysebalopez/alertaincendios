@@ -130,7 +130,7 @@ export function CityDashboard({
 
         {air && (
           <div className="rounded-xl border border-border bg-surface-2 p-5">
-            <p className="font-mono text-[10px] text-muted/60 uppercase tracking-widest mb-4">
+            <p className="font-mono text-[11px] text-muted uppercase tracking-widest mb-4">
               Contaminantes
             </p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
@@ -151,7 +151,7 @@ export function CityDashboard({
                     </div>
                     <p className="font-mono text-lg font-semibold text-foreground/90 pl-4">
                       {p.value}
-                      <span className="text-xs text-muted/60 ml-1">
+                      <span className="text-xs text-muted ml-1">
                         {p.unit}
                       </span>
                     </p>
@@ -178,7 +178,7 @@ export function CityDashboard({
       <AirHistorySection lat={lat} lng={lng} />
 
       {/* Source attribution */}
-      <p className="font-mono text-[10px] text-muted/40 text-center">
+      <p className="font-mono text-[10px] text-muted text-center">
         Datos: CAMS / Sentinel-5P via Open-Meteo — Umbrales OMS —{" "}
         {provinceName}
       </p>
@@ -210,7 +210,7 @@ function AirHistorySection({ lat, lng }: { lat: number; lng: number }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <p className="font-mono text-[10px] text-muted/60 uppercase tracking-widest">
+        <p className="font-mono text-[11px] text-muted uppercase tracking-widest">
           Evolucion de la calidad del aire
         </p>
         <div className="flex gap-1">

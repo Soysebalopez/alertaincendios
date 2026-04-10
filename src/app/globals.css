@@ -9,7 +9,7 @@
   --surface: #131311;
   --surface-2: #1a1a17;
   --border: #252520;
-  --muted: #6b6b60;
+  --muted: #8a8a7e;
   --danger: #ef4444;
 }
 
@@ -95,3 +95,15 @@ body {
   90% { opacity: 1; }
   100% { transform: translateY(-120px) scale(0.3); opacity: 0; }
 }
+
+/* Slide transitions for city slider */
+@keyframes slide-in-next {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes slide-in-prev {
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.animate-slide-next { animation: slide-in-next 0.3s ease-out; }
+.animate-slide-prev { animation: slide-in-prev 0.3s ease-out; }

@@ -34,7 +34,7 @@ export function WindCard({ lat, lng }: { lat: number; lng: number }) {
 
   return (
     <div className="rounded-xl border border-border bg-surface-2 p-5">
-      <p className="font-mono text-[10px] text-muted/60 uppercase tracking-widest mb-3">
+      <p className="font-mono text-[11px] text-muted uppercase tracking-widest mb-3">
         Viento
       </p>
 
@@ -81,7 +81,7 @@ export function WindCard({ lat, lng }: { lat: number; lng: number }) {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="font-mono text-[10px] text-muted/60 uppercase tracking-widest mb-0.5">
+      <p className="font-mono text-[11px] text-muted uppercase tracking-widest mb-0.5">
         {label}
       </p>
       <p className="font-mono text-xs text-foreground/70">{value}</p>

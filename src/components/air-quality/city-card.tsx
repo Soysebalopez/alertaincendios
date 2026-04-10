@@ -150,7 +150,7 @@ export function CityCard({
               </div>
               <span className="font-mono text-xs text-foreground/70">
                 {p.value}{" "}
-                <span className="text-muted/60">{p.unit}</span>
+                <span className="text-muted">{p.unit}</span>
               </span>
             </div>
           );

@@ -10,26 +10,33 @@ const NAV_LINKS = [
   { href: "/historial", label: "Historial" },
 ];
 
+const fg80 = "color-mix(in oklab, var(--foreground) 80%, transparent)";
+
 export function Nav() {
   return (
     <nav className="relative z-10 flex items-center justify-between px-6 md:px-10 py-5 border-b border-border">
       <div className="flex items-center gap-6">
         <Link href="/" className="flex items-center gap-3">
           <Fire size={20} weight="fill" className="text-accent" />
-          <span className="font-semibold tracking-tight text-foreground/90">
+          <span className="font-semibold tracking-tight text-foreground">
             CLARA
           </span>
-          <span className="hidden lg:inline font-mono text-[10px] text-muted tracking-wide">
+          <span
+            className="hidden lg:inline font-mono text-xs tracking-wide"
+            style={{ color: fg80 }}
+          >
             Central de Localizacion y Alerta de Riesgo Ambiental
           </span>
         </Link>
 
-        <div className="hidden sm:flex items-center gap-1">
+        <div className="hidden sm:flex items-center gap-2">
           {NAV_LINKS.map((link) => (
             <Link
               key={link.href}
               href={link.href}
-              className="font-mono text-xs text-muted hover:text-foreground/80 px-3 py-1.5 rounded-lg transition-colors"
+              className="font-mono text-sm hover:text-foreground px-3 py-1.5 rounded-lg border border-foreground/30 hover:border-foreground/50 transition-colors"
+              style={{ color: fg80 }}
+              style={{ color: fg80 }}
             >
               {link.label}
             </Link>
@@ -38,7 +45,10 @@ export function Nav() {
       </div>
 
       <div className="flex items-center gap-6">
-        <div className="hidden md:flex items-center gap-2 text-xs font-mono text-muted">
+        <div
+          className="hidden md:flex items-center gap-2 text-xs font-mono"
+          style={{ color: fg80 }}
+        >
           <StatusBeacon />
           <span>Monitoreo activo</span>
         </div>

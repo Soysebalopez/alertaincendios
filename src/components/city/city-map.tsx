@@ -208,7 +208,7 @@ export function CityMap({
                     <span className="font-mono text-muted">{key}</span>
                     <span className="font-mono text-foreground/70">
                       {val.value}{" "}
-                      <span className="text-muted/60">{val.unit}</span>
+                      <span className="text-muted">{val.unit}</span>
                     </span>
                   </div>
                 ))}
