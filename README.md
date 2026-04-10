@@ -1,92 +1,99 @@
-# AlertaIncendios Argentina
+# CLARA — Central de Localizacion y Alerta de Riesgo Ambiental
 
-Sistema de alerta temprana de incendios forestales para Argentina. Detecta focos de calor via satelite (NASA FIRMS) y alerta por Telegram con modelo de dispersion de humo.
+Plataforma de monitoreo ambiental ciudadano para Argentina. Detecta focos de calor, monitorea calidad del aire en 80+ ciudades, y traduce datos tecnicos a lenguaje simple con inteligencia artificial.
 
-**Landing:** [alertaincendios.vercel.app](https://alertaincendios.vercel.app)
+**Web:** [alertaincendios.vercel.app](https://alertaincendios.vercel.app)
 **Bot:** [t.me/AlertaIncendiosBot](https://t.me/AlertaIncendiosBot)
+
+## Que hace
+
+### Incendios
+Cada 15 minutos consultamos NASA FIRMS para detectar focos de calor en toda Argentina. Si hay uno cerca tuyo y el viento empuja el humo hacia tu zona, te alertamos por Telegram con la distancia, potencia y tiempo estimado de llegada.
+
+### Calidad del aire
+Monitoreamos NO2, SO2, O3, PM2.5, PM10 y CO en las principales ciudades de las 24 provincias argentinas. Cada ciudad tiene su propia pagina con semaforo OMS, datos de viento, y un resumen en lenguaje ciudadano generado por IA.
+
+### Mapa interactivo
+Mapa de Argentina con tres capas: focos de calor activos, calidad del aire por ciudad, y direccion del viento. Todo en tiempo real.
 
 ## Como funciona
 
 ```
-NASA FIRMS (satelite VIIRS)
-        |
-        v
-  Supabase pg_cron ──── cada 15 min fetch + parse CSV
-        |
-        v
-  fires_cache (jsonb) ──── 104+ focos en toda Argentina
-        |
-        v
-  /api/alerts ──── evalua cada foco vs cada suscriptor
-        |
-        v
-  Modelo de dispersion ──── haversine + viento + ETA humo
-        |
-        v
-  Telegram ──── alerta con distancia, potencia, Google Maps
+Satelite VIIRS ──── cada ~6h escanea Argentina (375m resolucion)
+       |
+       v
+NASA FIRMS ──── procesa y publica focos de calor
+       |
+       v
+Supabase pg_cron ──── cada 15 min consulta FIRMS
+       |
+       v
+fires_cache ──── focos activos en toda Argentina
+       |
+       ├── /mapa ──── visualizacion en mapa Leaflet
+       ├── /historial ──── grafico de evolucion diaria
+       └── /api/alerts ──── evalua vs suscriptores → Telegram
+
+Open-Meteo ──── calidad del aire + viento por ciudad
+       |
+       v
+Groq AI ──── traduce datos a lenguaje ciudadano
+       |
+       ├── /calidad-aire ──── selector de provincia → cards por ciudad
+       └── /ciudad/[prov]/[city] ──── dashboard completo por ciudad
 ```
 
-1. **Deteccion:** El satelite Suomi NPP (sensor VIIRS, 375m de resolucion) escanea la superficie terrestre y detecta puntos de calor anomalos
-2. **Sync:** Cada 15 minutos, `pg_cron` en Supabase consulta NASA FIRMS y cachea los focos activos en toda Argentina
-3. **Dispersion:** Para cada foco, se consulta el viento en tiempo real (Open-Meteo) y se calcula si el humo se dirige hacia cada suscriptor
-4. **Alerta:** Si un foco esta a menos de 100 km y el viento lo empuja hacia tu ubicacion, recibis una alerta por Telegram con distancia, potencia termica (FRP) y ETA del humo
+## Paginas
 
-## Stack
-
-- **Frontend:** Next.js 16, TypeScript, Tailwind CSS v4, Leaflet, Motion
-- **Backend:** Vercel (serverless), Supabase (Postgres + pg_cron + pg_net)
-- **Bot:** Telegram Bot API, Groq (AI interpretation)
-- **Datos:** NASA FIRMS VIIRS, Open-Meteo (viento + geocoding)
+| Ruta | Descripcion |
+|------|-------------|
+| `/` | Landing con fire counter, mapa, slider de 10 ciudades al azar |
+| `/mapa` | Mapa fullscreen — capas: focos, aire, viento |
+| `/calidad-aire` | Selector de provincia → cards con semaforo + viento + resumen AI |
+| `/ciudad/[prov]/[city]` | Dashboard completo: semaforo, viento, mapa zoom, evolucion de contaminantes |
+| `/historial` | Grafico de focos de calor diarios (Recharts) |
 
 ## Bot de Telegram
 
-Abri [@AlertaIncendiosBot](https://t.me/AlertaIncendiosBot) y:
+[@AlertaIncendiosBot](https://t.me/AlertaIncendiosBot)
 
 | Comando | Descripcion |
 |---------|-------------|
 | `/start` | Bienvenida + boton para compartir ubicacion |
 | `/ciudad <nombre>` | Suscribirse por nombre de ciudad |
 | `/estado` | Ver focos cercanos + interpretacion AI |
-| `/cancelar` | Eliminar suscripcion |
+| `/cancelar` | Cancelar suscripcion |
 
-Tambien podes enviar tu ubicacion GPS directamente.
+## Stack
 
-## Arquitectura
+- **Frontend:** Next.js 16, TypeScript, Tailwind CSS v4, Leaflet, Recharts, Motion
+- **Backend:** Vercel (serverless), Supabase (Postgres + pg_cron + pg_net)
+- **AI:** Groq llama-3.3-70b (resumenes ciudadanos, interpretacion de datos)
+- **Datos:** NASA FIRMS VIIRS, Open-Meteo (aire + viento), ESA CAMS/Sentinel-5P
 
-```
-src/
-  app/
-    page.tsx                    # Landing — mapa Leaflet + fire counter
-    api/
-      fires/route.ts            # GET — focos desde Supabase cache
-      fires/sync/route.ts       # GET — sync manual FIRMS → Supabase
-      alerts/route.ts           # GET — cron: evalua focos vs suscriptores
-      bot/telegram/route.ts     # POST — webhook Telegram
-  lib/
-    firms.ts                    # FIRMS client + Supabase cache read/write
-    geo.ts                      # haversine, isUpwind, smokeEta
-    wind.ts                     # Open-Meteo wind data
-    geocode.ts                  # Open-Meteo geocoding (ciudad → lat/lng)
-    telegram.ts                 # sendMessage helper
-    supabase.ts                 # lazy-init Supabase client
-  components/
-    fire-map.tsx                # Leaflet map con focos coloreados por FRP
-    fire-map-loader.tsx         # Dynamic import wrapper (no SSR)
-    fire-counter.tsx            # Animated counter (rolls up from 0)
-    status-beacon.tsx           # Pulsing live indicator
-    stagger-reveal.tsx          # Staggered fade-up animation
-    ember-particles.tsx         # CSS ember particle system
-```
+## APIs
 
-## Supabase (pg_cron)
+| Endpoint | Metodo | Descripcion |
+|----------|--------|-------------|
+| `/api/fires` | GET | Focos activos desde Supabase cache |
+| `/api/fires/history?months=6` | GET | Historial diario de focos |
+| `/api/air-quality?lat=X&lng=Y` | GET | Calidad del aire (6 contaminantes + nivel OMS) |
+| `/api/wind?lat=X&lng=Y` | GET | Viento: velocidad, direccion en espanol, temp |
+| `/api/summary?lat=X&lng=Y&city=Name` | GET | Resumen ciudadano AI |
+| `/api/history?lat=X&lng=Y&pollutant=NO2&days=7` | GET | Historial de contaminante |
+| `/api/simulate` | POST | Simulacion de dispersion (modelo gaussiano) |
+| `/api/bot/telegram` | POST | Webhook del bot |
 
-El sync de datos corre 100% desde Postgres, sin dependencias externas:
+## Datos automaticos (pg_cron)
 
-| Job | Schedule | Accion |
-|-----|----------|--------|
-| `fires-fetch` | `:00, :15, :30, :45` | HTTP GET a FIRMS via pg_net |
-| `fires-process` | `:02, :17, :32, :47` | Parsea CSV, actualiza fires_cache |
-| `fires-alerts` | `:04, :19, :34, :49` | Llama /api/alerts en Vercel |
+Todo el sync de datos corre desde Postgres, sin dependencias externas:
+
+| Job | Frecuencia | Accion |
+|-----|------------|--------|
+| `fires-fetch` | Cada 15 min | HTTP GET a FIRMS via pg_net |
+| `fires-process` | Cada 15 min (+2 min) | Parsea CSV, actualiza fires_cache |
+| `fires-alerts` | Cada 15 min (+4 min) | Evalua focos vs suscriptores |
+| `fires-daily-snapshot` | Diario 23:55 ART | Guarda count diario para historial |
 
 ## Variables de entorno
 
@@ -94,10 +101,9 @@ El sync de datos corre 100% desde Postgres, sin dependencias externas:
 |----------|-------------|
 | `TELEGRAM_BOT_TOKEN` | Token de @BotFather |
 | `NEXT_PUBLIC_SUPABASE_URL` | URL del proyecto Supabase |
-| `SUPABASE_SERVICE_ROLE_KEY` | Service role key de Supabase |
-| `FIRMS_API_KEY` | MAP_KEY de NASA FIRMS (gratis) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service role key |
 | `GROQ_API_KEY` | API key de Groq (gratis) |
-| `CRON_SECRET` | Secret para autenticar endpoints de cron |
+| `CRON_SECRET` | Secret para endpoints de cron |
 
 ## Desarrollo local
 
@@ -107,13 +113,29 @@ cp .env.local.example .env.local  # completar con tus keys
 npm run dev                        # http://localhost:3000
 ```
 
+### Backfill de datos historicos
+
+```bash
+# Cargar historial de focos (requiere IP residencial, FIRMS bloquea datacenters)
+bash scripts/backfill-fires.sh 365
+```
+
 ## Fuentes de datos
 
 | Fuente | Uso | Costo |
 |--------|-----|-------|
-| [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/) | Focos de calor (VIIRS SNPP) | Gratis (requiere MAP_KEY) |
-| [Open-Meteo](https://open-meteo.com/) | Viento + geocoding | Gratis |
-| [Groq](https://groq.com/) | Interpretacion AI (llama-3.3-70b) | Gratis (rate limited) |
+| [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/) | Focos de calor (VIIRS SNPP, 375m) | Gratis |
+| [Open-Meteo Air Quality](https://air-quality-api.open-meteo.com/) | Contaminantes (CAMS/Sentinel-5P) | Gratis |
+| [Open-Meteo Forecast](https://open-meteo.com/) | Viento, temperatura, humedad | Gratis |
+| [Groq](https://groq.com/) | Resumenes ciudadanos (llama-3.3-70b) | Gratis |
+
+## SEO
+
+- Sitemap con 84 URLs (estaticas + 78 ciudades SSG)
+- robots.txt (permite todo excepto /api/)
+- JSON-LD: WebApplication + Place/GeoCoordinates por ciudad
+- OpenGraph + Twitter cards en todas las paginas
+- Titulos con template: "%s — CLARA"
 
 ## Licencia
 
