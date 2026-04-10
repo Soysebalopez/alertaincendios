@@ -129,6 +129,11 @@ export default async function Home() {
               <DataPoint label="Actualizacion" value="15 min" />
               <DataPoint label="Cobertura" value="3.761.274 km2" />
             </div>
+            <p className="text-xs text-foreground/40 leading-relaxed mt-4 max-w-[60ch]">
+              Consultamos NASA FIRMS cada 15 minutos para detectar nuevas
+              detecciones. Los datos dependen de las pasadas del satelite
+              VIIRS sobre Argentina, que ocurren varias veces al dia.
+            </p>
           </StaggerReveal>
         </div>
 
