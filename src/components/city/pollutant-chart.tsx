@@ -50,7 +50,7 @@ const PollutantChart = React.memo(function PollutantChart({
 
   if (loading) {
     return (
-      <div className="rounded-xl border border-border bg-surface-2 p-5">
+      <div className="rounded-xl border border-border bg-surface p-4 md:p-5">
         <div className="h-3 w-24 rounded bg-border animate-pulse mb-4" />
         <div className="h-36 rounded bg-border/30 animate-pulse" />
       </div>
@@ -58,7 +58,7 @@ const PollutantChart = React.memo(function PollutantChart({
   }
 
   return (
-    <div className="rounded-xl border border-border bg-surface-2 p-5">
+    <div className="rounded-xl border border-border bg-surface p-4 md:p-5">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <div

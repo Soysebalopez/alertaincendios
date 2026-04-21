@@ -11,7 +11,13 @@ interface WindData {
   humidity: number;
 }
 
-export function WindCard({ lat, lng }: { lat: number; lng: number }) {
+export function WindCompassCard({
+  lat,
+  lng,
+}: {
+  lat: number;
+  lng: number;
+}) {
   const [wind, setWind] = useState<WindData | null>(null);
 
   useEffect(() => {
@@ -23,56 +29,102 @@ export function WindCard({ lat, lng }: { lat: number; lng: number }) {
       .catch(() => {});
   }, [lat, lng]);
 
-  if (!wind) {
-    return (
-      <div className="rounded-xl border border-border bg-surface-2 p-5">
-        <div className="h-3 w-16 rounded bg-border animate-pulse mb-3" />
-        <div className="h-8 w-32 rounded bg-border/50 animate-pulse" />
-      </div>
-    );
-  }
-
   return (
-    <div className="rounded-xl border border-border bg-surface-2 p-5">
-      <p className="font-mono text-[11px] text-muted uppercase tracking-widest mb-3">
-        Viento
-      </p>
+    <div
+      style={{
+        padding: 22,
+        borderRadius: 14,
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+      }}
+    >
+      <div className="font-mono text-[10px] text-muted tracking-[0.12em] uppercase mb-3.5">
+        Viento y clima
+      </div>
 
-      <div className="flex items-center gap-4">
-        {/* Wind arrow */}
-        <div className="relative h-14 w-14 shrink-0">
-          <div className="absolute inset-0 rounded-full border border-border/50" />
-          <svg
-            viewBox="0 0 48 48"
-            className="h-14 w-14 text-accent"
-            style={{
-              transform: `rotate(${(wind.windDirection + 180) % 360}deg)`,
-              transition: "transform 0.5s ease",
-            }}
+      <div className="text-center" style={{ padding: "16px 0" }}>
+        <svg
+          viewBox="0 0 100 100"
+          width="140"
+          height="140"
+          className="mx-auto block"
+        >
+          <circle
+            cx="50"
+            cy="50"
+            r="46"
+            fill="none"
+            stroke="var(--border)"
+            strokeWidth="1"
+          />
+          <circle
+            cx="50"
+            cy="50"
+            r="46"
+            fill="none"
+            stroke="var(--accent)"
+            strokeWidth="1"
+            strokeDasharray="2 6"
+            opacity="0.4"
+          />
+          {["N", "E", "S", "O"].map((dir, i) => (
+            <text
+              key={dir}
+              x={50 + Math.cos(((i * 90 - 90) * Math.PI) / 180) * 38}
+              y={50 + Math.sin(((i * 90 - 90) * Math.PI) / 180) * 38 + 3}
+              fontFamily="var(--font-mono)"
+              fontSize="8"
+              fill="var(--muted)"
+              textAnchor="middle"
+            >
+              {dir}
+            </text>
+          ))}
+          {wind && (
+            <g
+              style={{ transition: "transform 0.6s ease" }}
+              transform={`translate(50 50) rotate(${wind.windDirection})`}
+            >
+              <path
+                d="M 0 -28 L -6 6 L 0 0 L 6 6 Z"
+                fill="var(--accent)"
+              />
+            </g>
+          )}
+          <circle cx="50" cy="50" r="3" fill="var(--foreground)" />
+        </svg>
+        <div
+          className="text-foreground mt-2"
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: 36,
+            fontWeight: 800,
+            letterSpacing: "-0.02em",
+          }}
+        >
+          {wind?.windSpeed ?? "—"}
+          <span
+            className="text-muted"
+            style={{ fontSize: 14, fontWeight: 400 }}
           >
-            <path
-              d="M24 6L18 22h4v20h4V22h4L24 6z"
-              fill="currentColor"
-              opacity="0.8"
-            />
-          </svg>
+            {" "}
+            km/h
+          </span>
         </div>
-
-        <div>
-          <p className="text-2xl font-bold tracking-tight text-foreground/90">
-            {wind.windSpeed}{" "}
-            <span className="text-sm font-normal text-muted">km/h</span>
-          </p>
-          <p className="text-sm text-muted">
-            {wind.windDirectionLabelEs}
-          </p>
+        <div className="font-mono text-[11px] text-muted tracking-[0.12em] uppercase">
+          {wind
+            ? `Dirección ${wind.windDirectionLabelEs}`
+            : "Cargando dirección"}
         </div>
       </div>
 
-      <div className="flex gap-6 mt-4 pt-3 border-t border-border/50">
-        <Stat label="Temp" value={`${wind.temperature}°C`} />
-        <Stat label="Humedad" value={`${wind.humidity}%`} />
-        <Stat label="Rafagas" value={`${wind.windGusts} km/h`} />
+      <div
+        className="grid pt-3.5 border-t border-border"
+        style={{ gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}
+      >
+        <Stat label="Temp" value={wind ? `${wind.temperature}°` : "—"} />
+        <Stat label="Humedad" value={wind ? `${wind.humidity}%` : "—"} />
+        <Stat label="Ráfagas" value={wind ? `${wind.windGusts}` : "—"} />
       </div>
     </div>
   );
@@ -81,10 +133,16 @@ export function WindCard({ lat, lng }: { lat: number; lng: number }) {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="font-mono text-[11px] text-muted uppercase tracking-widest mb-0.5">
+      <div
+        className="font-mono text-muted uppercase mb-0.5"
+        style={{ fontSize: 9, letterSpacing: "0.12em" }}
+      >
         {label}
-      </p>
-      <p className="font-mono text-xs text-foreground/70">{value}</p>
+      </div>
+      <div className="font-mono text-[13px] text-foreground">{value}</div>
     </div>
   );
 }
+
+// Keep legacy export for backward compatibility
+export { WindCompassCard as WindCard };

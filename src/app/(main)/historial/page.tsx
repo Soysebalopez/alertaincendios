@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { FireHistoryDashboard } from "@/components/fire-history-dashboard";
-import { StaggerReveal } from "@/components/stagger-reveal";
+import { Pill } from "@/components/clara-ui";
+import { ClockCounterClockwise } from "@phosphor-icons/react/dist/ssr";
 
 export const metadata: Metadata = {
   title: "Historial de Incendios",
@@ -8,7 +9,8 @@ export const metadata: Metadata = {
     "Actividad historica de focos de calor en Argentina. Datos satelitales NASA FIRMS VIIRS.",
   openGraph: {
     title: "Historial de Incendios — CLARA",
-    description: "Evolucion diaria de detecciones satelitales en todo el territorio argentino.",
+    description:
+      "Evolucion diaria de detecciones satelitales en todo el territorio argentino.",
   },
   twitter: {
     card: "summary",
@@ -19,27 +21,52 @@ export const metadata: Metadata = {
 
 export default function HistorialPage() {
   return (
-    <main className="relative z-10 flex-1">
-      <div className="px-6 md:px-10 lg:px-16 py-16 max-w-6xl mx-auto">
-        <StaggerReveal delay={0.1}>
-          <div className="mb-10">
-            <p className="font-mono text-xs text-accent uppercase tracking-[0.2em] mb-3">
-              Historial
-            </p>
-            <h1 className="text-3xl md:text-4xl font-bold tracking-tighter text-foreground/90 mb-2">
-              Actividad de focos de calor
-            </h1>
-            <p className="text-sm text-muted max-w-lg">
-              Evolucion diaria de detecciones satelitales en todo el territorio
-              argentino. Fuente: NASA FIRMS VIIRS.
-            </p>
-          </div>
-        </StaggerReveal>
+    <>
+      <section
+        className="clara-section-padded border-b border-border"
+        style={{ padding: "60px 32px 40px" }}
+      >
+        <div className="max-w-[1400px] mx-auto">
+          <Pill>
+            <ClockCounterClockwise size={10} weight="duotone" /> Historial
+          </Pill>
+          <h1
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "clamp(36px, 5vw, 64px)",
+              fontWeight: 800,
+              letterSpacing: "-0.035em",
+              lineHeight: 1,
+              margin: "16px 0 20px",
+            }}
+          >
+            Evolución de focos
+            <br />
+            de calor en <span className="text-accent">Argentina</span>.
+          </h1>
+          <p
+            className="text-muted"
+            style={{
+              fontSize: 15,
+              maxWidth: "60ch",
+              lineHeight: 1.6,
+              margin: 0,
+            }}
+          >
+            Histórico diario agregado desde NASA FIRMS. Cada punto representa
+            el total de detecciones VIIRS en el país en un día.
+          </p>
+        </div>
+      </section>
 
-        <StaggerReveal delay={0.3}>
+      <section
+        className="clara-section-padded"
+        style={{ padding: "40px 32px 80px" }}
+      >
+        <div className="max-w-[1400px] mx-auto">
           <FireHistoryDashboard />
-        </StaggerReveal>
-      </div>
-    </main>
+        </div>
+      </section>
+    </>
   );
 }

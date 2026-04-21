@@ -7,10 +7,13 @@ export default function MapaLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col h-[100dvh] grid-overlay scanline relative overflow-hidden">
+    <div className="flex flex-col h-[100dvh] relative overflow-hidden">
+      <div className="clara-ambient" aria-hidden />
       <EmberParticles />
-      <Nav />
-      {children}
+      <div className="relative z-[3]">
+        <Nav />
+      </div>
+      <div className="relative z-[3] flex-1">{children}</div>
     </div>
   );
 }

@@ -29,10 +29,10 @@ export const AIR_LEVEL_LABELS: Record<AirLevel, string> = {
 };
 
 export const AIR_LEVEL_COLORS: Record<AirLevel, string> = {
-  good: "#22c55e",
-  moderate: "#eab308",
-  bad: "#f97316",
-  dangerous: "#ef4444",
+  good: "#7db97d",
+  moderate: "#e8b94c",
+  bad: "#e8622c",
+  dangerous: "#d94545",
 };
 
 export const POLLUTANT_LABELS: Record<string, string> = {

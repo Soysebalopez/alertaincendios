@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { AirDashboard } from "@/components/air-quality/air-dashboard";
-import { StaggerReveal } from "@/components/stagger-reveal";
+import { Pill } from "@/components/clara-ui";
+import { Drop } from "@phosphor-icons/react/dist/ssr";
 
 export const metadata: Metadata = {
   title: "Calidad del Aire",
@@ -8,38 +9,60 @@ export const metadata: Metadata = {
     "Monitoreo de calidad del aire por provincia y ciudad en Argentina. Datos CAMS / Sentinel-5P via Open-Meteo.",
   openGraph: {
     title: "Calidad del Aire — CLARA",
-    description: "NO₂, SO₂, O₃, PM2.5 y mas en las principales ciudades argentinas. Umbrales OMS.",
+    description:
+      "NO₂, SO₂, O₃, PM2.5 y mas en las principales ciudades argentinas. Umbrales OMS.",
   },
   twitter: {
     card: "summary",
     title: "Calidad del Aire — CLARA",
-    description: "Monitoreo de calidad del aire por provincia y ciudad en Argentina.",
+    description:
+      "Monitoreo de calidad del aire por provincia y ciudad en Argentina.",
   },
 };
 
 export default function CalidadAirePage() {
   return (
-    <main className="relative z-10 flex-1">
-      <div className="px-6 md:px-10 lg:px-16 py-16 max-w-6xl mx-auto">
-        <StaggerReveal delay={0.1}>
-          <div className="mb-10">
-            <p className="font-mono text-xs text-accent uppercase tracking-[0.2em] mb-3">
-              Calidad del aire
-            </p>
-            <h1 className="text-3xl md:text-4xl font-bold tracking-tighter text-foreground/90 mb-2">
-              Monitoreo por provincia y ciudad
-            </h1>
-            <p className="text-sm text-muted max-w-lg">
-              Niveles de NO₂, SO₂, O₃, PM2.5, PM10 y CO en las principales
-              ciudades argentinas. Umbrales segun guias de la OMS.
-            </p>
-          </div>
-        </StaggerReveal>
+    <>
+      <section
+        className="clara-section-padded border-b border-border"
+        style={{ padding: "60px 32px 40px" }}
+      >
+        <div className="max-w-[1400px] mx-auto">
+          <Pill>
+            <Drop size={10} weight="duotone" /> Calidad del aire
+          </Pill>
+          <h1
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "clamp(36px, 5vw, 64px)",
+              fontWeight: 800,
+              letterSpacing: "-0.035em",
+              lineHeight: 1,
+              margin: "16px 0 20px",
+            }}
+          >
+            Monitoreo de contaminantes
+            <br />
+            por <span className="text-accent">provincia</span>.
+          </h1>
+          <p
+            className="text-muted"
+            style={{
+              fontSize: 15,
+              maxWidth: "60ch",
+              lineHeight: 1.6,
+              margin: 0,
+            }}
+          >
+            Medimos NO₂, SO₂, O₃, PM2.5, PM10 y CO en las ciudades principales
+            de las 24 provincias argentinas. Los datos vienen del sistema
+            Copernicus de la ESA, cruzados con viento en tiempo real de
+            Open-Meteo.
+          </p>
+        </div>
+      </section>
 
-        <StaggerReveal delay={0.3}>
-          <AirDashboard />
-        </StaggerReveal>
-      </div>
-    </main>
+      <AirDashboard />
+    </>
   );
 }
