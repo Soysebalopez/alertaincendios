@@ -73,7 +73,7 @@ export default function RootLayout({
       lang="es"
       className={`${outfit.variable} ${geistMono.variable} antialiased`}
     >
-      <body className="min-h-[100dvh] flex flex-col grain">{children}</body>
+      <body className="min-h-[100dvh] flex flex-col">{children}</body>
     </html>
   );
 }

@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft } from "@phosphor-icons/react/dist/ssr";
+import { ArrowLeft, MapPin, Bell } from "@phosphor-icons/react/dist/ssr";
 import { PROVINCES } from "@/lib/argentina-cities";
 import { CityDashboard } from "@/components/city/city-dashboard";
 import { CityJsonLd } from "@/components/jsonld";
-import { StaggerReveal } from "@/components/stagger-reveal";
+import { Pill } from "@/components/clara-ui";
 
 interface PageProps {
   params: Promise<{ province: string; city: string }>;
@@ -14,9 +14,7 @@ interface PageProps {
 function findCity(provinceSlug: string, citySlug: string) {
   const province = PROVINCES.find((p) => p.id === provinceSlug);
   if (!province) return null;
-  const city = province.cities.find(
-    (c) => slugify(c.name) === citySlug,
-  );
+  const city = province.cities.find((c) => slugify(c.name) === citySlug);
   if (!city) return null;
   return { province, city };
 }
@@ -25,7 +23,7 @@ function slugify(name: string): string {
   return name
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[̀-ͯ]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
 }
@@ -65,6 +63,8 @@ export async function generateMetadata({
   };
 }
 
+const TELEGRAM_BOT_URL = "https://t.me/AlertaIncendiosBot";
+
 export default async function CiudadPage({ params }: PageProps) {
   const { province, city } = await params;
   const match = findCity(province, city);
@@ -74,10 +74,11 @@ export default async function CiudadPage({ params }: PageProps) {
     (c) => slugify(c.name) !== city,
   );
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://alertaincendios.vercel.app";
+  const siteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL || "https://alertaincendios.vercel.app";
 
   return (
-    <main className="relative z-10 flex-1">
+    <>
       <CityJsonLd
         cityName={match.city.name}
         provinceName={match.province.name}
@@ -85,57 +86,108 @@ export default async function CiudadPage({ params }: PageProps) {
         lng={match.city.lng}
         url={`${siteUrl}/ciudad/${match.province.id}/${city}`}
       />
-      <div className="px-6 md:px-10 lg:px-16 py-16 max-w-6xl mx-auto">
-        <StaggerReveal delay={0.1}>
+
+      {/* Hero */}
+      <section
+        className="clara-section-padded border-b border-border"
+        style={{ padding: "48px 32px 32px" }}
+      >
+        <div className="max-w-[1400px] mx-auto">
           <Link
             href="/calidad-aire"
-            className="inline-flex items-center gap-2 text-xs text-muted hover:text-accent transition-colors mb-6"
+            className="inline-flex items-center gap-1.5 text-muted hover:text-accent transition-colors mb-4 font-mono text-[11px] uppercase"
+            style={{ letterSpacing: "0.08em" }}
           >
-            <ArrowLeft size={14} />
-            Calidad del aire
+            <ArrowLeft size={12} />
+            Volver a provincias
           </Link>
-
-          <div className="mb-10">
-            <p className="font-mono text-xs text-accent uppercase tracking-[0.2em] mb-3">
-              {match.province.name}
-            </p>
-            <h1 className="text-3xl md:text-4xl font-bold tracking-tighter text-foreground/90">
-              {match.city.name}
-            </h1>
+          <div className="flex items-end justify-between gap-6 flex-wrap">
+            <div>
+              <Pill>
+                <MapPin size={10} weight="duotone" /> {match.city.name},{" "}
+                {match.province.name} · {match.city.lat.toFixed(2)}°{" "}
+                {match.city.lng.toFixed(2)}°
+              </Pill>
+              <h1
+                style={{
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "clamp(40px, 6vw, 80px)",
+                  fontWeight: 800,
+                  letterSpacing: "-0.035em",
+                  lineHeight: 1,
+                  margin: "14px 0 0",
+                }}
+              >
+                {match.city.name}{" "}
+                <span
+                  className="text-muted"
+                  style={{ fontWeight: 300, fontSize: "0.5em" }}
+                >
+                  {match.province.name}
+                </span>
+              </h1>
+            </div>
+            <a
+              href={TELEGRAM_BOT_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="clara-tap inline-flex items-center gap-2.5 text-white font-semibold transition-transform active:scale-[0.98]"
+              style={{
+                padding: "12px 18px",
+                borderRadius: 10,
+                background: "var(--accent)",
+                fontSize: 13,
+                textDecoration: "none",
+                boxShadow: "0 10px 30px -14px var(--accent)",
+              }}
+            >
+              <Bell size={14} weight="duotone" /> Suscribirme a alertas
+            </a>
           </div>
-        </StaggerReveal>
+        </div>
+      </section>
 
-        <StaggerReveal delay={0.3}>
+      {/* Dashboard */}
+      <section className="clara-section-padded" style={{ padding: "32px" }}>
+        <div className="max-w-[1400px] mx-auto">
           <CityDashboard
             cityName={match.city.name}
             provinceName={match.province.name}
             lat={match.city.lat}
             lng={match.city.lng}
           />
-        </StaggerReveal>
+        </div>
+      </section>
 
-        {/* Other cities in province */}
-        {otherCities.length > 0 && (
-          <StaggerReveal delay={0.5}>
-            <div className="mt-12 pt-8 border-t border-border">
-              <p className="font-mono text-xs text-muted uppercase tracking-[0.15em] mb-4">
-                Otras ciudades en {match.province.name}
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {otherCities.map((c) => (
-                  <Link
-                    key={c.name}
-                    href={`/ciudad/${match.province.id}/${slugify(c.name)}`}
-                    className="text-xs text-muted hover:text-accent border border-border rounded-lg px-3 py-1.5 transition-colors"
-                  >
-                    {c.name}
-                  </Link>
-                ))}
-              </div>
+      {otherCities.length > 0 && (
+        <section
+          className="clara-section-padded border-t border-border"
+          style={{ padding: "48px 32px" }}
+        >
+          <div className="max-w-[1400px] mx-auto">
+            <p className="font-mono text-[10px] text-muted tracking-[0.12em] uppercase mb-3">
+              Otras ciudades en {match.province.name}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {otherCities.map((c) => (
+                <Link
+                  key={c.name}
+                  href={`/ciudad/${match.province.id}/${slugify(c.name)}`}
+                  className="text-[12px] text-muted hover:text-accent transition-colors"
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 8,
+                    border: "1px solid var(--border)",
+                    background: "var(--surface)",
+                  }}
+                >
+                  {c.name}
+                </Link>
+              ))}
             </div>
-          </StaggerReveal>
-        )}
-      </div>
-    </main>
+          </div>
+        </section>
+      )}
+    </>
   );
 }
