@@ -25,9 +25,11 @@ export async function GET(request: Request) {
   }
 
   try {
-    const fires = await fetchFires();
+    const allFires = await fetchFires();
+    // Exclude industrial flaring (type 2) and offshore (type 3) from alerts
+    const fires = allFires.filter((f) => (f.type ?? 0) === 0 || f.type === 1);
     if (fires.length === 0) {
-      return NextResponse.json({ processed: 0, alerts: 0 });
+      return NextResponse.json({ processed: 0, alerts: 0, filtered: allFires.length - fires.length });
     }
 
     const db = getSupabase();

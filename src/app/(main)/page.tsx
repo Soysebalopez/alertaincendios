@@ -19,21 +19,26 @@ export const revalidate = 900; // 15 min — matches FIRMS sync cadence
 
 const TELEGRAM_BOT_URL = "https://t.me/AlertaIncendiosBot";
 
-async function getFireCount(): Promise<number> {
+async function getFireCounts(): Promise<{ wild: number; industrial: number; total: number }> {
   try {
+    const { classifyFireType } = await import("@/lib/fire-classification");
     const { createClient } = await import("@supabase/supabase-js");
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!url || !key) return 0;
+    if (!url || !key) return { wild: 0, industrial: 0, total: 0 };
     const sb = createClient(url, key);
     const { data } = await sb
       .from("fires_cache")
-      .select("count")
+      .select("fires")
       .eq("id", 1)
       .single();
-    return data?.count ?? 0;
+    if (!data?.fires) return { wild: 0, industrial: 0, total: 0 };
+    const fires = data.fires as { type?: number; latitude: number; longitude: number; frp: number }[];
+    const classified = fires.map((f) => classifyFireType(f.type ?? 0, f.latitude, f.longitude, f.frp));
+    const wild = classified.filter((t) => t === 0 || t === 1).length;
+    return { wild, industrial: fires.length - wild, total: fires.length };
   } catch {
-    return 0;
+    return { wild: 0, industrial: 0, total: 0 };
   }
 }
 
@@ -103,7 +108,7 @@ const STEPS = [
 ] as const;
 
 export default async function Home() {
-  const fireCount = await getFireCount();
+  const { wild: fireCount, industrial: industrialCount } = await getFireCounts();
   const timestamp = new Date().toLocaleString("es-AR", {
     timeZone: "America/Argentina/Buenos_Aires",
     day: "2-digit",
@@ -116,9 +121,9 @@ export default async function Home() {
     { label: "Provincias monitoreadas", value: "24", sub: "cobertura nacional" },
     { label: "Ciudades activas", value: "78", sub: "sensores OMS" },
     {
-      label: "Focos últimas 24h",
+      label: "Incendios 24h",
       value: fireCount > 0 ? fireCount.toLocaleString("es-AR") : "—",
-      sub: "VIIRS 375m",
+      sub: industrialCount > 0 ? `+ ${industrialCount} industrial${industrialCount === 1 ? "" : "es"}` : "VIIRS 375m",
       tone: "accent" as const,
     },
     { label: "Cadencia", value: "15 min", sub: "actualización automática" },
@@ -153,37 +158,51 @@ export default async function Home() {
             </StaggerReveal>
 
             <StaggerReveal delay={0.2}>
-              {fireCount > 0 ? (
-                <h1
-                  className="clara-hero-h1 text-foreground m-0"
-                  style={{
-                    fontFamily: "var(--font-sans)",
-                    fontWeight: 800,
-                    fontSize: "clamp(48px, 9vw, 128px)",
-                    lineHeight: 0.92,
-                    letterSpacing: "-0.04em",
-                  }}
-                >
-                  <span
-                    className="text-accent tabular-nums"
-                    style={{ fontVariantNumeric: "tabular-nums" }}
-                  >
-                    <FireCounter count={fireCount} />
-                  </span>
-                  <br />
-                  <span
-                    className="clara-hero-h1-sub"
+              {fireCount > 0 || industrialCount > 0 ? (
+                <div>
+                  <h1
+                    className="clara-hero-h1 text-foreground m-0"
                     style={{
-                      fontWeight: 300,
-                      fontSize: "0.52em",
-                      color:
-                        "color-mix(in oklab, var(--foreground) 75%, transparent)",
-                      letterSpacing: "-0.02em",
+                      fontFamily: "var(--font-sans)",
+                      fontWeight: 800,
+                      fontSize: "clamp(48px, 9vw, 128px)",
+                      lineHeight: 0.92,
+                      letterSpacing: "-0.04em",
                     }}
                   >
-                    focos de calor activos
-                  </span>
-                </h1>
+                    <span
+                      className="text-accent tabular-nums"
+                      style={{ fontVariantNumeric: "tabular-nums" }}
+                    >
+                      <FireCounter count={fireCount} />
+                    </span>
+                    <br />
+                    <span
+                      className="clara-hero-h1-sub"
+                      style={{
+                        fontWeight: 300,
+                        fontSize: "0.52em",
+                        color:
+                          "color-mix(in oklab, var(--foreground) 75%, transparent)",
+                        letterSpacing: "-0.02em",
+                      }}
+                    >
+                      {fireCount === 1 ? "incendio detectado" : "incendios detectados"}
+                    </span>
+                  </h1>
+                  {industrialCount > 0 && (
+                    <p
+                      className="font-mono mt-4 m-0"
+                      style={{
+                        fontSize: 13,
+                        color: "var(--muted)",
+                        letterSpacing: "0.02em",
+                      }}
+                    >
+                      + {industrialCount} {industrialCount === 1 ? "foco" : "focos"} industrial{industrialCount === 1 ? "" : "es"} (flaring / offshore)
+                    </p>
+                  )}
+                </div>
               ) : (
                 <h1
                   className="clara-hero-h1 text-foreground m-0"

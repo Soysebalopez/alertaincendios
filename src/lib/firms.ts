@@ -9,6 +9,7 @@
  */
 
 import { getSupabase } from "./supabase";
+import { classifyFireType } from "./fire-classification";
 
 export interface FirePoint {
   latitude: number;
@@ -18,6 +19,8 @@ export interface FirePoint {
   acqDate: string;
   acqTime: string;
   frp: number;
+  /** VIIRS detection type: 0=vegetation, 1=volcano, 2=static land (flaring), 3=offshore */
+  type: number;
 }
 
 // Argentina bounding box (continental)
@@ -45,7 +48,11 @@ export async function fetchFires(): Promise<FirePoint[]> {
       .single();
 
     if (data?.fires) {
-      return data.fires as FirePoint[];
+      const fires = data.fires as FirePoint[];
+      return fires.map((f) => ({
+        ...f,
+        type: classifyFireType(f.type ?? 0, f.latitude, f.longitude, f.frp),
+      }));
     }
   } catch (e) {
     console.error("fires_cache read error:", e);
@@ -98,6 +105,7 @@ function parseFirmsCSV(csv: string): FirePoint[] {
     date: headers.indexOf("acq_date"),
     time: headers.indexOf("acq_time"),
     frp: headers.indexOf("frp"),
+    type: headers.indexOf("type"),
   };
 
   if (idx.lat === -1 || idx.lng === -1) return [];
@@ -114,6 +122,7 @@ function parseFirmsCSV(csv: string): FirePoint[] {
         acqDate: idx.date >= 0 ? cols[idx.date] : "",
         acqTime: idx.time >= 0 ? cols[idx.time] : "",
         frp: idx.frp >= 0 ? parseFloat(cols[idx.frp]) : 0,
+        type: idx.type >= 0 ? parseInt(cols[idx.type], 10) : 0,
       };
     })
     .filter(
