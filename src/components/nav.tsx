@@ -74,8 +74,8 @@ export function Nav() {
             >
               CLARA
             </div>
-            <div className="font-mono text-[9px] text-muted tracking-[0.12em] mt-0.5">
-              MONITOREO AMBIENTAL · AR
+            <div className="font-mono text-[8px] text-muted tracking-[0.08em] mt-0.5">
+              CENTRAL DE LOCALIZACIÓN Y ALERTA DE RIESGO AMBIENTAL
             </div>
           </div>
         </Link>
