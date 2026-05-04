@@ -48,7 +48,9 @@ export async function fetchFires(): Promise<FirePoint[]> {
       .single();
 
     if (data?.fires) {
-      const fires = data.fires as FirePoint[];
+      // Safety net for WHI-378: dedup in case the upstream pg_cron sync
+      // writes duplicates into fires_cache.fires.
+      const fires = dedupFires(data.fires as FirePoint[]);
       return fires.map((f) => ({
         ...f,
         type: classifyFireType(f.type ?? 0, f.latitude, f.longitude, f.frp),
@@ -74,7 +76,7 @@ export async function syncFiresFromFirms(): Promise<{
   }
 
   const csv = await res.text();
-  const fires = parseFirmsCSV(csv);
+  const fires = dedupFires(parseFirmsCSV(csv));
 
   const { error } = await getSupabase()
     .from("fires_cache")
@@ -90,6 +92,21 @@ export async function syncFiresFromFirms(): Promise<{
   }
 
   return { count: fires.length };
+}
+
+// The natural unique key for a FIRMS detection is position + acquisition
+// timestamp. Same hotspot can be reported by overlapping satellite passes
+// with the same (lat, lng, acqDate, acqTime).
+function dedupFires(fires: FirePoint[]): FirePoint[] {
+  const seen = new Set<string>();
+  const out: FirePoint[] = [];
+  for (const f of fires) {
+    const key = `${f.latitude}|${f.longitude}|${f.acqDate}|${f.acqTime}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(f);
+  }
+  return out;
 }
 
 function parseFirmsCSV(csv: string): FirePoint[] {

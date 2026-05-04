@@ -36,8 +36,14 @@ export async function POST(request: NextRequest) {
   const location = update.message?.location;
 
   try {
-    if (text === "/start" || text === "/help") {
+    if (text === "/start") {
       await handleStart(chatId);
+    } else if (text === "/help") {
+      await handleHelp(chatId);
+    } else if (text === "/about") {
+      await handleAbout(chatId);
+    } else if (text === "/rayos") {
+      await handleRayosToggle(chatId);
     } else if (location) {
       await handleLocation(chatId, location.latitude, location.longitude);
     } else if (text.startsWith("/ciudad ")) {
@@ -62,18 +68,44 @@ export async function POST(request: NextRequest) {
 
 const CLARA_FOOTER = "\n—\nCentral de Localizacion y Alerta de Riesgo Ambiental (CLARA)";
 
+const ABOUT_TEXT =
+  "🔥 <b>CLARA — Alertas de incendios forestales gratis</b>\n\n" +
+  "CLARA es un proyecto independiente, gratuito, hecho en Argentina para que " +
+  "los vecinos de zonas afectadas se enteren antes de los incendios y puedan " +
+  "prevenirse.\n\n" +
+  "Usa datos de NASA (FIRMS), NOAA y otros servicios públicos para detectar " +
+  "focos de calor cerca tuyo y avisarte cuando el viento puede traer humo o " +
+  "fuego a tu zona. También alerta por tormentas eléctricas secas — la causa " +
+  "#1 natural de incendios forestales.\n\n" +
+  "Este proyecto existe gracias al trabajo pionero de Satellites On Fire " +
+  "(@satellitesonfire), que demostró que se podía detectar incendios mejor " +
+  "que la NASA desde Argentina. Si sos una empresa, gobierno, forestal o " +
+  "aseguradora, te recomendamos satellitesonfire.com.\n\n" +
+  "CLARA es para vos, vecino de zona de riesgo. Gratis, siempre.\n\n" +
+  "Hecho con cariño en Bahía Blanca por Whitebay." +
+  CLARA_FOOTER;
+
+const HELP_TEXT =
+  "🔥 <b>CLARA — Comandos</b>\n\n" +
+  "📍 Compartí tu ubicación (clip 📎 → Ubicación)\n" +
+  "🏙 /ciudad &lt;nombre&gt; — suscribirte por ciudad\n" +
+  "📊 /estado — focos activos cerca tuyo\n" +
+  "⚡ /rayos — activar/desactivar alerta de tormentas secas\n" +
+  "ℹ️ /about — sobre el proyecto\n" +
+  "❌ /cancelar — eliminar suscripción" +
+  CLARA_FOOTER;
+
 async function handleStart(chatId: number) {
   await sendMessage(
     chatId,
     "🔥 <b>CLARA — Alerta de Incendios</b>\n\n" +
-      "Detectamos focos de calor en toda Argentina con satelites de la NASA y te alertamos por Telegram.\n\n" +
+      "Detectamos focos de calor en toda Argentina con satélites de la NASA y " +
+      "te alertamos por Telegram. También avisamos cuando hay tormenta eléctrica " +
+      "seca cerca tuyo.\n\n" +
       "<b>Suscribite:</b>\n" +
-      "📍 Envia tu ubicacion (clip 📎 → Ubicacion)\n" +
-      "🏙 O escribi /ciudad Buenos Aires\n\n" +
-      "<b>Comandos:</b>\n" +
-      "/ciudad &lt;nombre&gt; — Suscribirte por ciudad\n" +
-      "/estado — Ver focos cercanos\n" +
-      "/cancelar — Eliminar suscripcion\n" +
+      "📍 Enviá tu ubicación (clip 📎 → Ubicación)\n" +
+      "🏙 O escribí /ciudad Bariloche\n\n" +
+      "Usá /help para ver los comandos o /about para conocer el proyecto." +
       CLARA_FOOTER,
     {
       reply_markup: {
@@ -82,6 +114,48 @@ async function handleStart(chatId: number) {
         one_time_keyboard: true,
       },
     }
+  );
+}
+
+async function handleAbout(chatId: number) {
+  await sendMessage(chatId, ABOUT_TEXT);
+}
+
+async function handleHelp(chatId: number) {
+  await sendMessage(chatId, HELP_TEXT);
+}
+
+async function handleRayosToggle(chatId: number) {
+  const db = getSupabase();
+  const { data: sub } = await db
+    .from("subscribers")
+    .select("lightning_enabled")
+    .eq("chat_id", chatId)
+    .limit(1)
+    .single();
+
+  if (!sub) {
+    await sendMessage(
+      chatId,
+      "⚡ Primero suscribite con /ciudad o compartiendo tu ubicación." +
+        CLARA_FOOTER
+    );
+    return;
+  }
+
+  const next = sub.lightning_enabled === false; // toggle
+  await db
+    .from("subscribers")
+    .update({ lightning_enabled: next })
+    .eq("chat_id", chatId);
+
+  await sendMessage(
+    chatId,
+    next
+      ? "⚡ Alertas de tormenta seca <b>activadas</b>.\n\nVas a recibir un aviso cuando se detecte tormenta eléctrica con condiciones secas en tu zona." +
+          CLARA_FOOTER
+      : "⚡ Alertas de tormenta seca <b>desactivadas</b>.\n\nSeguís recibiendo alertas de focos de calor. Usa /rayos otra vez para reactivar." +
+          CLARA_FOOTER
   );
 }
 
