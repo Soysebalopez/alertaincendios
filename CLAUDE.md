@@ -51,7 +51,8 @@ Central de Localizacion y Alerta de Riesgo Ambiental — plataforma de monitoreo
 - `/api/history?lat=X&lng=Y&pollutant=NO2&days=7` — historical air quality (hourly→daily avg)
 - `/api/simulate` — POST, Gaussian plume dispersion model (Pasquill-Gifford)
 - `/api/alerts?secret=...` — cron: evaluate fires vs subscribers, send Telegram alerts
-- `/api/bot/telegram` — Telegram webhook (commands: /start, /ciudad, /estado, /cancelar)
+- `/api/lightning-alerts?secret=...` — cron: dry-storm preventive alerts (OpenWeather One Call 3.0 → Open-Meteo fallback, rate-limited 30 min/sub)
+- `/api/bot/telegram` — Telegram webhook (commands: /start, /help, /about, /ciudad, /estado, /rayos, /cancelar)
 
 ## Data Sources (all free)
 - NASA FIRMS VIIRS: active fire hotspots (near real-time, 375m resolution)
@@ -65,6 +66,8 @@ Central de Localizacion y Alerta de Riesgo Ambiental — plataforma de monitoreo
 - `fires_cache` (id int PK=1, fires jsonb, count int, fetched_at timestamptz) — single-row cache
 - `_fires_sync_state` (id int PK=1, request_id bigint, requested_at timestamptz) — internal sync state
 - `fires_daily_history` (date date PK, count int, avg_frp real, high_conf int, created_at timestamptz) — daily aggregates for charts
+- `subscribers.lightning_enabled` (bool, default true) — opt-out per-subscriber for dry-storm alerts (WHI-543)
+- `lightning_alerted` (id bigserial PK, chat_id bigint, alerted_at timestamptz) — rate-limit table for dry-storm alerts, indexed (chat_id, alerted_at DESC)
 
 ## Supabase pg_cron Jobs
 - `fires-fetch` (*/15 at :00,:15,:30,:45) — pg_net GET to FIRMS, stores request_id

@@ -17,3 +17,7 @@ echo "[$(date)] Sync: ${SYNC_RESULT}"
 echo "[$(date)] Running alerts..."
 ALERT_RESULT=$(curl -s "${SITE}/api/alerts?secret=${SECRET}")
 echo "[$(date)] Alerts: ${ALERT_RESULT}"
+
+echo "[$(date)] Running lightning alerts..."
+LIGHTNING_RESULT=$(curl -s "${SITE}/api/lightning-alerts?secret=${SECRET}")
+echo "[$(date)] Lightning: ${LIGHTNING_RESULT}"

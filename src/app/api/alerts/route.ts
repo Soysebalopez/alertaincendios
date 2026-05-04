@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { fetchFires, FirePoint } from "@/lib/firms";
-import { fetchWind } from "@/lib/wind";
+import { fetchWind, degreesToCardinal } from "@/lib/wind";
 import { haversineKm, isUpwind, smokeEtaMinutes } from "@/lib/geo";
 import { sendMessage } from "@/lib/telegram";
 
@@ -124,9 +124,37 @@ function frpBars(frp: number): string {
   return "🟧".repeat(level) + "⬛".repeat(5 - level);
 }
 
+// Compass bearing from user to fire (degrees, 0=N).
+function bearingDegrees(
+  userLat: number,
+  userLng: number,
+  fireLat: number,
+  fireLng: number
+): number {
+  const φ1 = (userLat * Math.PI) / 180;
+  const φ2 = (fireLat * Math.PI) / 180;
+  const Δλ = ((fireLng - userLng) * Math.PI) / 180;
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x =
+    Math.cos(φ1) * Math.sin(φ2) -
+    Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+// Minutes elapsed since FIRMS detection (acqDate is YYYY-MM-DD, acqTime is HHMM UTC).
+function minutesSinceDetection(acqDate: string, acqTime: string): number {
+  if (!acqDate || !acqTime) return 0;
+  const padded = acqTime.padStart(4, "0");
+  const hh = padded.slice(0, 2);
+  const mm = padded.slice(2, 4);
+  const ts = Date.parse(`${acqDate}T${hh}:${mm}:00Z`);
+  if (Number.isNaN(ts)) return 0;
+  return Math.max(0, Math.round((Date.now() - ts) / 60000));
+}
+
 async function formatAlert(
   fire: FirePoint,
-  sub: { city_name: string },
+  sub: { lat: number; lng: number; city_name: string },
   distKm: number,
   etaMinutes: number,
   level: "danger" | "warning" | "info"
@@ -134,19 +162,29 @@ async function formatAlert(
   const dist = Math.round(distKm * 10) / 10;
   const emoji = level === "danger" ? "🚨" : level === "warning" ? "⚠️" : "ℹ️";
   const gMapsUrl = `https://www.google.com/maps?q=${fire.latitude},${fire.longitude}&z=12`;
+  const cardinal = degreesToCardinal(
+    bearingDegrees(sub.lat, sub.lng, fire.latitude, fire.longitude)
+  );
+  const ageMin = minutesSinceDetection(fire.acqDate, fire.acqTime);
+  const windToward = etaMinutes > 0;
 
-  // AI interpretation
-  const interpretation = await interpretFire(fire, sub.city_name, dist, etaMinutes, level);
+  const interpretation = await interpretFire(
+    fire,
+    sub.city_name,
+    dist,
+    etaMinutes,
+    level
+  );
 
-  let msg = `${emoji} <b>CLARA — Alerta de Incendio</b>\n\n`;
-  msg += `📍 Foco detectado a <b>${dist} km</b> de ${sub.city_name}\n`;
-
-  if (etaMinutes > 0) {
-    msg += `💨 El viento dirige el humo hacia tu zona\n`;
-    msg += `⏱ ETA del humo: ~${etaMinutes} minutos\n`;
-  }
-
-  msg += `\n${frpBars(fire.frp)} <b>${fire.frp} MW</b> — Potencia ${frpLabel(fire.frp).split(" (")[0]}\n`;
+  let msg = `${emoji} <b>ALERTA: Foco detectado</b>\n\n`;
+  msg += `📍 A <b>${dist} km</b> de ${sub.city_name}\n`;
+  msg += `🧭 Dirección: ${cardinal}\n`;
+  msg += `💨 Viento: ${windToward ? "<b>hacia tu posición</b>" : "fuera de tu posición"}`;
+  if (windToward) msg += ` (ETA humo ~${etaMinutes} min)`;
+  msg += `\n`;
+  msg += `${frpBars(fire.frp)} ${fire.frp} MW — ${frpLabel(fire.frp).split(" (")[0]}\n`;
+  msg += `🛰️ Fuente: NASA FIRMS\n`;
+  msg += `⏱️ Detectado hace ${ageMin} min\n`;
 
   if (interpretation) {
     msg += `\n<i>${interpretation}</i>\n`;
