@@ -36,7 +36,7 @@ export async function GET(request: Request) {
 
     const { data: pending, error } = await db
       .from("goes_alerted")
-      .select("id, chat_id, preliminary_sent_at")
+      .select("id, chat_id, goes_id, preliminary_sent_at")
       .is("confirmed_sent_at", null)
       .is("dismissed_at", null)
       .lt("preliminary_sent_at", upperBound)
@@ -52,6 +52,8 @@ export async function GET(request: Request) {
     }
 
     let sent = 0;
+    const goesIdsToDelete = new Set<number>();
+
     for (const row of pending) {
       const sentMinutesAgo = Math.max(
         0,
@@ -68,17 +70,56 @@ export async function GET(request: Request) {
 
       try {
         await sendMessage(row.chat_id, message);
-        await db
-          .from("goes_alerted")
-          .update({ dismissed_at: new Date().toISOString() })
-          .eq("id", row.id);
+        const goesId = (row as { goes_id?: number }).goes_id;
+        if (goesId != null) goesIdsToDelete.add(goesId);
         sent++;
       } catch (e) {
         console.error("dismissal send failed for goes_alerted", row.id, e);
       }
     }
 
-    return NextResponse.json({ pending: pending.length, sent });
+    // WHI-584 follow-up — purge dismissed goes_preliminary rows.
+    // Cascade FK on goes_alerted removes the alert rows too. The Telegram
+    // message was already sent above, so we don't lose user-facing audit.
+    let purgedDismissed = 0;
+    if (goesIdsToDelete.size > 0) {
+      const ids = Array.from(goesIdsToDelete);
+      const { error: delErr, count } = await db
+        .from("goes_preliminary")
+        .delete({ count: "exact" })
+        .in("id", ids);
+      if (!delErr) purgedDismissed = count ?? ids.length;
+    }
+
+    // WHI-584 follow-up — also purge "orphan" preliminaries: rows older than
+    // dismissalWindow without any goes_alerted ever (no subscriber was within
+    // 100km, so the prelim never alerted anyone — keeping it is just clutter).
+    const orphanCutoff = new Date(now - DISMISSAL_AFTER_HOURS * 60 * 60 * 1000).toISOString();
+    const { data: orphans } = await db
+      .from("goes_preliminary")
+      .select("id, goes_alerted(id)")
+      .lt("detected_at", orphanCutoff);
+    let purgedOrphans = 0;
+    if (orphans && orphans.length > 0) {
+      const orphanIds = orphans
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .filter((r: any) => !r.goes_alerted || r.goes_alerted.length === 0)
+        .map((r: { id: number }) => r.id);
+      if (orphanIds.length > 0) {
+        const { count } = await db
+          .from("goes_preliminary")
+          .delete({ count: "exact" })
+          .in("id", orphanIds);
+        purgedOrphans = count ?? orphanIds.length;
+      }
+    }
+
+    return NextResponse.json({
+      pending: pending.length,
+      sent,
+      purgedDismissed,
+      purgedOrphans,
+    });
   } catch (error) {
     console.error("goes-dismissals error:", error);
     return NextResponse.json({ error: "goes_dismissals_failed" }, { status: 500 });
