@@ -17,6 +17,10 @@ import { sendMessage } from "@/lib/telegram";
  */
 const LOOKBACK_MINUTES = 30;
 const RADIUS_KM = 100;
+// WHI-584 — single-frame detections (seen_in_scans = 1) are riskier (could be
+// glint or transient noise). Require a higher FRP threshold to alert on them.
+// Multi-frame detections (>= 2) get alerted regardless of FRP.
+const SINGLE_FRAME_FRP_THRESHOLD_MW = 10;
 
 export async function GET(request: Request) {
   const secret = new URL(request.url).searchParams.get("secret");
@@ -34,7 +38,9 @@ export async function GET(request: Request) {
 
     const { data: detections, error: detErr } = await db
       .from("goes_preliminary")
-      .select("id, lat, lng, mask, mask_label, frp_mw, scan_start, detected_at")
+      .select(
+        "id, lat, lng, mask, mask_label, frp_mw, scan_start, detected_at, seen_in_scans"
+      )
       .eq("high_confidence", true)
       .gte("detected_at", cutoff)
       .order("detected_at", { ascending: false });
@@ -57,8 +63,17 @@ export async function GET(request: Request) {
     }
 
     let alertsSent = 0;
+    let skippedLowFrpSingleFrame = 0;
 
     for (const det of detections) {
+      // WHI-584 — gating: single-frame low-FRP detections are too noisy to
+      // alert on. Require >= 2 scans OR FRP > 10 MW.
+      const seenInScans = (det as { seen_in_scans?: number }).seen_in_scans ?? 1;
+      const frp = det.frp_mw ?? 0;
+      if (seenInScans < 2 && frp < SINGLE_FRAME_FRP_THRESHOLD_MW) {
+        skippedLowFrpSingleFrame++;
+        continue;
+      }
       for (const sub of subscribers) {
         // Skip if already alerted (per goes_id, chat_id)
         const { data: existing } = await db
@@ -88,6 +103,7 @@ export async function GET(request: Request) {
       processed: detections.length,
       subscribers: subscribers.length,
       alerts: alertsSent,
+      skippedLowFrpSingleFrame,
     });
   } catch (error) {
     console.error("goes-alerts error:", error);
