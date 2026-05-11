@@ -56,7 +56,7 @@ export async function GET(request: Request) {
 
     const { data: subscribers } = await db
       .from("subscribers")
-      .select("chat_id, lat, lng, city_name");
+      .select("chat_id, lat, lng, city_name, role, cuartel_name");
 
     if (!subscribers || subscribers.length === 0) {
       return NextResponse.json({ processed: detections.length, alerts: 0, reason: "no_subscribers" });
@@ -87,7 +87,12 @@ export async function GET(request: Request) {
         const distKm = haversineKm(sub.lat, sub.lng, det.lat, det.lng);
         if (distKm > RADIUS_KM) continue;
 
-        const message = formatPreliminary(det, sub.city_name, distKm);
+        // WHI-588 — fireman role gets operational format
+        const isFireman = (sub as { role?: string }).role === "fireman";
+        const cuartel = (sub as { cuartel_name?: string }).cuartel_name ?? null;
+        const message = isFireman
+          ? formatFiremanPreliminary(det, sub.city_name, distKm, cuartel)
+          : formatPreliminary(det, sub.city_name, distKm);
         await sendMessage(sub.chat_id, message);
 
         await db.from("goes_alerted").insert({
@@ -115,6 +120,37 @@ function minutesSince(iso: string): number {
   const t = Date.parse(iso);
   if (Number.isNaN(t)) return 0;
   return Math.max(0, Math.round((Date.now() - t) / 60000));
+}
+
+// WHI-588 — operational preliminary alert for fireman role
+function formatFiremanPreliminary(
+  det: {
+    lat: number;
+    lng: number;
+    mask: number;
+    mask_label: string | null;
+    frp_mw: number | null;
+    scan_start: string;
+  },
+  cityName: string,
+  distKm: number,
+  cuartelName: string | null
+): string {
+  const dist = Math.round(distKm * 10) / 10;
+  const ageMin = minutesSince(det.scan_start);
+  const gMaps = `https://www.google.com/maps?q=${det.lat},${det.lng}&z=12`;
+  const frp = det.frp_mw != null ? `${det.frp_mw.toFixed(1)} MW` : "—";
+
+  return (
+    `⚠️ <b>Posible foco a ${dist}km — esperando confirmación</b>\n\n` +
+    `📍 ${dist} km (desde ${cityName})\n` +
+    `🔥 FRP estimado: ${frp}\n` +
+    `🛰️ NOAA GOES-19 · detección hace ~${ageMin} min\n` +
+    `🧭 Coords: <code>${det.lat.toFixed(4)}, ${det.lng.toFixed(4)}</code>\n` +
+    `📌 <a href="${gMaps}">Maps</a>\n\n` +
+    `<i>Preliminar — NASA FIRMS confirma en 1-3 h. Validá visualmente antes de despachar.</i>` +
+    `\n—\nCLARA · Coordinación interna${cuartelName ? ` · ${cuartelName}` : ""}`
+  );
 }
 
 function formatPreliminary(

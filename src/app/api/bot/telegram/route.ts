@@ -37,22 +37,36 @@ export async function POST(request: NextRequest) {
 
   try {
     if (text === "/start") {
+      await logBotCommand(chatId, "/start");
       await handleStart(chatId);
     } else if (text === "/help") {
+      await logBotCommand(chatId, "/help");
       await handleHelp(chatId);
     } else if (text === "/about") {
+      await logBotCommand(chatId, "/about");
       await handleAbout(chatId);
     } else if (text === "/rayos") {
+      await logBotCommand(chatId, "/rayos");
       await handleRayosToggle(chatId);
     } else if (location) {
+      await logBotCommand(chatId, "<location>");
       await handleLocation(chatId, location.latitude, location.longitude);
     } else if (text.startsWith("/ciudad ")) {
-      await handleCiudad(chatId, text.replace("/ciudad ", "").trim());
+      const arg = text.replace("/ciudad ", "").trim();
+      await logBotCommand(chatId, "/ciudad", arg);
+      await handleCiudad(chatId, arg);
     } else if (text === "/estado") {
+      await logBotCommand(chatId, "/estado");
       await handleEstado(chatId);
     } else if (text === "/cancelar") {
+      await logBotCommand(chatId, "/cancelar");
       await handleCancelar(chatId);
+    } else if (text.startsWith("/soybombero")) {
+      const arg = text.replace("/soybombero", "").trim();
+      await logBotCommand(chatId, "/soybombero", arg ? "<code>" : "");
+      await handleSoyBombero(chatId, arg);
     } else {
+      await logBotCommand(chatId, "<unknown>", text.slice(0, 32));
       await sendMessage(
         chatId,
         "Comando no reconocido. Usa /help para ver los comandos."
@@ -398,4 +412,99 @@ async function upsertSubscriber(
       { chat_id: chatId, lat, lng, city_name: cityName },
       { onConflict: "chat_id" }
     );
+}
+
+// WHI-587 — append-only command log for dashboard engagement chart.
+// Best-effort: failure to log never breaks the bot.
+async function logBotCommand(chatId: number, command: string, args?: string) {
+  try {
+    await getSupabase()
+      .from("bot_commands_log")
+      .insert({ chat_id: chatId, command, args: args ?? null });
+  } catch (e) {
+    console.error("logBotCommand failed:", e);
+  }
+}
+
+// WHI-588 Sprint 1 — /soybombero <code> elevates a subscriber to role 'fireman'.
+// The code is validated against the fireman_codes table (codes distributed by
+// the project owner to fire brigades, one or many per cuartel).
+async function handleSoyBombero(chatId: number, code: string) {
+  if (!code) {
+    await sendMessage(
+      chatId,
+      "🚒 <b>Bomberos voluntarios</b>\n\n" +
+        "Si tu cuartel tiene un código de invitación, usalo así:\n" +
+        "<code>/soybombero TU-CODIGO</code>\n\n" +
+        "Si todavía no tenés código y querés sumar a tu cuartel a CLARA, escribinos." +
+        CLARA_FOOTER
+    );
+    return;
+  }
+
+  const db = getSupabase();
+
+  // Verify subscriber exists
+  const { data: sub } = await db
+    .from("subscribers")
+    .select("chat_id, role")
+    .eq("chat_id", chatId)
+    .limit(1)
+    .maybeSingle();
+
+  if (!sub) {
+    await sendMessage(
+      chatId,
+      "🚒 Primero suscribite normalmente con /ciudad o compartiendo tu ubicación. " +
+        "Después validás tu rol de bombero con /soybombero." +
+        CLARA_FOOTER
+    );
+    return;
+  }
+
+  // Lookup the code
+  const { data: codeRow } = await db
+    .from("fireman_codes")
+    .select("code, cuartel_name, used_count, max_uses")
+    .eq("code", code)
+    .maybeSingle();
+
+  if (!codeRow) {
+    await sendMessage(
+      chatId,
+      "❌ Código inválido. Pedile a tu cuartel el código correcto." +
+        CLARA_FOOTER
+    );
+    return;
+  }
+
+  if (codeRow.max_uses != null && codeRow.used_count >= codeRow.max_uses) {
+    await sendMessage(
+      chatId,
+      "❌ Este código ya alcanzó su límite de usos. Pedile uno nuevo a tu cuartel." +
+        CLARA_FOOTER
+    );
+    return;
+  }
+
+  // Elevate
+  await db
+    .from("subscribers")
+    .update({ role: "fireman", cuartel_name: codeRow.cuartel_name })
+    .eq("chat_id", chatId);
+
+  await db
+    .from("fireman_codes")
+    .update({ used_count: (codeRow.used_count ?? 0) + 1 })
+    .eq("code", codeRow.code);
+
+  await sendMessage(
+    chatId,
+    `✅ <b>Listo, bombero de ${codeRow.cuartel_name}</b>\n\n` +
+      "Desde ahora vas a recibir <b>mensajes operativos</b> cuando se detecte un " +
+      "foco confirmado en tu zona. Más conciso, con info para coordinar respuesta.\n\n" +
+      "Si querés volver a alertas civiles, escribí <code>/cancelar</code> y " +
+      "suscribite de nuevo." +
+      CLARA_FOOTER
+  );
 }
