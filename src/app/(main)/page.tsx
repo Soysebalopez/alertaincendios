@@ -35,11 +35,13 @@ async function getFireCounts(): Promise<{
 
     const [firesRes, prelimRes] = await Promise.all([
       sb.from("fires_cache").select("fires").eq("id", 1).single(),
+      // WHI-584 follow-up — count currently-pending preliminaries.
+      // Dismissed/orphan rows get pruned by /api/goes-dismissals (hourly),
+      // so what's in goes_preliminary now is "actividad activa, sin confirmar".
       sb
         .from("goes_preliminary")
         .select("id", { count: "exact", head: true })
-        .eq("high_confidence", true)
-        .gte("detected_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
+        .eq("high_confidence", true),
     ]);
 
     const fires = (firesRes.data?.fires ?? []) as {
@@ -151,9 +153,9 @@ export default async function Home() {
       tone: "accent" as const,
     },
     {
-      label: "Preliminares 24h",
+      label: "Preliminares activos",
       value: preliminaryCount > 0 ? preliminaryCount.toLocaleString("es-AR") : "—",
-      sub: preliminaryCount > 0 ? "GOES-19 · sin confirmar" : "GOES-19 · 10 min",
+      sub: preliminaryCount > 0 ? "GOES-19 · pendientes NASA" : "GOES-19 · sin actividad",
     },
   ];
 
