@@ -3,7 +3,7 @@
 Plataforma de monitoreo ambiental ciudadano para Argentina. Detecta focos de calor, monitorea calidad del aire en 80+ ciudades, y traduce datos tecnicos a lenguaje simple con inteligencia artificial.
 
 **Web:** [alertaincendios.vercel.app](https://alertaincendios.vercel.app)
-**Bot:** [t.me/AlertaIncendiosBot](https://t.me/AlertaIncendiosBot)
+**Bot:** [t.me/AlertasClaraBot](https://t.me/AlertasClaraBot)
 
 ## Que hace
 
@@ -55,7 +55,7 @@ Groq AI ──── traduce datos a lenguaje ciudadano
 
 ## Bot de Telegram
 
-[@AlertaIncendiosBot](https://t.me/AlertaIncendiosBot)
+[@AlertasClaraBot](https://t.me/AlertasClaraBot)
 
 | Comando | Descripcion |
 |---------|-------------|

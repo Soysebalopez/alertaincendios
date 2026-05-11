@@ -17,7 +17,7 @@ Central de Localizacion y Alerta de Riesgo Ambiental — plataforma de monitoreo
 - Linear: AlertaIncendios — Bot de Alertas de Incendios Forestales (Whitebay team)
 - Deploy: Vercel (https://alertaincendios.vercel.app)
 - Supabase: project ref qmzuwnilehldvobjsbcs (shared with SatAI)
-- Telegram Bot: @AlertaIncendiosBot
+- Telegram Bot: @AlertasClaraBot
 
 ## Design System
 - Font: Outfit (headings + body) + Geist Mono (data/labels)

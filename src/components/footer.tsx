@@ -14,8 +14,8 @@ const COLUMNS = [
   {
     title: "Bot",
     items: [
-      { label: "@AlertaIncendiosBot", href: "https://t.me/AlertaIncendiosBot", external: true },
-      { label: "Comandos", href: "https://t.me/AlertaIncendiosBot", external: true },
+      { label: "@AlertasClaraBot", href: "https://t.me/AlertasClaraBot", external: true },
+      { label: "Comandos", href: "https://t.me/AlertasClaraBot", external: true },
     ],
   },
   {

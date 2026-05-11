@@ -63,7 +63,7 @@ export async function generateMetadata({
   };
 }
 
-const TELEGRAM_BOT_URL = "https://t.me/AlertaIncendiosBot";
+const TELEGRAM_BOT_URL = "https://t.me/AlertasClaraBot";
 
 export default async function CiudadPage({ params }: PageProps) {
   const { province, city } = await params;
