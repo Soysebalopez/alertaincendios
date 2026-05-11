@@ -1,0 +1,9 @@
+# Pinned for Python 3.9 (macOS system Python).
+# For the production Vercel function we'll move to 3.13 + latest versions.
+xarray==2023.12.0
+netCDF4==1.6.5
+numpy==1.26.4
+boto3>=1.34.0
+pyproj==3.6.1
+shapely>=2.0.0
+requests>=2.31.0

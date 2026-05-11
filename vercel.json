@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/goes-sync.py": {
+      "maxDuration": 300,
+      "memory": 1024,
+      "excludeFiles": "{scripts/**,public/**,docs/**,src/**,.next/**,node_modules/**}"
+    }
+  }
+}
