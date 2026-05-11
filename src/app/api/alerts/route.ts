@@ -37,7 +37,7 @@ export async function GET(request: Request) {
     // Get all subscribers
     const { data: subscribers } = await db
       .from("subscribers")
-      .select("chat_id, lat, lng, city_name");
+      .select("chat_id, lat, lng, city_name, role, cuartel_name");
 
     if (!subscribers || subscribers.length === 0) {
       return NextResponse.json({ processed: fires.length, alerts: 0, reason: "no subscribers" });
@@ -75,9 +75,15 @@ export async function GET(request: Request) {
         // alert we already sent to this subscriber?
         const match = await findPendingPreliminary(db, sub.chat_id, fire);
 
-        const message = match
-          ? await formatConfirmedFromPreliminary(fire, sub, distKm, eta, level, match.preliminary_sent_at)
-          : await formatAlert(fire, sub, distKm, eta, level);
+        // WHI-588 — fireman role gets an operational message format, not the
+        // citizen-facing alert. Same data path, different tone + structure.
+        const isFireman = (sub as { role?: string }).role === "fireman";
+        const cuartel = (sub as { cuartel_name?: string }).cuartel_name ?? null;
+        const message = isFireman
+          ? formatFiremanAlert(fire, sub, distKm, eta, level, cuartel, match != null)
+          : match
+            ? await formatConfirmedFromPreliminary(fire, sub, distKm, eta, level, match.preliminary_sent_at)
+            : await formatAlert(fire, sub, distKm, eta, level);
 
         await sendMessage(sub.chat_id, message);
 
@@ -312,6 +318,42 @@ async function findPendingPreliminary(
     if (d <= 5) return { id: r.id, preliminary_sent_at: r.preliminary_sent_at };
   }
   return null;
+}
+
+// WHI-588 — operational alert for fireman role. Less interpretation, more data,
+// clear coordination tone. Same for FIRMS-only detections and confirmation
+// upgrades; the `wasPreliminary` flag adjusts the header only.
+function formatFiremanAlert(
+  fire: FirePoint,
+  sub: { lat: number; lng: number; city_name: string },
+  distKm: number,
+  etaMinutes: number,
+  level: "danger" | "warning" | "info",
+  cuartelName: string | null,
+  wasPreliminary: boolean
+): string {
+  const dist = Math.round(distKm * 10) / 10;
+  const gMapsUrl = `https://www.google.com/maps?q=${fire.latitude},${fire.longitude}&z=12`;
+  const cardinal = degreesToCardinal(
+    bearingDegrees(sub.lat, sub.lng, fire.latitude, fire.longitude)
+  );
+  const ageMin = minutesSinceDetection(fire.acqDate, fire.acqTime);
+  const windToward = etaMinutes > 0;
+
+  const header = wasPreliminary
+    ? `🚨 Foco CONFIRMADO a ${dist}km — coordinación`
+    : `🚨 Foco a ${dist}km — coordinación`;
+
+  let msg = `<b>${header}</b>\n\n`;
+  msg += `📍 ${dist} km · ${cardinal} (desde ${sub.city_name})\n`;
+  msg += `🔥 FRP ${fire.frp} MW · confianza ${fire.confidence}\n`;
+  msg += `💨 Viento: ${windToward ? `<b>hacia el suscriptor</b> (ETA humo ~${etaMinutes} min)` : "fuera del suscriptor"}\n`;
+  msg += `🛰️ ${wasPreliminary ? "GOES preliminar + " : ""}FIRMS VIIRS · detección hace ${ageMin} min\n`;
+  msg += `🧭 Coords: <code>${fire.latitude.toFixed(4)}, ${fire.longitude.toFixed(4)}</code>\n`;
+  msg += `📌 <a href="${gMapsUrl}">Maps</a>\n\n`;
+  msg += `<i>Mensaje operativo — sin interpretación AI, datos crudos.</i>`;
+  msg += `\n—\nCLARA · Coordinación interna${cuartelName ? ` · ${cuartelName}` : ""}`;
+  return msg;
 }
 
 async function formatConfirmedFromPreliminary(
