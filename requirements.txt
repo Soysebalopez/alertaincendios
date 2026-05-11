@@ -1,0 +1,9 @@
+# Python deps for /api/goes-sync.py (WHI-545). Vercel installs these into the
+# function's lambda bundle. Keep this list lean — Vercel Python functions
+# have a 250 MB unzipped bundle limit.
+xarray>=2024.1.0
+netCDF4>=1.6.5
+numpy>=1.26.0,<3.0.0
+boto3>=1.34.0
+pyproj>=3.6.0
+requests>=2.31.0
