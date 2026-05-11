@@ -37,6 +37,8 @@ export const metadata: Metadata = {
     "max-snippet": -1,
     "max-image-preview": "large",
   },
+  // images for openGraph + twitter are auto-discovered from
+  // src/app/opengraph-image.tsx and src/app/twitter-image.tsx (WHI-582).
   openGraph: {
     type: "website",
     locale: "es_AR",
@@ -45,21 +47,12 @@ export const metadata: Metadata = {
     description:
       "Monitoreo ambiental ciudadano. Focos de calor, calidad del aire y alertas por Telegram para toda Argentina.",
     url: SITE_URL,
-    images: [
-      {
-        url: "/og-image.png",
-        width: 1200,
-        height: 630,
-        alt: "CLARA — Monitoreo ambiental ciudadano para Argentina",
-      },
-    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "CLARA — Alerta de Incendios Argentina",
     description:
       "Monitoreo ambiental ciudadano. Focos de calor, calidad del aire y alertas por Telegram.",
-    images: ["/og-image.png"],
   },
 };
 

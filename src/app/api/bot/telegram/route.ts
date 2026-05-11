@@ -173,12 +173,18 @@ async function handleLocation(chatId: number, lat: number, lng: number) {
   await upsertSubscriber(chatId, lat, lng, cityName);
 
   const label = province ? `${cityName}, ${province}` : cityName;
+  // WHI-585 — set clear expectations on when/why alerts arrive
   await sendMessage(
     chatId,
-    `🔥 <b>CLARA — Suscripcion activada</b>\n\n` +
-      `📍 Ubicacion: <b>${label}</b>\n\n` +
-      "Vas a recibir alertas cuando se detecten focos de calor en un radio de 100 km de tu ubicacion.\n\n" +
-      "Usa /estado para ver focos activos cerca tuyo." +
+    `✅ <b>Listo, vecino de ${label}</b>\n\n` +
+      "Te aviso cuando se detecte fuego dentro de 100 km de tu ubicación.\n\n" +
+      "<b>Qué esperar:</b>\n" +
+      "• Si el viento empuja humo hacia vos → alerta inmediata 🚨\n" +
+      "• Si hay tormenta seca cerca → aviso preventivo ⚡\n" +
+      "• Si no pasa nada → silencio. Sin spam.\n\n" +
+      "En temporada baja (otoño/invierno) puede no haber avisos por semanas. " +
+      "En temporada alta (oct-mar) puede haber varios por día.\n\n" +
+      "📊 Probá /estado para ver focos activos cerca tuyo ahora." +
       CLARA_FOOTER
   );
 }
@@ -201,12 +207,18 @@ async function handleCiudad(chatId: number, query: string) {
   await upsertSubscriber(chatId, geo.lat, geo.lng, geo.name);
 
   const label = geo.admin1 ? `${geo.name}, ${geo.admin1}` : geo.name;
+  // WHI-585 — set clear expectations on when/why alerts arrive
   await sendMessage(
     chatId,
-    `🔥 <b>CLARA — Suscripcion activada</b>\n\n` +
-      `📍 Ubicacion: <b>${label}</b>\n\n` +
-      "Vas a recibir alertas cuando se detecten focos de calor en un radio de 100 km de tu ubicacion.\n\n" +
-      "Usa /estado para ver focos activos cerca tuyo." +
+    `✅ <b>Listo, vecino de ${label}</b>\n\n` +
+      "Te aviso cuando se detecte fuego dentro de 100 km de tu ubicación.\n\n" +
+      "<b>Qué esperar:</b>\n" +
+      "• Si el viento empuja humo hacia vos → alerta inmediata 🚨\n" +
+      "• Si hay tormenta seca cerca → aviso preventivo ⚡\n" +
+      "• Si no pasa nada → silencio. Sin spam.\n\n" +
+      "En temporada baja (otoño/invierno) puede no haber avisos por semanas. " +
+      "En temporada alta (oct-mar) puede haber varios por día.\n\n" +
+      "📊 Probá /estado para ver focos activos cerca tuyo ahora." +
       CLARA_FOOTER
   );
 }
@@ -239,13 +251,21 @@ async function handleEstado(chatId: number) {
     .sort((a, b) => a.distKm - b.distKm);
 
   if (nearby.length === 0) {
+    // WHI-585 — show last verification + cadence so user knows the system is alive
+    const lastCheck = await fetchLastFiresCheck();
+    const lastCheckLine = lastCheck
+      ? `🕐 Última verificación: hace ${lastCheck} min`
+      : "🕐 Verificando actividad...";
     await sendMessage(
       chatId,
       `🔥 <b>CLARA — Estado</b>\n\n` +
         `📍 <b>${sub.city_name}</b>\n\n` +
-        "✅ No hay focos de calor en un radio de 100 km." +
+        "✅ No hay focos de calor en un radio de 100 km.\n\n" +
+        `${lastCheckLine}\n` +
+        "🛰️ GOES-19 escanea cada 10 min · NASA FIRMS cada 15 min\n\n" +
+        "<i>Si llega a haber un foco, te aviso al toque.</i>" +
         CLARA_FOOTER +
-        "\n<i>Datos: NASA FIRMS VIIRS · Open-Meteo</i>"
+        "\n<i>Datos: NASA FIRMS VIIRS · NOAA GOES-19 · Open-Meteo</i>"
     );
     return;
   }
@@ -348,6 +368,22 @@ async function handleCancelar(chatId: number) {
       "Para volver a suscribirte, envia tu ubicacion o usa /ciudad." +
       CLARA_FOOTER
   );
+}
+
+// WHI-585 — relative minutes since the last fires_cache write (FIRMS sync).
+// Used in /estado to confirm system liveness when there are no fires.
+async function fetchLastFiresCheck(): Promise<number | null> {
+  try {
+    const { data } = await getSupabase()
+      .from("fires_cache")
+      .select("fetched_at")
+      .eq("id", 1)
+      .single();
+    if (!data?.fetched_at) return null;
+    return Math.max(0, Math.round((Date.now() - Date.parse(data.fetched_at)) / 60000));
+  } catch {
+    return null;
+  }
 }
 
 async function upsertSubscriber(

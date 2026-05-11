@@ -118,8 +118,9 @@ function formatPreliminary(
   const gMaps = `https://www.google.com/maps?q=${det.lat},${det.lng}&z=12`;
   const frp = det.frp_mw != null ? `${det.frp_mw.toFixed(1)} MW` : "—";
 
+  // WHI-585 — header surfaces distance in Telegram's preview line
   return (
-    `⚠️ <b>POSIBLE foco detectado (preliminar)</b>\n\n` +
+    `⚠️ <b>Posible foco a ${dist}km de ${cityName}</b>\n\n` +
     `📍 A <b>${dist} km</b> de ${cityName}\n` +
     `🛰️ Fuente: NOAA GOES-19 — escaneo cada 10 min\n` +
     `⏱️ Detectado hace ~${ageMin} min\n` +
