@@ -79,6 +79,26 @@ PERSISTENCE_WINDOW_MIN = 25  # WHI-546 v2: look back for matching detections
 PERSISTENCE_RADIUS_KM = 4.0
 EARTH_RADIUS_KM = 6371.0
 
+# WHI-583 — oil & gas basins where low-power detections are most likely
+# gas flaring, not wildfire. Port from src/lib/fire-classification.ts.
+# bbox tuple: (name, south, north, west, east)
+OIL_BASINS = [
+    ("Cuenca Neuquina (Vaca Muerta)", -40.5, -36.0, -71.0, -67.0),
+    ("Golfo San Jorge",               -47.5, -44.0, -70.5, -65.0),
+    ("Cuenca Austral",                -54.5, -51.0, -70.5, -67.0),
+    ("Cuenca Cuyana",                 -35.0, -32.5, -69.5, -67.0),
+]
+FLARING_FRP_THRESHOLD_MW = 7.0  # same threshold as FIRMS pipeline
+
+# WHI-583 — known agricultural-burn zones. Detections inside these
+# fire-prone areas are *not* dropped, just flagged so downstream
+# consumers (e.g. alerting) can deprioritize. Generous bboxes.
+AGRICULTURAL_ZONES = [
+    ("Pampa cereal/soja",     -37.0, -32.0, -65.0, -58.0),
+    ("Tucuman-Salta cañera",  -28.0, -25.0, -65.5, -63.5),
+    ("Chaco soja",            -28.0, -23.0, -63.0, -58.0),
+]
+
 
 # --- Filter helpers (inlined from scripts/goes-spike/filters.py) ---
 def point_in_polygon(lng: float, lat: float, poly: list[tuple[float, float]]) -> bool:
@@ -106,6 +126,24 @@ def haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
 def in_any_urban(lat: float, lng: float) -> bool:
     for _, min_lat, max_lat, min_lng, max_lng in URBAN_ZONES:
         if min_lat <= lat <= max_lat and min_lng <= lng <= max_lng:
+            return True
+    return False
+
+
+def is_likely_flaring(lat: float, lng: float, frp_mw: float | None) -> bool:
+    """WHI-583 — flag low-FRP detection inside an oil basin as flaring."""
+    if frp_mw is None or frp_mw > FLARING_FRP_THRESHOLD_MW:
+        return False
+    for _, south, north, west, east in OIL_BASINS:
+        if south <= lat <= north and west <= lng <= east:
+            return True
+    return False
+
+
+def in_agricultural_zone(lat: float, lng: float) -> bool:
+    """WHI-583 — true if detection falls inside a known burn-prone agricultural area."""
+    for _, south, north, west, east in AGRICULTURAL_ZONES:
+        if south <= lat <= north and west <= lng <= east:
             return True
     return False
 
@@ -161,21 +199,28 @@ def extract_filtered_detections(nc_path: str) -> tuple[list[dict], str]:
     # Step 2/3 — Argentina polygon + urban exclusion
     detections: list[dict] = []
     for i, (lat, lng) in enumerate(zip(lats, lons)):
-        if not point_in_polygon(float(lng), float(lat), ARGENTINA_VERTICES):
+        flat = float(lat)
+        flng = float(lng)
+        if not point_in_polygon(flng, flat, ARGENTINA_VERTICES):
             continue
-        if in_any_urban(float(lat), float(lng)):
+        if in_any_urban(flat, flng):
             continue
         m = int(masks[i])
         p = float(power[i]) if not np.isnan(power[i]) else None
         a = float(area[i]) if not np.isnan(area[i]) else None
+        # WHI-583 — drop low-FRP detections inside oil basins (likely flaring)
+        if is_likely_flaring(flat, flng, p):
+            continue
         detections.append({
-            "lat": float(lat),
-            "lng": float(lng),
+            "lat": flat,
+            "lng": flng,
             "mask": m,
             "mask_label": MASK_LABELS.get(m, f"unknown_{m}"),
             "frp_mw": p,
             "area_m2": a,
             "high_confidence": m in HIGH_CONFIDENCE_CODES,
+            # WHI-583 — mark agricultural-zone detections for downstream prioritization
+            "agricultural_zone": in_agricultural_zone(flat, flng),
             "scan_start": scan_start,
         })
 

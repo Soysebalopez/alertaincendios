@@ -1,0 +1,6 @@
+venv
+__pycache__/
+*.pyc
+*.nc
+out/*.nc
+!out/.gitkeep

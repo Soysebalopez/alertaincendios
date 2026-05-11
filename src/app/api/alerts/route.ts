@@ -192,7 +192,9 @@ async function formatAlert(
     level
   );
 
-  let msg = `${emoji} <b>ALERTA: Foco detectado</b>\n\n`;
+  // WHI-585 — header with immediate value so Telegram notification preview is actionable
+  const headerLine = headerFor(level, dist, etaMinutes, windToward);
+  let msg = `${emoji} <b>${headerLine}</b>\n\n`;
   msg += `📍 A <b>${dist} km</b> de ${sub.city_name}\n`;
   msg += `🧭 Dirección: ${cardinal}\n`;
   msg += `💨 Viento: ${windToward ? "<b>hacia tu posición</b>" : "fuera de tu posición"}`;
@@ -211,6 +213,27 @@ async function formatAlert(
   msg += `\n<i>Datos: NASA FIRMS VIIRS · Open-Meteo</i>`;
 
   return msg;
+}
+
+// WHI-585 — build the alert header line. Telegram's notification preview
+// shows the first line only, so we surface the actionable bit (distance,
+// smoke ETA) instead of a generic "ALERTA".
+function headerFor(
+  level: "danger" | "warning" | "info",
+  dist: number,
+  etaMinutes: number,
+  windToward: boolean
+): string {
+  if (level === "danger" && windToward) {
+    return `Foco a ${dist}km — humo en ~${etaMinutes} min`;
+  }
+  if (level === "danger") {
+    return `Foco activo a ${dist}km — viento favorable`;
+  }
+  if (level === "warning") {
+    return `Foco a ${dist}km — atención`;
+  }
+  return `Foco detectado a ${dist}km`;
 }
 
 async function interpretFire(
@@ -308,7 +331,11 @@ async function formatConfirmedFromPreliminary(
   const sinceMin = Math.max(0, Math.round((Date.now() - Date.parse(preliminarySentAt)) / 60000));
   const windToward = etaMinutes > 0;
 
-  let msg = `✅ <b>CONFIRMADO: el foco es real</b>\n\n`;
+  // WHI-585 — header with immediate value
+  const headerLine = windToward
+    ? `Foco confirmado a ${dist}km — humo en ~${etaMinutes} min`
+    : `Foco confirmado a ${dist}km de ${sub.city_name}`;
+  let msg = `✅ <b>${headerLine}</b>\n\n`;
   msg += `📍 A <b>${dist} km</b> de ${sub.city_name}\n`;
   msg += `🧭 Dirección: ${cardinal}\n`;
   msg += `💨 Viento: ${windToward ? "<b>hacia tu posición</b>" : "fuera de tu posición"}`;
