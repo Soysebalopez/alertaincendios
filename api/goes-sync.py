@@ -189,7 +189,9 @@ def extract_filtered_detections(nc_path: str) -> tuple[list[dict], str]:
 
 # --- Supabase write ---
 def upsert_to_supabase(rows: Iterable[dict]) -> tuple[int, str | None]:
-    url = os.environ.get("SUPABASE_URL")
+    # CLARA uses NEXT_PUBLIC_SUPABASE_URL (Next.js convention for the URL).
+    # Accept the bare name too, so the function is portable to other repos.
+    url = os.environ.get("NEXT_PUBLIC_SUPABASE_URL") or os.environ.get("SUPABASE_URL")
     key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     if not url or not key:
         return 0, "missing_supabase_env"
