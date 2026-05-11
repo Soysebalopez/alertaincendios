@@ -304,24 +304,30 @@ def run_pipeline() -> dict:
     t0 = time.time()
     client = s3_client()
 
-    key = latest_object_key(client)
-    if not key:
+    s3_key = latest_object_key(client)
+    if not s3_key:
         return {"ok": False, "error": "no_recent_scan"}
 
     with tempfile.NamedTemporaryFile(suffix=".nc", delete=False) as tmp:
         local_path = tmp.name
     t_d0 = time.time()
-    client.download_file(BUCKET, key, local_path)
+    client.download_file(BUCKET, s3_key, local_path)
     t_download = time.time() - t_d0
 
     t_p0 = time.time()
     detections, scan_start = extract_filtered_detections(local_path)
     t_process = time.time() - t_p0
 
-    # WHI-546 v2 — compute seen_in_scans before insert
-    url = os.environ.get("NEXT_PUBLIC_SUPABASE_URL") or os.environ.get("SUPABASE_URL", "")
-    key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
-    promoted = compute_persistence(detections, url, key) if (url and key) else 0
+    # WHI-546 v2 — compute seen_in_scans before insert.
+    # SECURITY: keep the supabase service-role key in a clearly-named local
+    # variable, never shadow `s3_key` which gets serialized into the response.
+    supabase_url = os.environ.get("NEXT_PUBLIC_SUPABASE_URL") or os.environ.get("SUPABASE_URL", "")
+    supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+    promoted = (
+        compute_persistence(detections, supabase_url, supabase_key)
+        if (supabase_url and supabase_key)
+        else 0
+    )
 
     inserted, write_err = upsert_to_supabase(detections)
     try:
@@ -333,7 +339,7 @@ def run_pipeline() -> dict:
         "ok": write_err is None,
         "error": write_err,
         "scan_start": scan_start,
-        "s3_key": key,
+        "s3_key": s3_key,
         "detections_kept": len(detections),
         "inserted": inserted,
         "persistent": promoted,
