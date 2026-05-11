@@ -205,5 +205,74 @@ export async function getBotCommands(daysBack = 7): Promise<{ command: string; c
     .sort((a, b) => b.count - a.count);
 }
 
+// WHI-587 follow-up — filter funnel from per-scan stats
+export type GoesRun = {
+  scan_start: string;
+  s3_key: string | null;
+  fire_pixels_global: number;
+  after_mask: number;
+  after_polygon: number;
+  after_urban: number;
+  after_flaring: number;
+  agricultural_count: number;
+  after_dedup: number;
+  inserted: number;
+  persistent: number;
+  total_seconds: number | null;
+  created_at: string;
+};
+
+export async function getRecentGoesRuns(limit = 10): Promise<GoesRun[]> {
+  const db = getSupabase();
+  const { data } = await db
+    .from("goes_sync_runs")
+    .select(
+      "scan_start, s3_key, fire_pixels_global, after_mask, after_polygon, after_urban, after_flaring, agricultural_count, after_dedup, inserted, persistent, total_seconds, created_at"
+    )
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  return (data ?? []) as GoesRun[];
+}
+
+export async function getFunnelAggregate(daysBack = 7): Promise<{
+  scans: number;
+  fire_pixels_global: number;
+  after_mask: number;
+  after_polygon: number;
+  after_urban: number;
+  after_flaring: number;
+  after_dedup: number;
+  inserted: number;
+}> {
+  const db = getSupabase();
+  const since = new Date(Date.now() - daysBack * DAY).toISOString();
+  const { data } = await db
+    .from("goes_sync_runs")
+    .select(
+      "fire_pixels_global, after_mask, after_polygon, after_urban, after_flaring, after_dedup, inserted"
+    )
+    .gte("created_at", since);
+
+  const rows = (data ?? []) as Array<{
+    fire_pixels_global: number;
+    after_mask: number;
+    after_polygon: number;
+    after_urban: number;
+    after_flaring: number;
+    after_dedup: number;
+    inserted: number;
+  }>;
+  return {
+    scans: rows.length,
+    fire_pixels_global: rows.reduce((a, r) => a + (r.fire_pixels_global ?? 0), 0),
+    after_mask: rows.reduce((a, r) => a + (r.after_mask ?? 0), 0),
+    after_polygon: rows.reduce((a, r) => a + (r.after_polygon ?? 0), 0),
+    after_urban: rows.reduce((a, r) => a + (r.after_urban ?? 0), 0),
+    after_flaring: rows.reduce((a, r) => a + (r.after_flaring ?? 0), 0),
+    after_dedup: rows.reduce((a, r) => a + (r.after_dedup ?? 0), 0),
+    inserted: rows.reduce((a, r) => a + (r.inserted ?? 0), 0),
+  };
+}
+
 // Re-export helper for typed series consumers
 export { fillDays };

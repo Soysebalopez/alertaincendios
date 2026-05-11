@@ -1,4 +1,5 @@
 import { getSupabase } from "@/lib/supabase";
+import { getRecentGoesRuns, getFunnelAggregate } from "../_lib/metrics";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -32,11 +33,11 @@ const EXPECTED_CADENCE_MIN: Record<string, number> = {
 
 export default async function HealthPage() {
   const db = getSupabase();
-  const { data: crons } = await db.rpc("clara_cron_health");
-  const { data: recentHttp } = await db
-    .from("_http_response" as never)
-    .select("*")
-    .limit(0); // we know this won't work — use net schema via RPC if needed
+  const [{ data: crons }, recentRuns, funnel7d] = await Promise.all([
+    db.rpc("clara_cron_health"),
+    getRecentGoesRuns(15),
+    getFunnelAggregate(7),
+  ]);
 
   const cronRows = (crons ?? []) as CronRow[];
 
@@ -142,11 +143,202 @@ export default async function HealthPage() {
         </table>
       </div>
 
+      {/* WHI-587 follow-up — GOES filter funnel */}
+      <FunnelSection
+        recentRuns={recentRuns}
+        funnel7d={funnel7d}
+      />
+
       <p className="text-muted" style={{ fontSize: 12 }}>
         Para inspección detallada de respuestas HTTP: SQL Editor → <code>SELECT * FROM net._http_response ORDER BY created DESC LIMIT 50;</code>
       </p>
-      {/* Suppress unused var warning */}
-      {recentHttp ? null : null}
+    </div>
+  );
+}
+
+function FunnelSection({
+  recentRuns,
+  funnel7d,
+}: {
+  recentRuns: Awaited<ReturnType<typeof getRecentGoesRuns>>;
+  funnel7d: Awaited<ReturnType<typeof getFunnelAggregate>>;
+}) {
+  const latest = recentRuns[0];
+
+  function dropPct(from: number, to: number): string {
+    if (from === 0) return "—";
+    const dropped = from - to;
+    return `−${Math.round((dropped / from) * 100)}%`;
+  }
+
+  function tsLabel(iso: string | null): string {
+    if (!iso) return "—";
+    return new Date(iso).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" });
+  }
+
+  return (
+    <section
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: 12,
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          padding: "14px 18px",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "baseline",
+          borderBottom: "1px solid var(--border)",
+        }}
+      >
+        <div style={{ fontSize: 14, fontWeight: 600 }}>
+          GOES filter funnel
+        </div>
+        <div className="font-mono text-[10px] text-muted tracking-wider uppercase">
+          últimos 7 días · {funnel7d.scans} scans
+        </div>
+      </div>
+
+      {recentRuns.length === 0 ? (
+        <div style={{ padding: 24, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>
+          No hay corridas aún. Esperá al próximo cron tick (cada 10 min).
+        </div>
+      ) : (
+        <>
+          {/* Latest scan funnel — narrativa horizontal */}
+          <div style={{ padding: "20px 18px", borderBottom: "1px solid var(--border)" }}>
+            <div className="font-mono text-[10px] text-muted mb-2 tracking-wider uppercase">
+              Último scan · {tsLabel(latest?.scan_start ?? null)}
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
+              <FunnelStep label="Fire pixels (global)" value={latest.fire_pixels_global} />
+              <Arrow drop={dropPct(latest.fire_pixels_global, latest.after_mask)} />
+              <FunnelStep label="Mask high-conf" value={latest.after_mask} />
+              <Arrow drop={dropPct(latest.after_mask, latest.after_polygon)} />
+              <FunnelStep label="Polígono ARG" value={latest.after_polygon} />
+              <Arrow drop={dropPct(latest.after_polygon, latest.after_urban)} />
+              <FunnelStep label="Urban excl." value={latest.after_urban} />
+              <Arrow drop={dropPct(latest.after_urban, latest.after_flaring)} />
+              <FunnelStep label="Flaring excl." value={latest.after_flaring} />
+              <Arrow drop={dropPct(latest.after_flaring, latest.after_dedup)} />
+              <FunnelStep label="Dedup 4km" value={latest.after_dedup} tone="accent" />
+            </div>
+          </div>
+
+          {/* 7d aggregate */}
+          <div style={{ padding: "20px 18px", borderBottom: "1px solid var(--border)" }}>
+            <div className="font-mono text-[10px] text-muted mb-2 tracking-wider uppercase">
+              Agregado 7 días (suma de {funnel7d.scans} scans)
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
+              <FunnelStep label="Global" value={funnel7d.fire_pixels_global} />
+              <Arrow drop={dropPct(funnel7d.fire_pixels_global, funnel7d.after_mask)} />
+              <FunnelStep label="Mask" value={funnel7d.after_mask} />
+              <Arrow drop={dropPct(funnel7d.after_mask, funnel7d.after_polygon)} />
+              <FunnelStep label="Polígono" value={funnel7d.after_polygon} />
+              <Arrow drop={dropPct(funnel7d.after_polygon, funnel7d.after_urban)} />
+              <FunnelStep label="Urban" value={funnel7d.after_urban} />
+              <Arrow drop={dropPct(funnel7d.after_urban, funnel7d.after_flaring)} />
+              <FunnelStep label="Flaring" value={funnel7d.after_flaring} />
+              <Arrow drop={dropPct(funnel7d.after_flaring, funnel7d.after_dedup)} />
+              <FunnelStep label="Dedup" value={funnel7d.after_dedup} tone="accent" />
+            </div>
+          </div>
+
+          {/* Recent runs table */}
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr>
+                  {["Scan", "Global", "Mask", "Poly", "Urban", "Flaring", "Dedup", "Insertados", "Tiempo"].map((h) => (
+                    <th
+                      key={h}
+                      style={{
+                        textAlign: "right",
+                        padding: "10px 12px",
+                        fontSize: 10,
+                        fontFamily: "var(--font-mono)",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.1em",
+                        color: "var(--muted)",
+                        background: "var(--background)",
+                        borderBottom: "1px solid var(--border)",
+                      }}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {recentRuns.map((r) => (
+                  <tr key={r.created_at} style={{ borderBottom: "1px solid var(--border)" }}>
+                    <td style={{ padding: "8px 12px", textAlign: "left", fontSize: 11 }}>
+                      {tsLabel(r.scan_start)}
+                    </td>
+                    <td style={tdNum}>{r.fire_pixels_global}</td>
+                    <td style={tdNum}>{r.after_mask}</td>
+                    <td style={tdNum}>{r.after_polygon}</td>
+                    <td style={tdNum}>{r.after_urban}</td>
+                    <td style={tdNum}>{r.after_flaring}</td>
+                    <td style={tdNum}>{r.after_dedup}</td>
+                    <td style={{ ...tdNum, color: r.inserted > 0 ? "var(--accent)" : undefined, fontWeight: r.inserted > 0 ? 700 : 400 }}>
+                      {r.inserted}
+                    </td>
+                    <td style={tdNum}>{r.total_seconds != null ? `${r.total_seconds.toFixed(1)}s` : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+const tdNum: React.CSSProperties = {
+  padding: "8px 12px",
+  fontFamily: "var(--font-mono)",
+  fontSize: 11,
+  textAlign: "right",
+};
+
+function FunnelStep({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone?: "accent";
+}) {
+  return (
+    <div
+      style={{
+        padding: "10px 14px",
+        background: tone === "accent" ? "color-mix(in oklab, var(--accent) 12%, transparent)" : "var(--background)",
+        border: tone === "accent" ? "1px solid color-mix(in oklab, var(--accent) 50%, transparent)" : "1px solid var(--border)",
+        borderRadius: 10,
+        minWidth: 100,
+      }}
+    >
+      <div className="font-mono text-[9px] text-muted tracking-wider uppercase">{label}</div>
+      <div style={{ fontSize: 20, fontWeight: 700, color: tone === "accent" ? "var(--accent)" : undefined }}>
+        {value.toLocaleString("es-AR")}
+      </div>
+    </div>
+  );
+}
+
+function Arrow({ drop }: { drop: string }) {
+  return (
+    <div className="font-mono text-[10px] text-muted" style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "0 4px" }}>
+      <div>→</div>
+      <div style={{ fontSize: 9, color: "var(--accent)" }}>{drop}</div>
     </div>
   );
 }
