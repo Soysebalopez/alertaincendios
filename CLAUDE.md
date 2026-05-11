@@ -2,19 +2,18 @@
 
 # CLARA (AlertaIncendios)
 
-Central de Localizacion y Alerta de Riesgo Ambiental — plataforma de monitoreo ambiental ciudadano para Argentina.
+Central de Localizacion y Alerta de Riesgo Ambiental — alerta temprana de incendios forestales en Argentina vía Telegram. Detección dual: GOES-19 (10 min, preliminar) + NASA FIRMS (15 min, confirmado). Gratuito B2C, complementario a Satellites On Fire.
 
 ## Stack
-- Next.js 16 + TypeScript
-- Tailwind CSS v4 + Motion (animations)
-- Phosphor Icons + Leaflet (maps) + Recharts (charts)
-- Supabase (shared with SatAI, ref: qmzuwnilehldvobjsbcs)
-- Vercel (deploy)
-- Groq llama-3.3-70b (AI citizen summaries)
+- Next.js 16 + TypeScript + Tailwind CSS v4 + Motion + Phosphor Icons + Leaflet + Recharts
+- Supabase (shared with SatAI, ref: qmzuwnilehldvobjsbcs) — Postgres + pg_cron + pg_net + Auth
+- Vercel Hobby — Next.js routes (TS) + 1 Python Vercel Function (`api/goes-sync.py`)
+- Groq llama-3.3-70b (AI citizen summaries + interpretation)
+- Python pipeline: xarray, netCDF4, boto3, pyproj — procesa GOES NetCDF en Vercel
 
 ## Servicios
 - GitHub: https://github.com/Soysebalopez/alertaincendios
-- Linear: AlertaIncendios — Bot de Alertas de Incendios Forestales (Whitebay team)
+- Linear: CLARA project en Whitebay Products team
 - Deploy: Vercel (https://alertaincendios.vercel.app)
 - Supabase: project ref qmzuwnilehldvobjsbcs (shared with SatAI)
 - Telegram Bot: @AlertasClaraBot
@@ -30,86 +29,150 @@ Central de Localizacion y Alerta de Riesgo Ambiental — plataforma de monitoreo
 ## Architecture
 
 ### Pages
-- Landing: `/` — split-screen hero (fire count + Leaflet map), live city slider (10 random cities, auto-rotate 8s), "Como funciona", CTAs
-- Mapa: `/mapa` — fullscreen Leaflet with layers: focos (FIRMS), calidad del aire (all cities), viento (arrows). Own layout (no footer)
-- Calidad del aire: `/calidad-aire` — province selector → city cards with wind + AI citizen summary
-- Ciudad: `/ciudad/[province]/[city]` — SSG 78 pages. Dashboard: semaphore + AI summary + wind card + pollutant grid + Leaflet map (zoom 13, collapsible data panel) + air quality evolution (Recharts, 3/7/14/30 days)
-- Historial: `/historial` — fire history chart (Recharts), period selector (1m/6m, longer disabled until more data). Supabase fires_daily_history table.
-- Sobre: not yet
+- Landing: `/` — split-screen hero (fire count + Leaflet map), live city slider, 6 data sources (3×2 grid), "Cómo funciona", evolución de focos, calidad del aire, CTA "Recibí la alerta antes"
+- Mapa: `/mapa` — fullscreen Leaflet con capas focos/aire/viento. Layout propio (sin footer)
+- Calidad del aire: `/calidad-aire` — selector de provincia → cards por ciudad
+- Ciudad: `/ciudad/[province]/[city]` — SSG 78 páginas, dashboard completo por ciudad
+- Historial: `/historial` — Recharts evolución de focos
+- Cómo funciona: `/como-funciona` — FAQ ciudadano (8 preguntas, sin jerga)
+- Dashboard: `/dashboard`, `/dashboard/alerts`, `/dashboard/health` — métricas internas, gated por Supabase Auth allowlist (soysebalopez@gmail.com)
+- Login: `/login` — entry point del dashboard
 
 ### Route Groups
-- `(main)` — Nav + Footer + EmberParticles (landing, historial, calidad-aire, ciudad pages)
-- `/mapa` — Nav + EmberParticles, no footer (fullscreen map)
+- `(main)` — Nav + Footer + EmberParticles (landing, historial, calidad-aire, ciudad, como-funciona)
+- `/mapa` — Nav + EmberParticles, no footer
+- `/dashboard/*` — layout propio con nav minimalista + signout, gated por middleware
+- `/login` — sin layout, página standalone
 
-### API Routes
-- `/api/fires` — reads fire data from Supabase fires_cache
-- `/api/fires/history?months=N` — daily fire counts from fires_daily_history
-- `/api/fires/sync?secret=...` — manual FIRMS sync (needs residential IP)
-- `/api/air-quality?lat=X&lng=Y` — Open-Meteo CAMS (NO2, SO2, O3, CO, PM25, PM10) with WHO levels
-- `/api/wind?lat=X&lng=Y` — Open-Meteo wind (speed, direction in Spanish, temp, humidity)
-- `/api/summary?lat=X&lng=Y&city=Name` — Groq AI citizen summary (fallback: template)
-- `/api/history?lat=X&lng=Y&pollutant=NO2&days=7` — historical air quality (hourly→daily avg)
-- `/api/simulate` — POST, Gaussian plume dispersion model (Pasquill-Gifford)
-- `/api/alerts?secret=...` — cron: evaluate fires vs subscribers, send Telegram alerts
-- `/api/lightning-alerts?secret=...` — cron: dry-storm preventive alerts (OpenWeather One Call 3.0 → Open-Meteo fallback, rate-limited 30 min/sub)
-- `/api/bot/telegram` — Telegram webhook (commands: /start, /help, /about, /ciudad, /estado, /rayos, /cancelar)
+### API Routes — Públicas
+- `/api/fires` — focos confirmados desde fires_cache
+- `/api/fires/history?months=N` — agregación diaria
+- `/api/air-quality?lat=X&lng=Y` — Open-Meteo CAMS (NO2/SO2/O3/CO/PM25/PM10 + nivel OMS)
+- `/api/wind?lat=X&lng=Y` — viento + temp + humedad
+- `/api/summary?lat=X&lng=Y&city=Name` — Groq summary
+- `/api/history?lat=X&lng=Y&pollutant=NO2&days=7` — historial por contaminante
+- `/api/simulate` — POST, dispersión gaussiana (Pasquill-Gifford)
+- `/api/bot/telegram` — webhook Telegram
+
+### API Routes — Cron (auth CRON_SECRET)
+- `/api/fires/sync` — manual FIRMS sync (IP residencial)
+- `/api/alerts` — FIRMS → Telegram, con confirmation upgrade si matchea preliminary GOES (<5km, <2h)
+- `/api/goes-sync` — **Python**, descarga GOES-19 ABI-L2-FDCF, filtros, inserta en goes_preliminary, guarda stats en goes_sync_runs
+- `/api/goes-alerts` — preliminary → Telegram + tracking en goes_alerted
+- `/api/goes-dismissals` — falsa alarma + DELETE preliminary descartadas + huérfanos
+- `/api/lightning-alerts` — tormenta seca (OpenWeather + Open-Meteo fallback)
 
 ## Data Sources (all free)
-- NASA FIRMS VIIRS: active fire hotspots (near real-time, 375m resolution)
-- Open-Meteo Forecast: wind speed/direction/gusts/temp/humidity
-- Open-Meteo Air Quality: CAMS/Sentinel-5P derived pollutants
-- Open-Meteo Geocoding: city name → lat/lng
+- **NASA FIRMS VIIRS**: focos confirmados, ~15 min, 375m res
+- **NOAA GOES-19 ABI-L2-FDCF**: focos preliminares, 10 min, 2km res, vía AWS Open Data anonymous (`s3://noaa-goes19`)
+- **OpenWeather One Call 3.0**: rayos (con Open-Meteo Lightning fallback)
+- **Open-Meteo Forecast**: viento/temp/humedad
+- **Open-Meteo Air Quality**: CAMS/Sentinel-5P
+- **Open-Meteo Geocoding**: ciudad → lat/lng
 
 ## Supabase Tables (shared project)
-- `subscribers` (chat_id bigint PK, lat float, lng float, city_name text, created_at timestamptz)
-- `ai_alerted_fires` (fire_key text, chat_id bigint, alerted_at timestamptz) — PK: (fire_key, chat_id)
-- `fires_cache` (id int PK=1, fires jsonb, count int, fetched_at timestamptz) — single-row cache
-- `_fires_sync_state` (id int PK=1, request_id bigint, requested_at timestamptz) — internal sync state
-- `fires_daily_history` (date date PK, count int, avg_frp real, high_conf int, created_at timestamptz) — daily aggregates for charts
-- `subscribers.lightning_enabled` (bool, default true) — opt-out per-subscriber for dry-storm alerts (WHI-543)
-- `lightning_alerted` (id bigserial PK, chat_id bigint, alerted_at timestamptz) — rate-limit table for dry-storm alerts, indexed (chat_id, alerted_at DESC)
+
+### Suscripción + estado del bot
+- `subscribers` (chat_id bigint PK, lat, lng, city_name, lightning_enabled bool default true, role text default 'civilian', cuartel_name text, created_at)
+- `fireman_codes` (code text PK, cuartel_name, used_count, max_uses) — WHI-588: invite codes
+- `bot_commands_log` (id bigserial PK, chat_id, command, args, created_at) — WHI-587: engagement
+
+### FIRMS (cache + dedup)
+- `ai_alerted_fires` (fire_key text, chat_id bigint, alerted_at) — PK: (fire_key, chat_id)
+- `fires_cache` (id int PK=1, fires jsonb, count, fetched_at) — single-row cache
+- `_fires_sync_state` (id int PK=1, request_id, requested_at)
+- `fires_daily_history` (date PK, count, avg_frp, high_conf, created_at)
+
+### GOES (Fase 2)
+- `goes_preliminary` (id bigserial PK, lat, lng, mask, mask_label, frp_mw, area_m2, high_confidence bool, seen_in_scans int default 1, agricultural_zone bool, scan_start timestamptz, detected_at) — UNIQUE (lat, lng, scan_start)
+- `goes_alerted` (id bigserial PK, goes_id FK→goes_preliminary ON DELETE CASCADE, chat_id, preliminary_sent_at, confirmed_sent_at, dismissed_at, firms_fire_key) — UNIQUE (goes_id, chat_id)
+- `goes_sync_runs` (id bigserial PK, scan_start, s3_key, fire_pixels_global, after_mask, after_polygon, after_urban, after_flaring, agricultural_count, after_dedup, inserted, persistent, download/process/total_seconds, created_at) — funnel + timing por scan
+
+### Lightning
+- `lightning_alerted` (id bigserial PK, chat_id, alerted_at) — rate-limit 30 min/sub
+
+### Config
+- `_clara_config` (key PK, value, updated_at) — actualmente solo `cron_secret`. Cron jobs leen via `clara_cron_secret()` SECURITY DEFINER
 
 ## Supabase pg_cron Jobs
-- `fires-fetch` (*/15 at :00,:15,:30,:45) — pg_net GET to FIRMS, stores request_id
-- `fires-process` (*/15 at :02,:17,:32,:47) — parses CSV response, updates fires_cache
-- `fires-alerts` (*/15 at :04,:19,:34,:49) — calls /api/alerts on Vercel
-- `fires-daily-snapshot` (daily 23:55 ART / 02:55 UTC) — upserts today's count into fires_daily_history
+- `fires-fetch` (`0,15,30,45 * * * *`) — pg_net GET a FIRMS, stores request_id
+- `fires-process` (`2,17,32,47 * * * *`) — parsea CSV, REEMPLAZA fires_cache
+- `fires-alerts` (`4,19,34,49 * * * *`) — `/api/alerts` (FIRMS + confirmation upgrades)
+- `fires-daily-snapshot` (`55 2 * * *` = 23:55 ART) — snapshot diario
+- `goes-sync` (`5,15,25,35,45,55 * * * *`) — `/api/goes-sync` Python pipeline
+- `goes-alerts` (`7,17,27,37,47,57 * * * *`) — `/api/goes-alerts` preliminary → Telegram
+- `goes-dismissals` (`37 * * * *` hourly) — falsa alarma + DELETE preliminary descartadas + huérfanos
+- `goes-prune` (`30 3 * * *` daily) — cleanup defensivo >7 días
 
-## Supabase Functions
-- `fires_sync_step1_fetch()` — HTTP GET to FIRMS via pg_net
-- `fires_sync_step2_process()` — parses CSV, updates fires_cache (REPLACES, does not concatenate)
+## Supabase Functions / RPC
+- `fires_sync_step1_fetch()` — HTTP GET a FIRMS via pg_net
+- `fires_sync_step2_process()` — parsea CSV, REEMPLAZA fires_cache (WHI-378 fix)
+- `clara_cron_secret()` SECURITY DEFINER — devuelve CRON_SECRET desde `_clara_config`, usado por pg_cron jobs así no queda literal en cron.job.command
+- `clara_cron_health()` SECURITY DEFINER — lectura de cron.job_run_details para el dashboard /health
 
 ## Key Patterns
-- FIRMS blocks datacenter IPs but NOT Supabase (AWS us-east-1)
-- pg_cron + pg_net fetches FIRMS every 15 min entirely from Postgres
-- Supabase client uses lazy init (getSupabase()) — NOT module scope (Vercel evaluates routes at build time)
-- AI citizen summaries: Groq primary → template fallback. Prompt: "Traduci a 2-3 oraciones sin jerga cientifica. Usa semaforo: BUENO/MODERADO/MALO/PELIGROSO."
-- Wind direction: degreesToCardinal() + cardinalToSpanish() in src/lib/wind.ts
-- WHO AQI thresholds in src/lib/air-quality.ts — worst pollutant wins overall level
-- City pages SSG via generateStaticParams() from argentina-cities.ts (~78 cities)
-- Dispersion model: Gaussian plume (Pasquill-Gifford) in src/lib/dispersion.ts — generalized for any location
-- Fire history backfill: scripts/backfill-fires.sh (run locally, FIRMS blocks datacenter IPs)
-- Leaflet maps use dynamic import with ssr:false
-- SEO: robots.ts, sitemap.ts (84 URLs), JSON-LD structured data, OG + Twitter cards
+- FIRMS bloquea datacenter IPs pero NO Supabase (AWS us-east-1)
+- pg_cron + pg_net fetcha FIRMS desde Postgres
+- **GOES**: Python Vercel Function lee NetCDF de S3 (noaa-goes19 anonymous), procesa con xarray + pyproj, upsert a Supabase via PostgREST
+- **Auth**: Supabase Auth con `@supabase/ssr`, middleware en `src/middleware.ts` gating de `/dashboard/*` con allowlist de emails
+- Supabase client lazy init (getSupabase()) — NUNCA module scope (Vercel build evalúa rutas)
+- AI summaries: Groq primary → template fallback
+- Wind direction: `degreesToCardinal()` + `cardinalToSpanish()` en `src/lib/wind.ts`
+- WHO AQI thresholds en `src/lib/air-quality.ts` — worst pollutant wins
+- City pages SSG via `generateStaticParams()` desde `argentina-cities.ts` (~78)
+- Dispersión: Gaussian plume (Pasquill-Gifford) en `src/lib/dispersion.ts`
+- Fire history backfill: `scripts/backfill-fires.sh` con MAP_KEY desde `scripts/backfill.env` (gitignored)
+- Leaflet maps con dynamic import + ssr:false
+- Dual-channel alerts: civilian (con AI interpretation) vs fireman (operativo, sin AI, firmado por cuartel) — determinado por `subscribers.role`
+- Doble confirmación: preliminary GOES → confirmation upgrade FIRMS si <5km/<2h → dismissal automático tras 4h
+- Preliminaries descartadas se BORRAN de goes_preliminary (cascade goes_alerted) — el landing metric "Preliminares activos" refleja solo lo pendiente
 
 ## SEO
 - Title template: "%s — CLARA"
-- robots.ts: allow all except /api/
-- sitemap.ts: all static + 78 city pages
-- JSON-LD: WebApplication on main layout, Place + GeoCoordinates on city pages
-- OpenGraph + Twitter cards on all pages
-- Missing: OG image (1200x630)
+- robots.ts: allow all excepto /api/, /dashboard, /login
+- sitemap.ts: estáticas + 78 ciudades + /como-funciona = ~85 URLs
+- JSON-LD: WebApplication en root layout, Place + GeoCoordinates por ciudad
+- OG image dinámica via `next/og` ImageResponse en `src/app/opengraph-image.tsx` (1200×630)
+- OpenGraph + Twitter cards en todas las páginas
 
-## Project Status
-- Fase 1 — Alertas de incendios (Telegram bot): COMPLETE
-- Fase 2 — Plataforma de monitoreo ambiental ciudadano: COMPLETE
-  - Landing con slider de ciudades
-  - Mapa nacional interactivo (focos + aire + viento)
-  - Calidad del aire por provincia/ciudad (24 provincias, ~80 ciudades)
-  - Páginas por ciudad con dashboard completo + AI summary
-  - Historial de incendios (100 días backfilled, pg_cron diario)
-  - SEO completo
-- Pendiente: OG image, deploy a Vercel, más backfill de datos históricos
+## Seguridad (WHI-586 auditado)
+- HSTS, X-Frame-Options DENY, X-Content-Type-Options, Referrer-Policy, Permissions-Policy en `next.config.ts`
+- RLS habilitado en todas las tablas, anon/auth roles bloqueados — service_role bypassea
+- Migrado al nuevo sistema de API keys de Supabase: `sb_publishable_*` (anon) + `sb_secret_*` (service role). Legacy JWT system disabled.
+- CRON_SECRET centralizado en `_clara_config` + `clara_cron_secret()` función — no literal en cron jobs
+- Secrets fuera del repo (.env*, scripts/*.env gitignored). Templates en *.env.example
+- Procedimiento de rotación documentado en `SECURITY-AUDIT.md`
+
+## Project Status (2026-05-11)
+- **Fase 1** Mejoras inmediatas: 67% (falta WHI-542 dominio — owner action)
+- **Fase 2** GOES detection: ✅ **100%** (WHI-545/546/547 + v2/v3 + filter funnel)
+- **Fase 3** Optimización: solo queda WHI-550 WhatsApp — owner action. WHI-548 (GLM) y WHI-549 (super-res) Canceled con docs.
+
+### Tickets cerrados recientes
+- WHI-545: pipeline GOES-19 production
+- WHI-546: filtros v1/v2/v3 (mask, polígono ARG, urban, dedup, persistencia, Vaca Muerta, agricultural)
+- WHI-547: doble confirmación (preliminary/confirmed/dismissed)
+- WHI-581-585: bot rotation, mensajes mejorados, landing reorder, página /como-funciona, filtros v3
+- WHI-586: auditoría de seguridad + rotación completa de secrets
+- WHI-587: dashboard interno (Supabase Auth, métricas, filter funnel)
+- WHI-588: rol fireman v1 (Sprint 1 deployed)
+- WHI-589: reorden landing
+- WHI-590: página /como-funciona
+- WHI-582: OG image dinámica
+
+### Pendiente (owner action)
+- WHI-542 dominio propio
+- WHI-550 WhatsApp Business
+- WHI-591 SMS (análisis hecho, decisión pendiente)
+
+## Docs en el repo
+- `README.md` — overview para humanos + bot commands + APIs
+- `TESTING.md` — recipes de verificación end-to-end (incluye inyección de focos sintéticos)
+- `SECURITY-AUDIT.md` — findings + procedimiento de rotación de secrets
+- `scripts/goes-spike/REPORT.md` — viabilidad pipeline GOES (referencia histórica)
+- `scripts/glm-spike/REPORT.md` — GLM evaluation (defer)
+- `scripts/super-res-research/REPORT.md` — super-resolución (rejected)
+- `scripts/WHI-581-bot-rotation.md` — procedimiento rotación bot
 
 ## Proyecto Whitebay
 Este proyecto es parte del ecosistema Whitebay.
