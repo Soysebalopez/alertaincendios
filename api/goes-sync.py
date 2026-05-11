@@ -75,6 +75,8 @@ URBAN_ZONES = [
 ]
 
 DEDUP_RADIUS_KM = 4.0
+PERSISTENCE_WINDOW_MIN = 25  # WHI-546 v2: look back for matching detections
+PERSISTENCE_RADIUS_KM = 4.0
 EARTH_RADIUS_KM = 6371.0
 
 
@@ -187,6 +189,47 @@ def extract_filtered_detections(nc_path: str) -> tuple[list[dict], str]:
     return kept, scan_start
 
 
+# --- WHI-546 v2 — temporal persistence ---
+def compute_persistence(rows: list[dict], supabase_url: str, supabase_key: str) -> int:
+    """For each new detection, count previous detections in goes_preliminary
+    within PERSISTENCE_WINDOW_MIN and PERSISTENCE_RADIUS_KM. Update each
+    row's `seen_in_scans` accordingly (default already 1 for current scan).
+
+    Returns the number of detections that were promoted to persistent (>=2).
+    Best-effort: failures don't abort the upsert.
+    """
+    if not rows:
+        return 0
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=PERSISTENCE_WINDOW_MIN)
+    endpoint = (
+        f"{supabase_url.rstrip('/')}/rest/v1/goes_preliminary"
+        f"?select=lat,lng&detected_at=gte.{cutoff.isoformat()}"
+    )
+    headers = {"apikey": supabase_key, "Authorization": f"Bearer {supabase_key}"}
+    try:
+        resp = requests.get(endpoint, headers=headers, timeout=15)
+        if resp.status_code != 200:
+            return 0
+        prev = resp.json() or []
+    except Exception:
+        return 0
+
+    promoted = 0
+    for r in rows:
+        matches = sum(
+            1
+            for p in prev
+            if haversine_km(r["lat"], r["lng"], p["lat"], p["lng"]) <= PERSISTENCE_RADIUS_KM
+        )
+        # Each prev row is from a different scan within the window (after dedup
+        # within-scan happened upstream). matches >= 1 means at least one previous
+        # scan saw it → seen_in_scans = 1 (current) + matches.
+        r["seen_in_scans"] = 1 + matches
+        if r["seen_in_scans"] >= 2:
+            promoted += 1
+    return promoted
+
+
 # --- Supabase write ---
 def upsert_to_supabase(rows: Iterable[dict]) -> tuple[int, str | None]:
     # CLARA uses NEXT_PUBLIC_SUPABASE_URL (Next.js convention for the URL).
@@ -230,6 +273,11 @@ def run_pipeline() -> dict:
     detections, scan_start = extract_filtered_detections(local_path)
     t_process = time.time() - t_p0
 
+    # WHI-546 v2 — compute seen_in_scans before insert
+    url = os.environ.get("NEXT_PUBLIC_SUPABASE_URL") or os.environ.get("SUPABASE_URL", "")
+    key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+    promoted = compute_persistence(detections, url, key) if (url and key) else 0
+
     inserted, write_err = upsert_to_supabase(detections)
     try:
         os.unlink(local_path)
@@ -243,6 +291,7 @@ def run_pipeline() -> dict:
         "s3_key": key,
         "detections_kept": len(detections),
         "inserted": inserted,
+        "persistent": promoted,
         "timing_seconds": {
             "download": round(t_download, 2),
             "process": round(t_process, 2),
