@@ -9,6 +9,7 @@ const COLUMNS = [
       { label: "Mapa nacional", href: "/mapa" },
       { label: "Calidad del aire", href: "/calidad-aire" },
       { label: "Historial", href: "/historial" },
+      { label: "Cómo funciona", href: "/como-funciona" },
     ],
   },
   {

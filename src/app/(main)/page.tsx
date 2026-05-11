@@ -478,38 +478,6 @@ export default async function Home() {
         </div>
       </section>
 
-      {/* ─── LIVE CITIES ─── */}
-      <section className="border-b border-border" style={{ background: "var(--surface)" }}>
-        <div
-          className="clara-section-padded max-w-[1400px] mx-auto"
-          style={{ padding: "64px 32px" }}
-        >
-          <div className="flex items-end justify-between mb-7 gap-5 flex-wrap">
-            <div>
-              <Pill>Estado en vivo</Pill>
-              <h2
-                style={{
-                  fontFamily: "var(--font-sans)",
-                  fontSize: 36,
-                  fontWeight: 800,
-                  letterSpacing: "-0.03em",
-                  margin: "14px 0 0",
-                }}
-              >
-                Calidad del aire por ciudad
-              </h2>
-            </div>
-            <Link
-              href="/calidad-aire"
-              className="inline-flex items-center gap-1.5 text-accent text-[14px] font-medium"
-            >
-              Ver las 78 ciudades <ArrowRight size={14} />
-            </Link>
-          </div>
-          <LiveCityGrid count={12} />
-        </div>
-      </section>
-
       {/* ─── DATA SOURCES ─── */}
       <section className="border-b border-border" style={{ background: "var(--surface)" }}>
         <div
@@ -645,6 +613,38 @@ export default async function Home() {
               className="text-accent transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 shrink-0 ml-4"
             />
           </Link>
+        </div>
+      </section>
+
+      {/* ─── LIVE CITIES (WHI-589 — moved after Evolución de focos) ─── */}
+      <section className="border-b border-border" style={{ background: "var(--surface)" }}>
+        <div
+          className="clara-section-padded max-w-[1400px] mx-auto"
+          style={{ padding: "64px 32px" }}
+        >
+          <div className="flex items-end justify-between mb-7 gap-5 flex-wrap">
+            <div>
+              <Pill>Estado en vivo</Pill>
+              <h2
+                style={{
+                  fontFamily: "var(--font-sans)",
+                  fontSize: 36,
+                  fontWeight: 800,
+                  letterSpacing: "-0.03em",
+                  margin: "14px 0 0",
+                }}
+              >
+                Calidad del aire por ciudad
+              </h2>
+            </div>
+            <Link
+              href="/calidad-aire"
+              className="inline-flex items-center gap-1.5 text-accent text-[14px] font-medium"
+            >
+              Ver las 78 ciudades <ArrowRight size={14} />
+            </Link>
+          </div>
+          <LiveCityGrid count={12} />
         </div>
       </section>
 
