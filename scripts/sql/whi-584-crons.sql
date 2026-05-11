@@ -3,11 +3,13 @@
 -- Aplicar en Supabase SQL Editor (proyecto qmzuwnilehldvobjsbcs).
 
 -- Daily "falsa alarma" notifications a las 12:00 UTC (~09:00 ART)
+-- ⚠️ Replace <CRON_SECRET> with the literal value from Vercel env before running.
+-- Do NOT commit the populated SQL.
 SELECT cron.schedule(
   'goes-dismissals',
   '0 12 * * *',
   $$SELECT net.http_get(
-      'https://alertaincendios.vercel.app/api/goes-dismissals?secret=fad9f905b2213f552215999c370a38105b024c457b64dd40ef5de5bf0e9fd876',
+      'https://alertaincendios.vercel.app/api/goes-dismissals?secret=<CRON_SECRET>',
       timeout_milliseconds := 60000
     )$$
 );
