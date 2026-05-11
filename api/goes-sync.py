@@ -177,18 +177,36 @@ def project_pixels(ds, y_idx, x_idx):
     return lats, lons
 
 
-def extract_filtered_detections(nc_path: str) -> tuple[list[dict], str]:
+def extract_filtered_detections(nc_path: str) -> tuple[list[dict], str, dict]:
+    """Extract fire detections from a GOES NetCDF, filter, dedup, and return them
+    along with a `funnel` dict describing how many pixels survived each step.
+    """
     ds = xr.open_dataset(nc_path)
     scan_start = ds.attrs.get("time_coverage_start", "")
     mask_raw = ds["Mask"].values
     valid = ~np.isnan(mask_raw)
     mask_int_2d = np.where(valid, mask_raw, -1).astype(np.int32)
 
-    # Step 1 — mask filter (cheap; cuts 99%+ of the array)
+    # Step 1 — global count (any fire-related code) + mask filter (high-confidence only)
+    all_fire_2d = np.isin(mask_int_2d, list(FIRE_CODES))
+    fire_pixels_global = int(np.where(all_fire_2d)[0].size)
+
     fire_mask_2d = np.isin(mask_int_2d, list(HIGH_CONFIDENCE_CODES))
     y_idx, x_idx = np.where(fire_mask_2d)
-    if len(y_idx) == 0:
-        return [], scan_start
+    after_mask = int(len(y_idx))
+
+    funnel: dict = {
+        "fire_pixels_global": fire_pixels_global,
+        "after_mask": after_mask,
+        "after_polygon": 0,
+        "after_urban": 0,
+        "after_flaring": 0,
+        "agricultural_count": 0,
+        "after_dedup": 0,
+    }
+
+    if after_mask == 0:
+        return [], scan_start, funnel
 
     # Project the (small) set of fire pixels
     lats, lons = project_pixels(ds, y_idx, x_idx)
@@ -196,21 +214,31 @@ def extract_filtered_detections(nc_path: str) -> tuple[list[dict], str]:
     power = ds["Power"].values[y_idx, x_idx]
     area = ds["Area"].values[y_idx, x_idx]
 
-    # Step 2/3 — Argentina polygon + urban exclusion
+    # Step 2/3/3.5 — Argentina polygon + urban exclusion + flaring
     detections: list[dict] = []
+    after_polygon = 0
+    after_urban = 0
+    after_flaring = 0
+    agricultural = 0
     for i, (lat, lng) in enumerate(zip(lats, lons)):
         flat = float(lat)
         flng = float(lng)
         if not point_in_polygon(flng, flat, ARGENTINA_VERTICES):
             continue
+        after_polygon += 1
         if in_any_urban(flat, flng):
             continue
+        after_urban += 1
         m = int(masks[i])
         p = float(power[i]) if not np.isnan(power[i]) else None
         a = float(area[i]) if not np.isnan(area[i]) else None
         # WHI-583 — drop low-FRP detections inside oil basins (likely flaring)
         if is_likely_flaring(flat, flng, p):
             continue
+        after_flaring += 1
+        ag = in_agricultural_zone(flat, flng)
+        if ag:
+            agricultural += 1
         detections.append({
             "lat": flat,
             "lng": flng,
@@ -219,10 +247,14 @@ def extract_filtered_detections(nc_path: str) -> tuple[list[dict], str]:
             "frp_mw": p,
             "area_m2": a,
             "high_confidence": m in HIGH_CONFIDENCE_CODES,
-            # WHI-583 — mark agricultural-zone detections for downstream prioritization
-            "agricultural_zone": in_agricultural_zone(flat, flng),
+            "agricultural_zone": ag,
             "scan_start": scan_start,
         })
+
+    funnel["after_polygon"] = after_polygon
+    funnel["after_urban"] = after_urban
+    funnel["after_flaring"] = after_flaring
+    funnel["agricultural_count"] = agricultural
 
     # Step 4 — spatial dedup (greedy, high-confidence keeps cluster)
     detections.sort(key=lambda r: 0 if r["high_confidence"] else 1)
@@ -231,7 +263,8 @@ def extract_filtered_detections(nc_path: str) -> tuple[list[dict], str]:
         if any(haversine_km(d["lat"], d["lng"], k["lat"], k["lng"]) <= DEDUP_RADIUS_KM for k in kept):
             continue
         kept.append(d)
-    return kept, scan_start
+    funnel["after_dedup"] = len(kept)
+    return kept, scan_start, funnel
 
 
 # --- WHI-546 v2 — temporal persistence ---
@@ -275,6 +308,49 @@ def compute_persistence(rows: list[dict], supabase_url: str, supabase_key: str) 
     return promoted
 
 
+# --- WHI-587 follow-up — persist per-scan funnel stats for dashboard ---
+def save_run_stats(
+    supabase_url: str,
+    supabase_key: str,
+    scan_start: str,
+    s3_key: str,
+    funnel: dict,
+    inserted: int,
+    persistent: int,
+    timing: dict,
+) -> None:
+    """Insert one row into goes_sync_runs. Best-effort, never abort the pipeline."""
+    if not supabase_url or not supabase_key:
+        return
+    endpoint = f"{supabase_url.rstrip('/')}/rest/v1/goes_sync_runs"
+    headers = {
+        "apikey": supabase_key,
+        "Authorization": f"Bearer {supabase_key}",
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal",
+    }
+    payload = {
+        "scan_start": scan_start or None,
+        "s3_key": s3_key,
+        "fire_pixels_global": funnel.get("fire_pixels_global", 0),
+        "after_mask": funnel.get("after_mask", 0),
+        "after_polygon": funnel.get("after_polygon", 0),
+        "after_urban": funnel.get("after_urban", 0),
+        "after_flaring": funnel.get("after_flaring", 0),
+        "agricultural_count": funnel.get("agricultural_count", 0),
+        "after_dedup": funnel.get("after_dedup", 0),
+        "inserted": inserted,
+        "persistent": persistent,
+        "download_seconds": timing.get("download"),
+        "process_seconds": timing.get("process"),
+        "total_seconds": timing.get("total"),
+    }
+    try:
+        requests.post(endpoint, headers=headers, json=payload, timeout=10)
+    except Exception:
+        pass
+
+
 # --- Supabase write ---
 def upsert_to_supabase(rows: Iterable[dict]) -> tuple[int, str | None]:
     # CLARA uses NEXT_PUBLIC_SUPABASE_URL (Next.js convention for the URL).
@@ -315,7 +391,7 @@ def run_pipeline() -> dict:
     t_download = time.time() - t_d0
 
     t_p0 = time.time()
-    detections, scan_start = extract_filtered_detections(local_path)
+    detections, scan_start, funnel = extract_filtered_detections(local_path)
     t_process = time.time() - t_p0
 
     # WHI-546 v2 — compute seen_in_scans before insert.
@@ -335,6 +411,24 @@ def run_pipeline() -> dict:
     except OSError:
         pass
 
+    timing = {
+        "download": round(t_download, 2),
+        "process": round(t_process, 2),
+        "total": round(time.time() - t0, 2),
+    }
+
+    # WHI-587 follow-up — persist per-scan funnel for dashboard
+    save_run_stats(
+        supabase_url,
+        supabase_key,
+        scan_start,
+        s3_key,
+        funnel,
+        inserted,
+        promoted,
+        timing,
+    )
+
     return {
         "ok": write_err is None,
         "error": write_err,
@@ -343,11 +437,8 @@ def run_pipeline() -> dict:
         "detections_kept": len(detections),
         "inserted": inserted,
         "persistent": promoted,
-        "timing_seconds": {
-            "download": round(t_download, 2),
-            "process": round(t_process, 2),
-            "total": round(time.time() - t0, 2),
-        },
+        "funnel": funnel,
+        "timing_seconds": timing,
     }
 
 
