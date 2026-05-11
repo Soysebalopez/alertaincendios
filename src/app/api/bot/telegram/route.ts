@@ -8,7 +8,7 @@ import { haversineKm } from "@/lib/geo";
 /**
  * POST /api/bot/telegram
  *
- * Telegram webhook for @AlertaIncendiosBot.
+ * Telegram webhook for @AlertasClaraBot.
  * Commands: /start, /ciudad <name>, /estado, /cancelar
  * Also accepts shared location (GPS pin).
  */

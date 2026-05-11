@@ -11,7 +11,7 @@ import {
 } from "@phosphor-icons/react/dist/ssr";
 import { StatusBeacon } from "./status-beacon";
 
-const TELEGRAM_BOT_URL = "https://t.me/AlertaIncendiosBot";
+const TELEGRAM_BOT_URL = "https://t.me/AlertasClaraBot";
 
 const NAV_LINKS = [
   { href: "/", label: "Inicio" },

@@ -17,7 +17,7 @@ import { Beacon, Pill, DataSourceLogo } from "@/components/clara-ui";
 
 export const revalidate = 900; // 15 min — matches FIRMS sync cadence
 
-const TELEGRAM_BOT_URL = "https://t.me/AlertaIncendiosBot";
+const TELEGRAM_BOT_URL = "https://t.me/AlertasClaraBot";
 
 async function getFireCounts(): Promise<{
   wild: number;
@@ -704,11 +704,11 @@ export default async function Home() {
               boxShadow: "0 20px 40px -16px var(--accent)",
             }}
           >
-            <TelegramLogo size={18} weight="fill" /> Abrir @AlertaIncendiosBot{" "}
+            <TelegramLogo size={18} weight="fill" /> Abrir @AlertasClaraBot{" "}
             <ArrowRight size={16} />
           </a>
           <div className="mt-5 font-mono text-[10px] text-muted tracking-[0.08em]">
-            t.me/AlertaIncendiosBot
+            t.me/AlertasClaraBot
           </div>
         </div>
       </section>
