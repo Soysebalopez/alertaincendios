@@ -33,6 +33,9 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# Local secret files for scripts (sync-fires.env, backfill.env, etc.)
+scripts/*.env
+!scripts/*.env.example
 
 # vercel
 .vercel

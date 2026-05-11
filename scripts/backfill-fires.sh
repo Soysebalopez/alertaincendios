@@ -2,13 +2,27 @@
 # Backfill fires_daily_history from FIRMS archive
 # Usage: ./scripts/backfill-fires.sh [days_back]
 # Default: 365 days back
+#
+# Setup: copy scripts/backfill.env.example to scripts/backfill.env,
+# fill in MAP_KEY (NASA FIRMS) and SUPABASE_TOKEN (Personal Access Token
+# from Supabase dashboard), and chmod 600. The .env file is .gitignored.
+
+set -e
 
 export LC_NUMERIC=C  # Force dot as decimal separator
 
-MAP_KEY="56276c396c1241ed29f501e8dc0f2c2d"
-BBOX="-73.6,-55.1,-53.6,-21.8"
-SUPABASE_TOKEN="sbp_c6c178e838144b3ca30834ebf49ac47306d8a7f3"
-SUPABASE_URL="https://api.supabase.com/v1/projects/qmzuwnilehldvobjsbcs/database/query"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if [ -f "${SCRIPT_DIR}/backfill.env" ]; then
+  # shellcheck disable=SC1091
+  source "${SCRIPT_DIR}/backfill.env"
+fi
+
+: "${MAP_KEY:?MAP_KEY is not set — get one at https://firms.modaps.eosdis.nasa.gov/api/area/}"
+: "${SUPABASE_TOKEN:?SUPABASE_TOKEN is not set — Supabase dashboard → Account → Access Tokens}"
+
+BBOX="${BBOX:--73.6,-55.1,-53.6,-21.8}"
+SUPABASE_URL="${SUPABASE_URL:-https://api.supabase.com/v1/projects/qmzuwnilehldvobjsbcs/database/query}"
 DAYS_BACK=${1:-365}
 CHUNK=5
 
