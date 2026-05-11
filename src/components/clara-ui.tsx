@@ -61,7 +61,7 @@ export function Beacon({ color = "var(--accent)" }: { color?: string }) {
 }
 
 /* ─── Data source logos — abstract SVG marks, not official brand logos ─── */
-type LogoName = "nasa" | "esa" | "sentinel" | "openmeteo" | "telegram";
+type LogoName = "nasa" | "noaa" | "esa" | "sentinel" | "openmeteo" | "telegram";
 
 export function DataSourceLogo({
   name,
@@ -165,6 +165,51 @@ export function DataSourceLogo({
             stroke={color}
             strokeWidth="1.1"
             strokeLinejoin="round"
+          />
+        </svg>
+      );
+    case "noaa":
+      // Geostationary satellite scanning Earth horizon (GOES-19).
+      return (
+        <svg {...common}>
+          <path
+            d="M2 20 Q12 14 22 20"
+            stroke={color}
+            strokeWidth="1.3"
+            fill="none"
+            strokeLinecap="round"
+          />
+          <rect
+            x="10"
+            y="5"
+            width="4"
+            height="3"
+            rx="0.4"
+            fill={color}
+            opacity="0.3"
+            stroke={color}
+            strokeWidth="1.1"
+          />
+          <line x1="6" y1="6.5" x2="10" y2="6.5" stroke={color} strokeWidth="1" />
+          <line x1="14" y1="6.5" x2="18" y2="6.5" stroke={color} strokeWidth="1" />
+          <line x1="12" y1="8.2" x2="12" y2="16.5" stroke={color} strokeWidth="1.1" />
+          <line
+            x1="11"
+            y1="8.5"
+            x2="6.5"
+            y2="18.5"
+            stroke={color}
+            strokeWidth="0.8"
+            opacity="0.5"
+          />
+          <line
+            x1="13"
+            y1="8.5"
+            x2="17.5"
+            y2="18.5"
+            stroke={color}
+            strokeWidth="0.8"
+            opacity="0.5"
           />
         </svg>
       );

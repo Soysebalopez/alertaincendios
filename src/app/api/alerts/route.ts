@@ -44,6 +44,7 @@ export async function GET(request: Request) {
     }
 
     let alertsSent = 0;
+    let confirmations = 0;
 
     for (const fire of fires) {
       const fireKey = buildFireKey(fire);
@@ -70,11 +71,25 @@ export async function GET(request: Request) {
         const level = classifyAlert(distKm, upwind.isUpwind);
         if (level === "none") continue;
 
-        // Send alert
-        const message = await formatAlert(fire, sub, distKm, eta, level);
+        // WHI-547 — does this FIRMS fire confirm a recent GOES preliminary
+        // alert we already sent to this subscriber?
+        const match = await findPendingPreliminary(db, sub.chat_id, fire);
+
+        const message = match
+          ? await formatConfirmedFromPreliminary(fire, sub, distKm, eta, level, match.preliminary_sent_at)
+          : await formatAlert(fire, sub, distKm, eta, level);
+
         await sendMessage(sub.chat_id, message);
 
-        // Record to avoid duplicate alerts
+        if (match) {
+          await db
+            .from("goes_alerted")
+            .update({ confirmed_sent_at: new Date().toISOString(), firms_fire_key: fireKey })
+            .eq("id", match.id);
+          confirmations++;
+        }
+
+        // Record to avoid duplicate alerts on the FIRMS side too
         await db.from("ai_alerted_fires").insert({
           fire_key: fireKey,
           chat_id: sub.chat_id,
@@ -89,6 +104,7 @@ export async function GET(request: Request) {
       processed: fires.length,
       subscribers: subscribers.length,
       alerts: alertsSent,
+      confirmations,
     });
   } catch (error) {
     console.error("Alerts cron error:", error);
@@ -238,4 +254,79 @@ async function interpretFire(
   } catch {
     return "";
   }
+}
+
+// WHI-547 — confirmation matching: did this FIRMS fire validate a recent
+// preliminary GOES alert we already sent to the same subscriber?
+type PendingPreliminary = {
+  id: number;
+  preliminary_sent_at: string;
+};
+
+async function findPendingPreliminary(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any,
+  chatId: number,
+  fire: FirePoint
+): Promise<PendingPreliminary | null> {
+  const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+  const { data: rows } = await db
+    .from("goes_alerted")
+    .select(
+      "id, preliminary_sent_at, goes_preliminary!inner(lat, lng)"
+    )
+    .eq("chat_id", chatId)
+    .is("confirmed_sent_at", null)
+    .gte("preliminary_sent_at", twoHoursAgo);
+
+  if (!rows || rows.length === 0) return null;
+
+  for (const r of rows) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const gp = (r as any).goes_preliminary;
+    if (!gp) continue;
+    const d = haversineKm(gp.lat, gp.lng, fire.latitude, fire.longitude);
+    if (d <= 5) return { id: r.id, preliminary_sent_at: r.preliminary_sent_at };
+  }
+  return null;
+}
+
+async function formatConfirmedFromPreliminary(
+  fire: FirePoint,
+  sub: { lat: number; lng: number; city_name: string },
+  distKm: number,
+  etaMinutes: number,
+  level: "danger" | "warning" | "info",
+  preliminarySentAt: string
+): Promise<string> {
+  const dist = Math.round(distKm * 10) / 10;
+  const gMapsUrl = `https://www.google.com/maps?q=${fire.latitude},${fire.longitude}&z=12`;
+  const cardinal = degreesToCardinal(
+    bearingDegrees(sub.lat, sub.lng, fire.latitude, fire.longitude)
+  );
+  const ageMin = minutesSinceDetection(fire.acqDate, fire.acqTime);
+  const sinceMin = Math.max(0, Math.round((Date.now() - Date.parse(preliminarySentAt)) / 60000));
+  const windToward = etaMinutes > 0;
+
+  let msg = `✅ <b>CONFIRMADO: el foco es real</b>\n\n`;
+  msg += `📍 A <b>${dist} km</b> de ${sub.city_name}\n`;
+  msg += `🧭 Dirección: ${cardinal}\n`;
+  msg += `💨 Viento: ${windToward ? "<b>hacia tu posición</b>" : "fuera de tu posición"}`;
+  if (windToward) msg += ` (ETA humo ~${etaMinutes} min)`;
+  msg += `\n`;
+  msg += `${frpBars(fire.frp)} ${fire.frp} MW — ${frpLabel(fire.frp).split(" (")[0]}\n`;
+  msg += `🛰️ Validado por NASA FIRMS (VIIRS 375m)\n`;
+  msg += `⏱️ Alerta preliminar hace ${sinceMin} min, confirmada ahora\n`;
+  msg += `\n<i>El foco preliminar GOES que te avisamos antes acaba de ser ` +
+    `confirmado por la pasada de VIIRS. La detección era real, no falsa alarma. ` +
+    (level === "danger"
+      ? `Riesgo alto por proximidad y viento — tomá precauciones.`
+      : level === "warning"
+        ? `Mantenete atento al avance del foco.`
+        : `No hay riesgo inmediato pero seguimos monitoreando.`) +
+    `</i>\n`;
+  msg += `\n📌 <a href="${gMapsUrl}">Ver en Google Maps</a>`;
+  msg += `\n\n—\nCLARA · Cobertura GOES-19 + NASA FIRMS`;
+
+  return msg;
 }
