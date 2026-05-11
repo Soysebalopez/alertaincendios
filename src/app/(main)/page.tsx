@@ -19,36 +19,60 @@ export const revalidate = 900; // 15 min — matches FIRMS sync cadence
 
 const TELEGRAM_BOT_URL = "https://t.me/AlertaIncendiosBot";
 
-async function getFireCounts(): Promise<{ wild: number; industrial: number; total: number }> {
+async function getFireCounts(): Promise<{
+  wild: number;
+  industrial: number;
+  total: number;
+  preliminary: number;
+}> {
   try {
     const { classifyFireType } = await import("@/lib/fire-classification");
     const { createClient } = await import("@supabase/supabase-js");
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!url || !key) return { wild: 0, industrial: 0, total: 0 };
+    if (!url || !key) return { wild: 0, industrial: 0, total: 0, preliminary: 0 };
     const sb = createClient(url, key);
-    const { data } = await sb
-      .from("fires_cache")
-      .select("fires")
-      .eq("id", 1)
-      .single();
-    if (!data?.fires) return { wild: 0, industrial: 0, total: 0 };
-    const fires = data.fires as { type?: number; latitude: number; longitude: number; frp: number }[];
-    const classified = fires.map((f) => classifyFireType(f.type ?? 0, f.latitude, f.longitude, f.frp));
+
+    const [firesRes, prelimRes] = await Promise.all([
+      sb.from("fires_cache").select("fires").eq("id", 1).single(),
+      sb
+        .from("goes_preliminary")
+        .select("id", { count: "exact", head: true })
+        .eq("high_confidence", true)
+        .gte("detected_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
+    ]);
+
+    const fires = (firesRes.data?.fires ?? []) as {
+      type?: number;
+      latitude: number;
+      longitude: number;
+      frp: number;
+    }[];
+    const classified = fires.map((f) =>
+      classifyFireType(f.type ?? 0, f.latitude, f.longitude, f.frp)
+    );
     const wild = classified.filter((t) => t === 0 || t === 1).length;
-    return { wild, industrial: fires.length - wild, total: fires.length };
+    const preliminary = prelimRes.count ?? 0;
+    return { wild, industrial: fires.length - wild, total: fires.length, preliminary };
   } catch {
-    return { wild: 0, industrial: 0, total: 0 };
+    return { wild: 0, industrial: 0, total: 0, preliminary: 0 };
   }
 }
 
 const DATA_SOURCES = [
   {
     name: "NASA FIRMS",
-    sub: "VIIRS · Focos de calor 375m",
+    sub: "VIIRS · Focos confirmados 375m",
     org: "NASA",
     color: "#4b8bd4",
     icon: "nasa",
+  },
+  {
+    name: "NOAA GOES-19",
+    sub: "ABI-L2-FDCF · Detección preliminar cada 10 min",
+    org: "NOAA",
+    color: "#3a9bdc",
+    icon: "noaa",
   },
   {
     name: "Copernicus CAMS",
@@ -91,7 +115,7 @@ const STEPS = [
     n: "02",
     icon: <GlobeHemisphereWest size={16} weight="duotone" />,
     title: "Escaneamos con satélites",
-    body: "Cada 15 minutos consultamos NASA FIRMS. VIIRS detecta anomalías térmicas con resolución de 375 metros.",
+    body: "GOES-19 (NOAA) escanea Argentina cada 10 minutos para detección preliminar. NASA FIRMS confirma cada 15 minutos con VIIRS a 375 metros.",
   },
   {
     n: "03",
@@ -108,7 +132,7 @@ const STEPS = [
 ] as const;
 
 export default async function Home() {
-  const { wild: fireCount, industrial: industrialCount } = await getFireCounts();
+  const { wild: fireCount, industrial: industrialCount, preliminary: preliminaryCount } = await getFireCounts();
   const timestamp = new Date().toLocaleString("es-AR", {
     timeZone: "America/Argentina/Buenos_Aires",
     day: "2-digit",
@@ -126,7 +150,11 @@ export default async function Home() {
       sub: industrialCount > 0 ? `+ ${industrialCount} industrial${industrialCount === 1 ? "" : "es"}` : "VIIRS 375m",
       tone: "accent" as const,
     },
-    { label: "Cadencia", value: "15 min", sub: "actualización automática" },
+    {
+      label: "Preliminares 24h",
+      value: preliminaryCount > 0 ? preliminaryCount.toLocaleString("es-AR") : "—",
+      sub: preliminaryCount > 0 ? "GOES-19 · sin confirmar" : "GOES-19 · 10 min",
+    },
   ];
 
   return (
@@ -243,7 +271,8 @@ export default async function Home() {
                 }}
               >
                 Detectamos focos de calor en tiempo real en toda Argentina con
-                satélites de la NASA. Si hay uno cerca tuyo y el viento empuja
+                satélites de NASA (FIRMS) y NOAA (GOES-19). Si hay uno cerca
+                tuyo y el viento empuja
                 el humo hacia tu zona, recibís una alerta por Telegram con
                 distancia, dirección y ETA.
               </p>
