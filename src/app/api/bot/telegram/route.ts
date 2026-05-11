@@ -99,13 +99,18 @@ async function handleStart(chatId: number) {
   await sendMessage(
     chatId,
     "🔥 <b>CLARA — Alerta de Incendios</b>\n\n" +
-      "Detectamos focos de calor en toda Argentina con satélites de la NASA y " +
-      "te alertamos por Telegram. También avisamos cuando hay tormenta eléctrica " +
-      "seca cerca tuyo.\n\n" +
-      "<b>Suscribite:</b>\n" +
+      "Detectamos focos de calor en toda Argentina con satélites de NASA " +
+      "(FIRMS) y NOAA (GOES-19) y te alertamos por Telegram. También avisamos " +
+      "cuando hay tormenta eléctrica seca cerca tuyo.\n\n" +
+      "<b>Para empezar:</b>\n" +
       "📍 Enviá tu ubicación (clip 📎 → Ubicación)\n" +
       "🏙 O escribí /ciudad Bariloche\n\n" +
-      "Usá /help para ver los comandos o /about para conocer el proyecto." +
+      "<b>Comandos disponibles:</b>\n" +
+      "📊 /estado — focos activos en 100 km a tu alrededor\n" +
+      "⚡ /rayos — activar/desactivar alertas de tormenta seca\n" +
+      "ℹ️ /about — sobre el proyecto\n" +
+      "❓ /help — esta lista de comandos\n" +
+      "❌ /cancelar — eliminar tu suscripción" +
       CLARA_FOOTER,
     {
       reply_markup: {
