@@ -155,6 +155,7 @@ body {
   .clara-hide-mobile { display: none !important; }
   .clara-section-padded { padding: 48px 20px !important; }
   .clara-aire-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .clara-source-grid { grid-template-columns: repeat(2, 1fr) !important; }
 }
 
 /* Below 820px — nav collapses */

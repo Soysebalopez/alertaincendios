@@ -517,7 +517,9 @@ export default async function Home() {
           <div
             className="clara-source-grid grid"
             style={{
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              // 3 columnas fijas en desktop — con 6 sources, quedan 2 filas perfectas.
+              // Mobile bajará a 1 fr via la media query en globals.css.
+              gridTemplateColumns: "repeat(3, 1fr)",
               gap: 12,
             }}
           >
