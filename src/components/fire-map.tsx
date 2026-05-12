@@ -43,10 +43,36 @@ const INTENSITY_FILTERS: {
   label: string;
   color: string;
   range: string;
+  /** Color con el que se pinta el marker en el mapa para este bucket
+   *  (el lado más visible de la escala FRP) — usado por la leyenda. */
+  markerColor: string;
+  /** Una línea en lenguaje humano: qué significa ver este color en el mapa. */
+  meaning: string;
 }[] = [
-  { key: "high", label: "Alta intensidad", color: "#dc2626", range: "≥ 20 MW" },
-  { key: "moderate", label: "Moderada", color: "#ef4444", range: "5–20 MW" },
-  { key: "low", label: "Baja", color: "#f97316", range: "< 5 MW" },
+  {
+    key: "high",
+    label: "Alta intensidad",
+    color: "#dc2626",
+    range: "≥ 20 MW",
+    markerColor: "#991b1b",
+    meaning: "incendio forestal significativo",
+  },
+  {
+    key: "moderate",
+    label: "Moderada",
+    color: "#ef4444",
+    range: "5–20 MW",
+    markerColor: "#ef4444",
+    meaning: "incendio activo en desarrollo",
+  },
+  {
+    key: "low",
+    label: "Baja",
+    color: "#f97316",
+    range: "< 5 MW",
+    markerColor: "#facc15",
+    meaning: "probable quema agrícola o foco menor",
+  },
 ];
 
 function frpBucket(frp: number): Intensity {
@@ -345,38 +371,64 @@ export function FireMap() {
 
           {/* Fila 2: intensidad (solo si hay wildfires) */}
           {(counts.byType[0] || counts.byType[1] || 0) > 0 && (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-mono text-[9px] text-muted tracking-[0.15em] uppercase pr-1 select-none">
-                Intensidad
-              </span>
-              {INTENSITY_FILTERS.map((f) => {
-                const count = counts.byIntensity[f.key] || 0;
-                if (count === 0) return null;
-                const isActive = activeIntensities.has(f.key);
-                return (
-                  <button
-                    key={f.key}
-                    onClick={() => toggleIntensity(f.key)}
-                    title={`${f.label} · ${f.range}`}
-                    className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-mono transition-all duration-200 border select-none cursor-pointer"
-                    style={{
-                      background: isActive ? `${f.color}18` : "#0a0a08cc",
-                      borderColor: isActive ? `${f.color}40` : "#25252080",
-                      color: isActive ? f.color : "#8a8a7e60",
-                      opacity: isActive ? 1 : 0.6,
-                    }}
-                  >
-                    <span>{f.label}</span>
-                    <span
-                      className="font-semibold tabular-nums"
-                      style={{ color: isActive ? f.color : "#8a8a7e40" }}
+            <>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-mono text-[9px] text-muted tracking-[0.15em] uppercase pr-1 select-none">
+                  Intensidad
+                </span>
+                {INTENSITY_FILTERS.map((f) => {
+                  const count = counts.byIntensity[f.key] || 0;
+                  if (count === 0) return null;
+                  const isActive = activeIntensities.has(f.key);
+                  return (
+                    <button
+                      key={f.key}
+                      onClick={() => toggleIntensity(f.key)}
+                      title={`${f.label} · ${f.range}`}
+                      className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-mono transition-all duration-200 border select-none cursor-pointer"
+                      style={{
+                        background: isActive ? `${f.color}18` : "#0a0a08cc",
+                        borderColor: isActive ? `${f.color}40` : "#25252080",
+                        color: isActive ? f.color : "#8a8a7e60",
+                        opacity: isActive ? 1 : 0.6,
+                      }}
                     >
-                      {count}
+                      <span>{f.label}</span>
+                      <span
+                        className="font-semibold tabular-nums"
+                        style={{ color: isActive ? f.color : "#8a8a7e40" }}
+                      >
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              {/* Leyenda: traduce el color de cada pelotita a lenguaje humano */}
+              <div
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg px-3 py-2 font-mono text-[10px] leading-tight select-none"
+                style={{
+                  background: "#0a0a08cc",
+                  border: "1px solid #25252080",
+                  color: "#8a8a7eb0",
+                  backdropFilter: "blur(4px)",
+                  WebkitBackdropFilter: "blur(4px)",
+                }}
+              >
+                {INTENSITY_FILTERS.slice()
+                  .reverse() /* leyenda va de menor a mayor — lo opuesto al orden de filtros */
+                  .map((f) => (
+                    <span key={f.key} className="inline-flex items-center gap-1.5">
+                      <span
+                        className="h-2.5 w-2.5 rounded-full shrink-0"
+                        style={{ background: f.markerColor }}
+                      />
+                      <span style={{ color: "#d4d4cc" }}>{f.label}:</span>{" "}
+                      {f.meaning}
                     </span>
-                  </button>
-                );
-              })}
-            </div>
+                  ))}
+              </div>
+            </>
           )}
         </div>
       )}

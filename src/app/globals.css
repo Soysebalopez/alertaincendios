@@ -146,6 +146,7 @@ body {
   .clara-hero-left { padding: 56px 20px 48px !important; }
   .clara-two-col { grid-template-columns: 1fr !important; gap: 24px !important; }
   .clara-steps { grid-template-columns: 1fr !important; }
+  .clara-interp-grid { grid-template-columns: 1fr !important; }
   .clara-metrics { grid-template-columns: repeat(2, 1fr) !important; }
   .clara-metrics > div { padding: 22px 20px !important; }
   .clara-metrics > div:nth-child(2) { border-right: none !important; }
