@@ -23,12 +23,9 @@
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
-import { flagFlashAvailable } from "./hero-refresh-flash";
+import { flagFlashAvailable, REFRESH_FLAG_KEY } from "@/lib/refresh-flag";
 
 const HIGH_FRP_MW = 20;
-/** Clave compartida con HeroRefreshFlash — usada para anunciar el refresh
- *  al otro lado del page reload. */
-export const REFRESH_FLAG_KEY = "clara-just-refreshed-at";
 
 interface FirePoint {
   type?: number;
