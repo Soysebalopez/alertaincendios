@@ -8,12 +8,12 @@ export const metadata: Metadata = {
   description:
     "Mapa interactivo de Argentina con focos de calor, calidad del aire y datos de viento en tiempo real.",
   openGraph: {
-    title: "Mapa — CLARA",
+    title: "Mapa — C.L.A.R.A.",
     description: "Mapa interactivo con focos de calor, calidad del aire y viento en tiempo real.",
   },
   twitter: {
     card: "summary",
-    title: "Mapa — CLARA",
+    title: "Mapa — C.L.A.R.A.",
     description: "Mapa interactivo de monitoreo ambiental para Argentina.",
   },
 };

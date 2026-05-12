@@ -2,7 +2,7 @@ export function WebsiteJsonLd() {
   const data = {
     "@context": "https://schema.org",
     "@type": "WebApplication",
-    name: "CLARA",
+    name: "C.L.A.R.A.",
     alternateName: "Central de Localizacion y Alerta de Riesgo Ambiental",
     description:
       "Sistema de monitoreo ambiental ciudadano para Argentina. Focos de calor, calidad del aire y alertas por Telegram.",
@@ -51,7 +51,7 @@ export function CityJsonLd({
     url,
     isPartOf: {
       "@type": "WebApplication",
-      name: "CLARA",
+      name: "C.L.A.R.A.",
     },
     about: {
       "@type": "Place",

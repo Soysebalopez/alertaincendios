@@ -215,7 +215,7 @@ async function formatAlert(
   }
 
   msg += `\n📌 <a href="${gMapsUrl}">Ver en Google Maps</a>`;
-  msg += `\n\n—\nCentral de Localizacion y Alerta de Riesgo Ambiental (CLARA)`;
+  msg += `\n\n—\nCentral de Localizacion y Alerta de Riesgo Ambiental (C.L.A.R.A.)`;
   msg += `\n<i>Datos: NASA FIRMS VIIRS · Open-Meteo</i>`;
 
   return msg;
@@ -265,7 +265,7 @@ async function interpretFire(
           {
             role: "system",
             content:
-              "Sos CLARA, un sistema de alerta de incendios. Interpreta este foco de calor en 2-3 oraciones breves para un ciudadano argentino. Considera la potencia (FRP), distancia, y si el viento lo afecta. Si el FRP es bajo (<5 MW) en zona petrolera de Neuquen/Mendoza, menciona que puede ser flaring. Si es alto, se directo sobre el riesgo. No uses markdown ni emojis. IMPORTANTE — cuando te refieras a vos misma: usa siempre 'CLARA' (o 'Central de Localizacion y Alerta de Riesgo Ambiental'). PROHIBIDO usar pronombres ('ella', 'el') o sinonimos ('el sistema', 'la plataforma', 'el servicio', 'la herramienta', 'el bot', 'la app'). Si la frase queda repetitiva, reescribila con sujeto elidido (ej: 'Detecta...' en vez de 'Ella detecta...').",
+              "Sos C.L.A.R.A., un sistema de alerta de incendios. Interpreta este foco de calor en 2-3 oraciones breves para un ciudadano argentino. Considera la potencia (FRP), distancia, y si el viento lo afecta. Si el FRP es bajo (<5 MW) en zona petrolera de Neuquen/Mendoza, menciona que puede ser flaring. Si es alto, se directo sobre el riesgo. No uses markdown ni emojis. IMPORTANTE — cuando te refieras a vos misma: usa siempre 'C.L.A.R.A.' (o 'Central de Localizacion y Alerta de Riesgo Ambiental'). PROHIBIDO usar pronombres ('ella', 'el') o sinonimos ('el sistema', 'la plataforma', 'el servicio', 'la herramienta', 'el bot', 'la app'). Si la frase queda repetitiva, reescribila con sujeto elidido (ej: 'Detecta...' en vez de 'Ella detecta...').",
           },
           {
             role: "user",
@@ -352,7 +352,7 @@ function formatFiremanAlert(
   msg += `🧭 Coords: <code>${fire.latitude.toFixed(4)}, ${fire.longitude.toFixed(4)}</code>\n`;
   msg += `📌 <a href="${gMapsUrl}">Maps</a>\n\n`;
   msg += `<i>Mensaje operativo — sin interpretación AI, datos crudos.</i>`;
-  msg += `\n—\nCLARA · Coordinación interna${cuartelName ? ` · ${cuartelName}` : ""}`;
+  msg += `\n—\nC.L.A.R.A. · Coordinación interna${cuartelName ? ` · ${cuartelName}` : ""}`;
   return msg;
 }
 
@@ -395,7 +395,7 @@ async function formatConfirmedFromPreliminary(
         : `No hay riesgo inmediato pero seguimos monitoreando.`) +
     `</i>\n`;
   msg += `\n📌 <a href="${gMapsUrl}">Ver en Google Maps</a>`;
-  msg += `\n\n—\nCLARA · Cobertura GOES-19 + NASA FIRMS`;
+  msg += `\n\n—\nC.L.A.R.A. · Cobertura GOES-19 + NASA FIRMS`;
 
   return msg;
 }

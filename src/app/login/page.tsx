@@ -42,7 +42,7 @@ export default async function LoginPage({
               margin: 0,
             }}
           >
-            CLARA — Dashboard interno
+            C.L.A.R.A. — Dashboard interno
           </h1>
           <p
             className="text-muted"

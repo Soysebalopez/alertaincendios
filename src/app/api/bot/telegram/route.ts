@@ -80,11 +80,11 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ ok: true });
 }
 
-const CLARA_FOOTER = "\n—\nCentral de Localizacion y Alerta de Riesgo Ambiental (CLARA)";
+const FOOTER = "\n—\nCentral de Localizacion y Alerta de Riesgo Ambiental (C.L.A.R.A.)";
 
 const ABOUT_TEXT =
-  "🔥 <b>CLARA — Alertas de incendios forestales gratis</b>\n\n" +
-  "CLARA es un proyecto independiente, gratuito, hecho en Argentina para que " +
+  "🔥 <b>C.L.A.R.A. — Alertas de incendios forestales gratis</b>\n\n" +
+  "C.L.A.R.A. es un proyecto independiente, gratuito, hecho en Argentina para que " +
   "los vecinos de zonas afectadas se enteren antes de los incendios y puedan " +
   "prevenirse.\n\n" +
   "Usa datos de NASA (FIRMS), NOAA y otros servicios públicos para detectar " +
@@ -95,24 +95,24 @@ const ABOUT_TEXT =
   "(@satellitesonfire), que demostró que se podía detectar incendios mejor " +
   "que la NASA desde Argentina. Si sos una empresa, gobierno, forestal o " +
   "aseguradora, te recomendamos satellitesonfire.com.\n\n" +
-  "CLARA es para vos, vecino de zona de riesgo. Gratis, siempre.\n\n" +
+  "C.L.A.R.A. es para vos, vecino de zona de riesgo. Gratis, siempre.\n\n" +
   "Hecho con cariño en Bahía Blanca por Whitebay." +
-  CLARA_FOOTER;
+  FOOTER;
 
 const HELP_TEXT =
-  "🔥 <b>CLARA — Comandos</b>\n\n" +
+  "🔥 <b>C.L.A.R.A. — Comandos</b>\n\n" +
   "📍 Compartí tu ubicación (clip 📎 → Ubicación)\n" +
   "🏙 /ciudad &lt;nombre&gt; — suscribirte por ciudad\n" +
   "📊 /estado — focos activos cerca tuyo\n" +
   "⚡ /rayos — activar/desactivar alerta de tormentas secas\n" +
   "ℹ️ /about — sobre el proyecto\n" +
   "❌ /cancelar — eliminar suscripción" +
-  CLARA_FOOTER;
+  FOOTER;
 
 async function handleStart(chatId: number) {
   await sendMessage(
     chatId,
-    "🔥 <b>CLARA — Alerta de Incendios</b>\n\n" +
+    "🔥 <b>C.L.A.R.A. — Alerta de Incendios</b>\n\n" +
       "Detectamos focos de calor en toda Argentina con satélites de NASA " +
       "(FIRMS) y NOAA (GOES-19) y te alertamos por Telegram. También avisamos " +
       "cuando hay tormenta eléctrica seca cerca tuyo.\n\n" +
@@ -125,7 +125,7 @@ async function handleStart(chatId: number) {
       "ℹ️ /about — sobre el proyecto\n" +
       "❓ /help — esta lista de comandos\n" +
       "❌ /cancelar — eliminar tu suscripción" +
-      CLARA_FOOTER,
+      FOOTER,
     {
       reply_markup: {
         keyboard: [[{ text: "📍 Compartir ubicacion", request_location: true }]],
@@ -157,7 +157,7 @@ async function handleRayosToggle(chatId: number) {
     await sendMessage(
       chatId,
       "⚡ Primero suscribite con /ciudad o compartiendo tu ubicación." +
-        CLARA_FOOTER
+        FOOTER
     );
     return;
   }
@@ -172,9 +172,9 @@ async function handleRayosToggle(chatId: number) {
     chatId,
     next
       ? "⚡ Alertas de tormenta seca <b>activadas</b>.\n\nVas a recibir un aviso cuando se detecte tormenta eléctrica con condiciones secas en tu zona." +
-          CLARA_FOOTER
+          FOOTER
       : "⚡ Alertas de tormenta seca <b>desactivadas</b>.\n\nSeguís recibiendo alertas de focos de calor. Usa /rayos otra vez para reactivar." +
-          CLARA_FOOTER
+          FOOTER
   );
 }
 
@@ -199,7 +199,7 @@ async function handleLocation(chatId: number, lat: number, lng: number) {
       "En temporada baja (otoño/invierno) puede no haber avisos por semanas. " +
       "En temporada alta (oct-mar) puede haber varios por día.\n\n" +
       "📊 Probá /estado para ver focos activos cerca tuyo ahora." +
-      CLARA_FOOTER
+      FOOTER
   );
 }
 
@@ -233,7 +233,7 @@ async function handleCiudad(chatId: number, query: string) {
       "En temporada baja (otoño/invierno) puede no haber avisos por semanas. " +
       "En temporada alta (oct-mar) puede haber varios por día.\n\n" +
       "📊 Probá /estado para ver focos activos cerca tuyo ahora." +
-      CLARA_FOOTER
+      FOOTER
   );
 }
 
@@ -249,8 +249,8 @@ async function handleEstado(chatId: number) {
   if (!sub) {
     await sendMessage(
       chatId,
-      "🔥 <b>CLARA</b>\n\nNo tenes suscripcion activa.\nUsa /ciudad o comparti tu ubicacion para suscribirte." +
-        CLARA_FOOTER
+      "🔥 <b>C.L.A.R.A.</b>\n\nNo tenes suscripcion activa.\nUsa /ciudad o comparti tu ubicacion para suscribirte." +
+        FOOTER
     );
     return;
   }
@@ -272,13 +272,13 @@ async function handleEstado(chatId: number) {
       : "🕐 Verificando actividad...";
     await sendMessage(
       chatId,
-      `🔥 <b>CLARA — Estado</b>\n\n` +
+      `🔥 <b>C.L.A.R.A. — Estado</b>\n\n` +
         `📍 <b>${sub.city_name}</b>\n\n` +
         "✅ No hay focos de calor en un radio de 100 km.\n\n" +
         `${lastCheckLine}\n` +
         "🛰️ GOES-19 escanea cada 10 min · NASA FIRMS cada 15 min\n\n" +
         "<i>Si llega a haber un foco, te aviso al toque.</i>" +
-        CLARA_FOOTER +
+        FOOTER +
         "\n<i>Datos: NASA FIRMS VIIRS · NOAA GOES-19 · Open-Meteo</i>"
     );
     return;
@@ -295,7 +295,7 @@ async function handleEstado(chatId: number) {
 
   const interpretation = await interpretFires(sub.city_name, fireData, nearby.length);
 
-  let msg = `🔥 <b>CLARA — Estado</b>\n\n`;
+  let msg = `🔥 <b>C.L.A.R.A. — Estado</b>\n\n`;
   msg += `📍 <b>${sub.city_name}</b> — ${nearby.length} foco(s) en 100 km\n\n`;
 
   if (interpretation) {
@@ -312,7 +312,7 @@ async function handleEstado(chatId: number) {
     msg += `... y ${nearby.length - 3} mas\n`;
   }
 
-  msg += CLARA_FOOTER;
+  msg += FOOTER;
   msg += "\n<i>Datos: NASA FIRMS VIIRS · Open-Meteo</i>";
   await sendMessage(chatId, msg);
 }
@@ -350,7 +350,7 @@ async function interpretFires(
           {
             role: "system",
             content:
-              "Sos CLARA, un sistema de alerta de incendios forestales. Interpreta los datos de focos de calor para un ciudadano argentino. Se breve (2-3 lineas max), claro, y usa un tono informativo pero no alarmista. Menciona si parece quema agricola, flaring industrial o incendio real segun la potencia (FRP). No uses markdown ni emojis. IMPORTANTE — cuando te refieras a vos misma: usa siempre 'CLARA' (o 'Central de Localizacion y Alerta de Riesgo Ambiental'). PROHIBIDO usar pronombres ('ella', 'el') o sinonimos ('el sistema', 'la plataforma', 'el servicio', 'la herramienta', 'el bot', 'la app'). Si la frase queda repetitiva, reescribila con sujeto elidido (ej: 'Detecta...' en vez de 'Ella detecta...').",
+              "Sos C.L.A.R.A., un sistema de alerta de incendios forestales. Interpreta los datos de focos de calor para un ciudadano argentino. Se breve (2-3 lineas max), claro, y usa un tono informativo pero no alarmista. Menciona si parece quema agricola, flaring industrial o incendio real segun la potencia (FRP). No uses markdown ni emojis. IMPORTANTE — cuando te refieras a vos misma: usa siempre 'C.L.A.R.A.' (o 'Central de Localizacion y Alerta de Riesgo Ambiental'). PROHIBIDO usar pronombres ('ella', 'el') o sinonimos ('el sistema', 'la plataforma', 'el servicio', 'la herramienta', 'el bot', 'la app'). Si la frase queda repetitiva, reescribila con sujeto elidido (ej: 'Detecta...' en vez de 'Ella detecta...').",
           },
           {
             role: "user",
@@ -377,10 +377,10 @@ async function handleCancelar(chatId: number) {
   await db.from("subscribers").delete().eq("chat_id", chatId);
   await sendMessage(
     chatId,
-    "🔥 <b>CLARA — Suscripcion cancelada</b>\n\n" +
+    "🔥 <b>C.L.A.R.A. — Suscripcion cancelada</b>\n\n" +
       "Tu suscripcion fue eliminada. Ya no recibiras alertas.\n\n" +
       "Para volver a suscribirte, envia tu ubicacion o usa /ciudad." +
-      CLARA_FOOTER
+      FOOTER
   );
 }
 
@@ -436,8 +436,8 @@ async function handleSoyBombero(chatId: number, code: string) {
       "🚒 <b>Bomberos voluntarios</b>\n\n" +
         "Si tu cuartel tiene un código de invitación, usalo así:\n" +
         "<code>/soybombero TU-CODIGO</code>\n\n" +
-        "Si todavía no tenés código y querés sumar a tu cuartel a CLARA, escribinos." +
-        CLARA_FOOTER
+        "Si todavía no tenés código y querés sumar a tu cuartel a C.L.A.R.A., escribinos." +
+        FOOTER
     );
     return;
   }
@@ -457,7 +457,7 @@ async function handleSoyBombero(chatId: number, code: string) {
       chatId,
       "🚒 Primero suscribite normalmente con /ciudad o compartiendo tu ubicación. " +
         "Después validás tu rol de bombero con /soybombero." +
-        CLARA_FOOTER
+        FOOTER
     );
     return;
   }
@@ -473,7 +473,7 @@ async function handleSoyBombero(chatId: number, code: string) {
     await sendMessage(
       chatId,
       "❌ Código inválido. Pedile a tu cuartel el código correcto." +
-        CLARA_FOOTER
+        FOOTER
     );
     return;
   }
@@ -482,7 +482,7 @@ async function handleSoyBombero(chatId: number, code: string) {
     await sendMessage(
       chatId,
       "❌ Este código ya alcanzó su límite de usos. Pedile uno nuevo a tu cuartel." +
-        CLARA_FOOTER
+        FOOTER
     );
     return;
   }
@@ -505,6 +505,6 @@ async function handleSoyBombero(chatId: number, code: string) {
       "foco confirmado en tu zona. Más conciso, con info para coordinar respuesta.\n\n" +
       "Si querés volver a alertas civiles, escribí <code>/cancelar</code> y " +
       "suscribite de nuevo." +
-      CLARA_FOOTER
+      FOOTER
   );
 }
