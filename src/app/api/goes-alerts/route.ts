@@ -149,7 +149,7 @@ function formatFiremanPreliminary(
     `🧭 Coords: <code>${det.lat.toFixed(4)}, ${det.lng.toFixed(4)}</code>\n` +
     `📌 <a href="${gMaps}">Maps</a>\n\n` +
     `<i>Preliminar — NASA FIRMS confirma en 1-3 h. Validá visualmente antes de despachar.</i>` +
-    `\n—\nCLARA · Coordinación interna${cuartelName ? ` · ${cuartelName}` : ""}`
+    `\n—\nC.L.A.R.A. · Coordinación interna${cuartelName ? ` · ${cuartelName}` : ""}`
   );
 }
 
@@ -181,7 +181,7 @@ function formatPreliminary(
     `pero menos precisa. NASA FIRMS suele confirmar en 1-3 horas. ` +
     `Si vas a tomar acción, validá visualmente o esperá la confirmación.</i>\n\n` +
     `📌 <a href="${gMaps}">Ver en Google Maps</a>\n\n` +
-    `—\nCentral de Localizacion y Alerta de Riesgo Ambiental (CLARA)\n` +
+    `—\nCentral de Localizacion y Alerta de Riesgo Ambiental (C.L.A.R.A.)\n` +
     `<i>Datos: NOAA GOES-19 ABI-L2-FDCF</i>`
   );
 }

@@ -14,7 +14,7 @@ import { Pill } from "@/components/clara-ui";
 export const metadata: Metadata = {
   title: "Cómo funciona",
   description:
-    "Explicación simple de cómo CLARA detecta incendios forestales en Argentina y te avisa por Telegram.",
+    "Explicación simple de cómo C.L.A.R.A. detecta incendios forestales en Argentina y te avisa por Telegram.",
 };
 
 const TELEGRAM_BOT_URL = "https://t.me/AlertasClaraBot";
@@ -25,7 +25,7 @@ const TELEGRAM_BOT_URL = "https://t.me/AlertasClaraBot";
 const FAQS: { q: string; body: React.ReactNode; icon: React.ReactNode }[] = [
   {
     icon: <GlobeHemisphereWest size={18} weight="duotone" />,
-    q: "¿Qué es CLARA?",
+    q: "¿Qué es C.L.A.R.A.?",
     body: (
       <>
         <p>
@@ -126,7 +126,7 @@ const FAQS: { q: string; body: React.ReactNode; icon: React.ReactNode }[] = [
     body: (
       <>
         <p>
-          Sí. CLARA es un proyecto independiente, sin publicidad ni venta de
+          Sí. C.L.A.R.A. es un proyecto independiente, sin publicidad ni venta de
           datos. La suscripción y las alertas son gratuitas para cualquier
           vecino que las necesite.
         </p>
@@ -217,14 +217,14 @@ export default function ComoFuncionaPage() {
               margin: "20px 0 18px",
             }}
           >
-            CLARA:{" "}
+            C.L.A.R.A.:{" "}
             <span className="text-accent">cómo funciona</span>.
           </h1>
           <p
             className="text-muted"
             style={{ fontSize: 18, lineHeight: 1.55, maxWidth: "64ch" }}
           >
-            Una explicación clara de qué hace CLARA, cómo detecta los focos
+            Una explicación clara de qué hace C.L.A.R.A., cómo detecta los focos
             y cuándo recibís una alerta.
           </p>
         </div>

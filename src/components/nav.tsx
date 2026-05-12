@@ -67,15 +67,18 @@ export function Nav() {
           >
             <Flame size={14} weight="fill" className="text-white" />
           </div>
-          <div className="leading-none">
+          <div className="clara-brand-text leading-tight">
             <div
-              className="text-[16px] font-bold tracking-tight"
-              style={{ letterSpacing: "-0.01em" }}
+              className="clara-brand-name text-[10px] md:text-[11px] font-bold uppercase"
+              style={{ letterSpacing: "0.02em", lineHeight: 1.15 }}
             >
-              CLARA
+              Central de Localización y Alerta de Riesgo Ambiental
             </div>
-            <div className="font-mono text-[8px] text-muted tracking-[0.08em] mt-0.5">
-              CENTRAL DE LOCALIZACIÓN Y ALERTA DE RIESGO AMBIENTAL
+            <div
+              className="font-mono text-[10px] text-accent tracking-[0.12em] mt-0.5"
+              style={{ fontWeight: 600 }}
+            >
+              (C.L.A.R.A.)
             </div>
           </div>
         </Link>

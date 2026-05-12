@@ -53,7 +53,7 @@ export function Footer() {
                 <Flame size={14} weight="fill" className="text-white" />
               </div>
               <div>
-                <div className="font-bold text-[15px]">CLARA</div>
+                <div className="font-bold text-[15px]">C.L.A.R.A.</div>
                 <div className="font-mono text-[9px] text-muted tracking-[0.1em]">
                   CENTRAL DE LOCALIZACIÓN Y ALERTA DE RIESGO AMBIENTAL
                 </div>

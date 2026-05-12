@@ -1,26 +1,20 @@
 /**
- * Coordinación entre HeroAutoRefresh y HeroRefreshFlash.
+ * Coordinación entre HeroAutoRefresh y HeroRefreshFlash. Vive en un módulo
+ * neutral para romper el ciclo de imports que existió hasta PR #22.
  *
- * Antes esto vivía split entre los dos archivos de componente y se importaba
- * cruzado, generando un ciclo TS → Turbopack lo resolvía dejando uno de los
- * imports temporalmente undefined, lo cual hacía que el primer mount de
- * HeroAutoRefresh tirara `ReferenceError: Cannot access X before
- * initialization` y React dejara el componente sin hidratar — silenciando
- * la subscripción Realtime. Mover ambos símbolos a un módulo neutral rompe
- * el ciclo.
- *
- * Hay dos canales de coordinación entre los componentes:
+ * Dos canales:
  *
  *   1. sessionStorage[REFRESH_FLAG_KEY] = Date.now()
  *      Sobrevive el router.refresh() para que la pill sepa que el SSR
  *      fue forzado por un evento Realtime (y no por una navegación
  *      manual del usuario).
  *
- *   2. flagFlashAvailable() — wake-up en memoria
+ *   2. subscribeFlash(cb) — wake-up en memoria
  *      router.refresh() es soft (no remonta los client components), así
- *      que sin una notificación explícita useSyncExternalStore se queda
- *      con el snapshot cacheado. flagFlashAvailable() bumpea la version
- *      y dispara los listeners.
+ *      que sin una notificación explícita la pill no se entera de un
+ *      nuevo flash. HeroAutoRefresh llama a flagFlashAvailable() antes
+ *      de cada refresh; los listeners ejecutan y vuelven a leer
+ *      sessionStorage.
  */
 
 /** Clave de sessionStorage que HeroAutoRefresh escribe antes de
@@ -32,24 +26,12 @@ export const REFRESH_FLAG_KEY = "clara-just-refreshed-at";
  *  volver a un tab inactivo días después. */
 export const FLAG_MAX_AGE_MS = 30_000;
 
-// ─── Store en memoria compartido ───
-let version = 0;
-let cached: boolean | null = null;
 const listeners = new Set<() => void>();
 
-/** Llamado por HeroAutoRefresh justo antes de router.refresh() para que
- *  HeroRefreshFlash releea sessionStorage y dispare la animación. */
+/** Llamado por HeroAutoRefresh justo antes de router.refresh() para
+ *  despertar a HeroRefreshFlash. */
 export function flagFlashAvailable(): void {
-  version++;
-  cached = null;
   listeners.forEach((cb) => cb());
-}
-
-/** Versión actual del store — la usa HeroRefreshFlash como key para
- *  forzar unmount+remount entre flashes consecutivos (re-arranca la
- *  animación CSS desde 0). */
-export function getFlashVersion(): number {
-  return version;
 }
 
 export function subscribeFlash(cb: () => void): () => void {
@@ -58,23 +40,3 @@ export function subscribeFlash(cb: () => void): () => void {
     listeners.delete(cb);
   };
 }
-
-export function getFlashSnapshot(): boolean {
-  if (cached !== null) return cached;
-  try {
-    const raw = sessionStorage.getItem(REFRESH_FLAG_KEY);
-    if (!raw) {
-      cached = false;
-      return false;
-    }
-    const at = Number(raw);
-    sessionStorage.removeItem(REFRESH_FLAG_KEY);
-    cached = Number.isFinite(at) && Date.now() - at <= FLAG_MAX_AGE_MS;
-    return cached;
-  } catch {
-    cached = false;
-    return false;
-  }
-}
-
-export const getFlashServerSnapshot = (): boolean => false;

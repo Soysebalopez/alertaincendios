@@ -43,7 +43,7 @@ export async function generateMetadata({
 }: PageProps): Promise<Metadata> {
   const { province, city } = await params;
   const match = findCity(province, city);
-  if (!match) return { title: "Ciudad no encontrada — CLARA" };
+  if (!match) return { title: "Ciudad no encontrada — C.L.A.R.A." };
 
   const title = `${match.city.name}, ${match.province.name} — Calidad del Aire`;
   const description = `Monitoreo ambiental ciudadano para ${match.city.name}. Calidad del aire, viento y resumen en lenguaje simple.`;
@@ -52,12 +52,12 @@ export async function generateMetadata({
     title,
     description,
     openGraph: {
-      title: `${match.city.name} — Calidad del Aire — CLARA`,
+      title: `${match.city.name} — Calidad del Aire — C.L.A.R.A.`,
       description,
     },
     twitter: {
       card: "summary",
-      title: `${match.city.name} — CLARA`,
+      title: `${match.city.name} — C.L.A.R.A.`,
       description,
     },
   };

@@ -26,8 +26,8 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "CLARA — Central de Localizacion y Alerta de Riesgo Ambiental",
-    template: "%s — CLARA",
+    default: "C.L.A.R.A. — Central de Localizacion y Alerta de Riesgo Ambiental",
+    template: "%s — C.L.A.R.A.",
   },
   description:
     "Sistema de alerta temprana de incendios forestales para Argentina. Deteccion via NASA FIRMS VIIRS. Alertas por Telegram con modelo de dispersion de humo.",
@@ -42,15 +42,15 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     locale: "es_AR",
-    siteName: "CLARA",
-    title: "CLARA — Alerta de Incendios Argentina",
+    siteName: "C.L.A.R.A.",
+    title: "C.L.A.R.A. — Alerta de Incendios Argentina",
     description:
       "Monitoreo ambiental ciudadano. Focos de calor, calidad del aire y alertas por Telegram para toda Argentina.",
     url: SITE_URL,
   },
   twitter: {
     card: "summary_large_image",
-    title: "CLARA — Alerta de Incendios Argentina",
+    title: "C.L.A.R.A. — Alerta de Incendios Argentina",
     description:
       "Monitoreo ambiental ciudadano. Focos de calor, calidad del aire y alertas por Telegram.",
   },

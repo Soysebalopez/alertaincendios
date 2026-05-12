@@ -8,13 +8,13 @@ export const metadata: Metadata = {
   description:
     "Monitoreo de calidad del aire por provincia y ciudad en Argentina. Datos CAMS / Sentinel-5P via Open-Meteo.",
   openGraph: {
-    title: "Calidad del Aire — CLARA",
+    title: "Calidad del Aire — C.L.A.R.A.",
     description:
       "NO₂, SO₂, O₃, PM2.5 y mas en las principales ciudades argentinas. Umbrales OMS.",
   },
   twitter: {
     card: "summary",
-    title: "Calidad del Aire — CLARA",
+    title: "Calidad del Aire — C.L.A.R.A.",
     description:
       "Monitoreo de calidad del aire por provincia y ciudad en Argentina.",
   },

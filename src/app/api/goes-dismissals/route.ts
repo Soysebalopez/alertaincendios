@@ -66,7 +66,7 @@ export async function GET(request: Request) {
         `Probablemente fue ruido térmico (reflejo solar, calentamiento de superficie, ` +
         `o una detección que el satélite no volvió a captar).\n\n` +
         `<i>Seguimos monitoreando. Si vuelve a aparecer, te aviso.</i>` +
-        `\n—\nCLARA · Cobertura GOES-19 + NASA FIRMS`;
+        `\n—\nC.L.A.R.A. · Cobertura GOES-19 + NASA FIRMS`;
 
       try {
         await sendMessage(row.chat_id, message);

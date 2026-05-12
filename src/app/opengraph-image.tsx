@@ -1,12 +1,12 @@
 import { ImageResponse } from "next/og";
 
-export const alt = "CLARA — Alertas de incendios forestales en Argentina";
+export const alt = "C.L.A.R.A. — Alertas de incendios forestales en Argentina";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
 // Auto-generated OG image. Uses Next.js's next/og (Satori under the hood),
 // so the layout is built with a CSS subset — no shadows, no exotic positioning.
-// Matches the CLARA terminal-refined aesthetic from the landing.
+// Matches the C.L.A.R.A. terminal-refined aesthetic from the landing.
 export default async function Image() {
   return new ImageResponse(
     (
@@ -90,7 +90,7 @@ export default async function Image() {
                 lineHeight: 1,
               }}
             >
-              CLARA
+              C.L.A.R.A.
             </div>
             <div
               style={{

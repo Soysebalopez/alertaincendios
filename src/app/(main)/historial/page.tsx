@@ -8,13 +8,13 @@ export const metadata: Metadata = {
   description:
     "Actividad historica de focos de calor en Argentina. Datos satelitales NASA FIRMS VIIRS.",
   openGraph: {
-    title: "Historial de Incendios — CLARA",
+    title: "Historial de Incendios — C.L.A.R.A.",
     description:
       "Evolucion diaria de detecciones satelitales en todo el territorio argentino.",
   },
   twitter: {
     card: "summary",
-    title: "Historial de Incendios — CLARA",
+    title: "Historial de Incendios — C.L.A.R.A.",
     description: "Evolucion diaria de detecciones satelitales en Argentina.",
   },
 };
