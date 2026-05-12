@@ -41,11 +41,14 @@ const FIRE_FILTERS: {
 const INTENSITY_FILTERS: {
   key: Intensity;
   label: string;
+  /** Color del chip de filtro. */
   color: string;
   range: string;
-  /** Color con el que se pinta el marker en el mapa para este bucket
-   *  (el lado más visible de la escala FRP) — usado por la leyenda. */
-  markerColor: string;
+  /** Colores reales que aparecen como markers en el mapa para este bucket.
+   *  La escala FRP usa 5 colores (frpLevel) que agrupamos en 3 buckets, así
+   *  que "Baja" cubre amarillo+naranja y "Alta" cubre los dos rojos oscuros.
+   *  La leyenda renderiza un dot por color para que matchee lo que se ve. */
+  markerColors: string[];
   /** Una línea en lenguaje humano: qué significa ver este color en el mapa. */
   meaning: string;
 }[] = [
@@ -54,7 +57,7 @@ const INTENSITY_FILTERS: {
     label: "Alta intensidad",
     color: "#dc2626",
     range: "≥ 20 MW",
-    markerColor: "#991b1b",
+    markerColors: ["#dc2626", "#991b1b"],
     meaning: "incendio forestal significativo",
   },
   {
@@ -62,7 +65,7 @@ const INTENSITY_FILTERS: {
     label: "Moderada",
     color: "#ef4444",
     range: "5–20 MW",
-    markerColor: "#ef4444",
+    markerColors: ["#ef4444"],
     meaning: "incendio activo en desarrollo",
   },
   {
@@ -70,7 +73,7 @@ const INTENSITY_FILTERS: {
     label: "Baja",
     color: "#f97316",
     range: "< 5 MW",
-    markerColor: "#facc15",
+    markerColors: ["#facc15", "#f97316"],
     meaning: "probable quema agrícola o foco menor",
   },
 ];
@@ -419,10 +422,15 @@ export function FireMap() {
                   .reverse() /* leyenda va de menor a mayor — lo opuesto al orden de filtros */
                   .map((f) => (
                     <span key={f.key} className="inline-flex items-center gap-1.5">
-                      <span
-                        className="h-2.5 w-2.5 rounded-full shrink-0"
-                        style={{ background: f.markerColor }}
-                      />
+                      <span className="inline-flex items-center gap-0.5 shrink-0">
+                        {f.markerColors.map((c, i) => (
+                          <span
+                            key={i}
+                            className="h-2.5 w-2.5 rounded-full"
+                            style={{ background: c }}
+                          />
+                        ))}
+                      </span>
                       <span style={{ color: "#d4d4cc" }}>{f.label}:</span>{" "}
                       {f.meaning}
                     </span>
