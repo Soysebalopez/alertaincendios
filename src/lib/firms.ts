@@ -10,6 +10,7 @@
 
 import { getSupabase } from "./supabase";
 import { classifyFireType } from "./fire-classification";
+import { isInArgentina } from "./argentina-polygon";
 
 export interface FirePoint {
   latitude: number;
@@ -51,10 +52,15 @@ export async function fetchFires(): Promise<FirePoint[]> {
       // Safety net for WHI-378: dedup in case the upstream pg_cron sync
       // writes duplicates into fires_cache.fires.
       const fires = dedupFires(data.fires as FirePoint[]);
-      return fires.map((f) => ({
-        ...f,
-        type: classifyFireType(f.type ?? 0, f.latitude, f.longitude, f.frp),
-      }));
+      // FIRMS solo soporta bbox rectangular; el rectángulo argentino se
+      // mete dentro de Chile sobre el flanco oeste. Recortamos con el
+      // polígono ARG para no contar focos de países limítrofes.
+      return fires
+        .filter((f) => isInArgentina(f.latitude, f.longitude))
+        .map((f) => ({
+          ...f,
+          type: classifyFireType(f.type ?? 0, f.latitude, f.longitude, f.frp),
+        }));
     }
   } catch (e) {
     console.error("fires_cache read error:", e);
