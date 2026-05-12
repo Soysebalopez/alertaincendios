@@ -41,40 +41,55 @@ const FIRE_FILTERS: {
 const INTENSITY_FILTERS: {
   key: Intensity;
   label: string;
-  /** Color del chip de filtro. */
   color: string;
   range: string;
-  /** Colores reales que aparecen como markers en el mapa para este bucket.
-   *  La escala FRP usa 5 colores (frpLevel) que agrupamos en 3 buckets, así
-   *  que "Baja" cubre amarillo+naranja y "Alta" cubre los dos rojos oscuros.
-   *  La leyenda renderiza un dot por color para que matchee lo que se ve. */
-  markerColors: string[];
-  /** Una línea en lenguaje humano: qué significa ver este color en el mapa. */
+}[] = [
+  { key: "high", label: "Alta intensidad", color: "#dc2626", range: "≥ 20 MW" },
+  { key: "moderate", label: "Moderada", color: "#ef4444", range: "5–20 MW" },
+  { key: "low", label: "Baja", color: "#f97316", range: "< 5 MW" },
+];
+
+/**
+ * Leyenda con las cinco bandas reales de marker (alineadas con `frpLevel`).
+ * Distinta del bucket de filtro (3 niveles) porque acá comunicamos el
+ * color exacto que se ve en el mapa, no el grupo bajo el que se filtra.
+ * Orden: de menor a mayor intensidad — así se lee como una escala.
+ */
+const INTENSITY_LEGEND: {
+  color: string;
+  label: string;
+  range: string;
   meaning: string;
 }[] = [
   {
-    key: "high",
-    label: "Alta intensidad",
-    color: "#dc2626",
-    range: "≥ 20 MW",
-    markerColors: ["#dc2626", "#991b1b"],
-    meaning: "incendio forestal significativo",
+    color: "#facc15",
+    label: "Muy baja",
+    range: "< 1 MW",
+    meaning: "quema menor o actividad industrial (flaring)",
   },
   {
-    key: "moderate",
-    label: "Moderada",
+    color: "#f97316",
+    label: "Baja",
+    range: "1–5 MW",
+    meaning: "probable quema agrícola controlada o foco incipiente",
+  },
+  {
     color: "#ef4444",
+    label: "Moderada",
     range: "5–20 MW",
-    markerColors: ["#ef4444"],
     meaning: "incendio activo en desarrollo",
   },
   {
-    key: "low",
-    label: "Baja",
-    color: "#f97316",
-    range: "< 5 MW",
-    markerColors: ["#facc15", "#f97316"],
-    meaning: "probable quema agrícola o foco menor",
+    color: "#dc2626",
+    label: "Alta",
+    range: "20–50 MW",
+    meaning: "incendio forestal significativo",
+  },
+  {
+    color: "#991b1b",
+    label: "Muy alta",
+    range: "≥ 50 MW",
+    meaning: "incendio de gran magnitud",
   },
 ];
 
@@ -407,9 +422,9 @@ export function FireMap() {
                   );
                 })}
               </div>
-              {/* Leyenda: traduce el color de cada pelotita a lenguaje humano */}
+              {/* Leyenda: una fila por color real de marker (5 bandas FRP). */}
               <div
-                className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg px-3 py-2 font-mono text-[10px] leading-tight select-none"
+                className="flex flex-col gap-1 rounded-lg px-3 py-2 font-mono text-[10px] leading-tight select-none"
                 style={{
                   background: "#0a0a08cc",
                   border: "1px solid #25252080",
@@ -418,23 +433,20 @@ export function FireMap() {
                   WebkitBackdropFilter: "blur(4px)",
                 }}
               >
-                {INTENSITY_FILTERS.slice()
-                  .reverse() /* leyenda va de menor a mayor — lo opuesto al orden de filtros */
-                  .map((f) => (
-                    <span key={f.key} className="inline-flex items-center gap-1.5">
-                      <span className="inline-flex items-center gap-0.5 shrink-0">
-                        {f.markerColors.map((c, i) => (
-                          <span
-                            key={i}
-                            className="h-2.5 w-2.5 rounded-full"
-                            style={{ background: c }}
-                          />
-                        ))}
-                      </span>
-                      <span style={{ color: "#d4d4cc" }}>{f.label}:</span>{" "}
-                      {f.meaning}
-                    </span>
-                  ))}
+                {INTENSITY_LEGEND.map((l) => (
+                  <span
+                    key={l.label}
+                    className="inline-flex items-baseline gap-1.5"
+                  >
+                    <span
+                      className="h-2.5 w-2.5 rounded-full shrink-0 self-center"
+                      style={{ background: l.color }}
+                    />
+                    <span style={{ color: "#d4d4cc" }}>{l.label}</span>
+                    <span style={{ color: "#8a8a7e80" }}>({l.range}):</span>{" "}
+                    <span>{l.meaning}</span>
+                  </span>
+                ))}
               </div>
             </>
           )}
