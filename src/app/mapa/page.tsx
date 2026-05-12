@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { MapLoader } from "@/components/map/map-loader";
+import { MapInterpretation } from "@/components/map/map-interpretation";
 import { Eye } from "@phosphor-icons/react/dist/ssr";
 
 export const metadata: Metadata = {
@@ -19,14 +20,23 @@ export const metadata: Metadata = {
 
 export default function MapaPage() {
   return (
-    <main className="relative z-10 flex-1 border-t border-border">
-      <MapLoader />
-      <div className="absolute top-4 left-4 flex items-center gap-2 bg-background/80 backdrop-blur-sm border border-border rounded-lg px-3 py-2 z-[1000]">
-        <Eye size={14} className="text-accent" />
-        <span className="font-mono text-[11px] text-muted">
-          NASA FIRMS + CAMS + Open-Meteo
-        </span>
+    <main className="relative z-10 border-t border-border">
+      {/* Mapa con altura fija para dejar espacio scrolleable a la sección
+          interpretativa de abajo. 75vh deja ver claramente el contenido
+          siguiente al hacer un scroll mínimo. */}
+      <div
+        className="relative"
+        style={{ height: "75vh", minHeight: 540 }}
+      >
+        <MapLoader />
+        <div className="absolute top-4 left-4 flex items-center gap-2 bg-background/80 backdrop-blur-sm border border-border rounded-lg px-3 py-2 z-[1000]">
+          <Eye size={14} className="text-accent" />
+          <span className="font-mono text-[11px] text-muted">
+            NASA FIRMS + CAMS + Open-Meteo
+          </span>
+        </div>
       </div>
+      <MapInterpretation />
     </main>
   );
 }

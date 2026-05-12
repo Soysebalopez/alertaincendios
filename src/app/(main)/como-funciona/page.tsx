@@ -34,8 +34,8 @@ const FAQS: { q: string; body: React.ReactNode; icon: React.ReactNode }[] = [
           publicidad.
         </p>
         <p>
-          Lo hacemos para que los vecinos de zonas rurales no se enteren de los
-          incendios cuando ven el humo desde la ventana, sino antes.
+          El objetivo es que los vecinos de zonas rurales reciban una alerta
+          temprana, antes de que el humo o el fuego llegue a su zona.
         </p>
       </>
     ),
@@ -122,17 +122,13 @@ const FAQS: { q: string; body: React.ReactNode; icon: React.ReactNode }[] = [
   },
   {
     icon: <Shield size={18} weight="duotone" />,
-    q: "¿Es gratis? ¿Cómo se mantiene el sistema?",
+    q: "¿Es gratis?",
     body: (
       <>
         <p>
-          Es <strong>gratis y siempre va a serlo</strong>. CLARA es un proyecto
-          independiente, sin publicidad, sin venta de datos.
-        </p>
-        <p>
-          Los datos satelitales son públicos (NASA y NOAA los regalan). La
-          infraestructura cuesta poco porque corre en planes gratuitos de
-          Vercel y Supabase. Lo mantenemos por convicción, no por negocio.
+          Sí. CLARA es un proyecto independiente, sin publicidad ni venta de
+          datos. La suscripción y las alertas son gratuitas para cualquier
+          vecino que las necesite.
         </p>
       </>
     ),
@@ -162,8 +158,8 @@ const FAQS: { q: string; body: React.ReactNode; icon: React.ReactNode }[] = [
       <>
         <p>
           Llamá al <strong>100</strong> (Bomberos) o al <strong>911</strong> de
-          tu provincia. CLARA <em>avisa</em> pero no <em>responde</em>. La
-          respuesta operativa la hacen los bomberos locales y Defensa Civil.
+          tu provincia. La respuesta operativa al incendio la hacen los
+          bomberos locales y Defensa Civil.
         </p>
         <p>
           También podés reportar en{" "}
@@ -194,7 +190,8 @@ const FAQS: { q: string; body: React.ReactNode; icon: React.ReactNode }[] = [
         <p>
           Tenemos filtros para descartar la mayoría de esos casos (excluimos
           zonas urbanas, refinerías de Vaca Muerta, etc.), pero ningún sistema
-          es 100% preciso. Por eso siempre validá antes de actuar fuerte.
+          es 100% preciso. Por eso siempre conviene validar la alerta antes de
+          tomar decisiones operativas.
         </p>
       </>
     ),
@@ -220,15 +217,15 @@ export default function ComoFuncionaPage() {
               margin: "20px 0 18px",
             }}
           >
-            CLARA en simple, sin{" "}
-            <span className="text-accent">jerga técnica</span>.
+            CLARA:{" "}
+            <span className="text-accent">cómo funciona</span>.
           </h1>
           <p
             className="text-muted"
             style={{ fontSize: 18, lineHeight: 1.55, maxWidth: "64ch" }}
           >
-            Esta página es para entender qué hacemos, cómo, y por qué confiar.
-            Si después te animás, andá al bot.
+            Una explicación clara de qué hace CLARA, cómo detecta los focos
+            y cuándo recibís una alerta.
           </p>
         </div>
       </section>
