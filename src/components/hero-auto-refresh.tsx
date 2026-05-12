@@ -57,23 +57,30 @@ export function HeroAutoRefresh({ initialHigh }: { initialHigh: number }) {
 
   useEffect(() => {
     const supabase = createSupabaseBrowserClient();
+    console.log("[clara/realtime] mounting auto-refresh effect");
     const channel = supabase
       .channel("clara-fires-cache")
       .on(
         "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "fires_cache" },
-        async () => {
-          if (refreshingRef.current) return;
-          // El evento de Realtime contiene la row cruda, pero queremos los
-          // counts ya pasados por el polígono ARG y por classifyFireType —
-          // que es exactamente lo que devuelve /api/fires. Hacemos un
-          // fetch puntual: 1 request por UPDATE, no por minuto.
+        { event: "*", schema: "public", table: "fires_cache" },
+        async (payload) => {
+          console.log("[clara/realtime] postgres_changes event", payload);
+          if (refreshingRef.current) {
+            console.log("[clara/realtime] ignoring — refresh in flight");
+            return;
+          }
           try {
             const res = await fetch("/api/fires", { cache: "no-store" });
-            if (!res.ok) return;
+            if (!res.ok) {
+              console.warn("[clara/realtime] /api/fires not ok", res.status);
+              return;
+            }
             const data = await res.json();
             const fires = (data.fires ?? []) as FirePoint[];
             const high = countHigh(fires);
+            console.log(
+              "[clara/realtime] high=" + high + " baseline=" + baselineRef.current
+            );
             if (high > baselineRef.current) {
               refreshingRef.current = true;
               try {
@@ -82,17 +89,17 @@ export function HeroAutoRefresh({ initialHigh }: { initialHigh: number }) {
                 // sessionStorage puede tirar en navegadores privados; el
                 // refresh sigue funcionando aunque la pill no aparezca.
               }
-              // Despertar al HeroRefreshFlash en memoria (router.refresh
-              // es soft y no remontaria el componente por sí solo).
               flagFlashAvailable();
               router.refresh();
             }
-          } catch {
-            // Network blip — Realtime nos avisará en el próximo UPDATE.
+          } catch (e) {
+            console.warn("[clara/realtime] handler error", e);
           }
         }
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        console.log("[clara/realtime] subscribe status:", status, err);
+      });
 
     return () => {
       supabase.removeChannel(channel);
