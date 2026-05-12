@@ -14,6 +14,7 @@ import { StaggerReveal } from "@/components/stagger-reveal";
 import { FireMapLoader } from "@/components/fire-map-loader";
 import { LiveCityGrid } from "@/components/live-city-grid";
 import { HeroAutoRefresh } from "@/components/hero-auto-refresh";
+import { HeroRefreshFlash } from "@/components/hero-refresh-flash";
 import { Beacon, Pill, DataSourceLogo } from "@/components/clara-ui";
 
 // Bajado de 900s a 60s para que el auto-refresh del cliente
@@ -221,6 +222,11 @@ export default async function Home() {
                 <span className="font-mono text-[10px] text-muted tracking-[0.1em]">
                   {timestamp} ART
                 </span>
+                {/* Pill efímera (~6s) cuando el HeroAutoRefresh acaba de
+                    disparar un router.refresh() con data nueva. Se posiciona
+                    junto al timestamp para que se lea como "actualizado a
+                    las HH:MM, recién". */}
+                <HeroRefreshFlash />
               </div>
             </StaggerReveal>
 

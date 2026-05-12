@@ -1,20 +1,34 @@
 "use client";
 
 /**
- * Polea /api/fires cada 60 segundos y dispara router.refresh() apenas
- * detecta un nuevo "incendio destacado" — wildfire FIRMS confirmado con
- * FRP ≥ 20 MW respecto al baseline SSR. Solo refresca al alza: si un
- * destacado desaparece (bajó la FRP, salió de la ventana de 24h) no
- * interrumpimos al usuario porque el hero sigue siendo informativo.
+ * Escucha cambios en fires_cache via Supabase Realtime (postgres_changes
+ * UPDATE) y dispara router.refresh() apenas detecta un nuevo "incendio
+ * destacado" — wildfire FIRMS confirmado con FRP ≥ 20 MW respecto al
+ * baseline SSR.
  *
- * Renderiza null — solo efecto. Embebido una vez en el layout del hero.
+ * Reemplaza al polling cada 60s de la primera iteración. Un único
+ * WebSocket por cliente reemplaza a 60 requests/hora contra /api/fires,
+ * y la latencia upstream→cliente baja de hasta 60s a ~1s.
+ *
+ * Solo refresca al alza: si un destacado desaparece (cooled, salió de
+ * 24h) no interrumpe al lector porque el hero sigue siendo informativo.
+ *
+ * Coordinación con HeroRefreshFlash: antes de cada router.refresh()
+ * escribe un timestamp en sessionStorage. El flash lo lee al montar
+ * para mostrar la pill "Actualizado recién" y lo borra después.
+ *
+ * Renderiza null — solo efecto.
  */
 
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { flagFlashAvailable } from "./hero-refresh-flash";
 
-const POLL_INTERVAL_MS = 60_000;
 const HIGH_FRP_MW = 20;
+/** Clave compartida con HeroRefreshFlash — usada para anunciar el refresh
+ *  al otro lado del page reload. */
+export const REFRESH_FLAG_KEY = "clara-just-refreshed-at";
 
 interface FirePoint {
   type?: number;
@@ -32,13 +46,11 @@ function countHigh(fires: FirePoint[]): number {
 
 export function HeroAutoRefresh({ initialHigh }: { initialHigh: number }) {
   const router = useRouter();
-  // baseline contra el que comparamos cada polleo. Se resetea cuando el SSR
-  // se vuelve a montar con un nuevo conteo — eso pasa después de cada
-  // router.refresh() exitoso, así no quedamos refrescando en loop.
+  // baseline contra el que comparamos cuando llega el evento Realtime.
+  // Se resetea cuando el SSR re-monta el componente con un conteo nuevo —
+  // eso pasa después de cada router.refresh() exitoso, así no entramos
+  // en un bucle de refresh.
   const baselineRef = useRef(initialHigh);
-  // Una vez que disparamos un refresh, esperamos a que el SSR re-monte el
-  // componente con el nuevo baseline antes de volver a comparar. Si no,
-  // poderiamos refrescar dos veces antes de que llegue la nueva data.
   const refreshingRef = useRef(false);
 
   useEffect(() => {
@@ -47,26 +59,47 @@ export function HeroAutoRefresh({ initialHigh }: { initialHigh: number }) {
   }, [initialHigh]);
 
   useEffect(() => {
-    const tick = async () => {
-      if (refreshingRef.current) return;
-      try {
-        const res = await fetch("/api/fires", { cache: "no-store" });
-        if (!res.ok) return;
-        const data = await res.json();
-        const fires = (data.fires ?? []) as FirePoint[];
-        const high = countHigh(fires);
-        if (high > baselineRef.current) {
-          refreshingRef.current = true;
-          router.refresh();
+    const supabase = createSupabaseBrowserClient();
+    const channel = supabase
+      .channel("clara-fires-cache")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "fires_cache" },
+        async () => {
+          if (refreshingRef.current) return;
+          // El evento de Realtime contiene la row cruda, pero queremos los
+          // counts ya pasados por el polígono ARG y por classifyFireType —
+          // que es exactamente lo que devuelve /api/fires. Hacemos un
+          // fetch puntual: 1 request por UPDATE, no por minuto.
+          try {
+            const res = await fetch("/api/fires", { cache: "no-store" });
+            if (!res.ok) return;
+            const data = await res.json();
+            const fires = (data.fires ?? []) as FirePoint[];
+            const high = countHigh(fires);
+            if (high > baselineRef.current) {
+              refreshingRef.current = true;
+              try {
+                sessionStorage.setItem(REFRESH_FLAG_KEY, Date.now().toString());
+              } catch {
+                // sessionStorage puede tirar en navegadores privados; el
+                // refresh sigue funcionando aunque la pill no aparezca.
+              }
+              // Despertar al HeroRefreshFlash en memoria (router.refresh
+              // es soft y no remontaria el componente por sí solo).
+              flagFlashAvailable();
+              router.refresh();
+            }
+          } catch {
+            // Network blip — Realtime nos avisará en el próximo UPDATE.
+          }
         }
-      } catch {
-        // Network blip — reintentamos en el siguiente tick. No spameamos
-        // al usuario con errores: el hero sigue funcional con su data SSR.
-      }
-    };
+      )
+      .subscribe();
 
-    const id = setInterval(tick, POLL_INTERVAL_MS);
-    return () => clearInterval(id);
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [router]);
 
   return null;
