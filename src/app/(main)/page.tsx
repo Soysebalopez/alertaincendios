@@ -17,12 +17,13 @@ import { HeroAutoRefresh } from "@/components/hero-auto-refresh";
 import { HeroRefreshFlash } from "@/components/hero-refresh-flash";
 import { Beacon, Pill, DataSourceLogo } from "@/components/clara-ui";
 
-// Bajado de 900s a 60s para que el auto-refresh del cliente
-// (HeroAutoRefresh) reciba data fresca en cada router.refresh(). El
-// upstream FIRMS solo cambia cada 15 min vía pg_cron, así que dentro
-// de esa ventana el SSR devuelve lo mismo — el costo extra es solo
-// una query Supabase (~50ms) por visitante en ventanas de 60s.
-export const revalidate = 60;
+// force-dynamic: cada visita corre SSR fresco (~50ms Supabase + render).
+// Antes era revalidate=60 pero el segment cache de Next 16 ignoraba a
+// router.refresh() del HeroAutoRefresh — la pill aparecía pero el
+// número no actualizaba porque el server servía HTML cacheado. Con
+// force-dynamic no hay segment cache, router.refresh() siempre re-corre
+// el SSR y vemos el nuevo conteo al instante.
+export const dynamic = "force-dynamic";
 
 const TELEGRAM_BOT_URL = "https://t.me/AlertasClaraBot";
 

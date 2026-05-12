@@ -57,30 +57,23 @@ export function HeroAutoRefresh({ initialHigh }: { initialHigh: number }) {
 
   useEffect(() => {
     const supabase = createSupabaseBrowserClient();
-    console.log("[clara/realtime] mounting auto-refresh effect");
     const channel = supabase
       .channel("clara-fires-cache")
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "fires_cache" },
-        async (payload) => {
-          console.log("[clara/realtime] postgres_changes event", payload);
-          if (refreshingRef.current) {
-            console.log("[clara/realtime] ignoring — refresh in flight");
-            return;
-          }
+        { event: "UPDATE", schema: "public", table: "fires_cache" },
+        async () => {
+          if (refreshingRef.current) return;
+          // El payload del evento contiene la row cruda, pero queremos los
+          // counts ya pasados por el polígono ARG y por classifyFireType —
+          // que es exactamente lo que devuelve /api/fires. Un fetch puntual
+          // por UPDATE.
           try {
             const res = await fetch("/api/fires", { cache: "no-store" });
-            if (!res.ok) {
-              console.warn("[clara/realtime] /api/fires not ok", res.status);
-              return;
-            }
+            if (!res.ok) return;
             const data = await res.json();
             const fires = (data.fires ?? []) as FirePoint[];
             const high = countHigh(fires);
-            console.log(
-              "[clara/realtime] high=" + high + " baseline=" + baselineRef.current
-            );
             if (high > baselineRef.current) {
               refreshingRef.current = true;
               try {
@@ -92,14 +85,12 @@ export function HeroAutoRefresh({ initialHigh }: { initialHigh: number }) {
               flagFlashAvailable();
               router.refresh();
             }
-          } catch (e) {
-            console.warn("[clara/realtime] handler error", e);
+          } catch {
+            // Network blip — Realtime nos avisará en el próximo UPDATE.
           }
         }
       )
-      .subscribe((status, err) => {
-        console.log("[clara/realtime] subscribe status:", status, err);
-      });
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
