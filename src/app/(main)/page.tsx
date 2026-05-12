@@ -13,9 +13,15 @@ import { FireCounter } from "@/components/fire-counter";
 import { StaggerReveal } from "@/components/stagger-reveal";
 import { FireMapLoader } from "@/components/fire-map-loader";
 import { LiveCityGrid } from "@/components/live-city-grid";
+import { HeroAutoRefresh } from "@/components/hero-auto-refresh";
 import { Beacon, Pill, DataSourceLogo } from "@/components/clara-ui";
 
-export const revalidate = 900; // 15 min — matches FIRMS sync cadence
+// Bajado de 900s a 60s para que el auto-refresh del cliente
+// (HeroAutoRefresh) reciba data fresca en cada router.refresh(). El
+// upstream FIRMS solo cambia cada 15 min vía pg_cron, así que dentro
+// de esa ventana el SSR devuelve lo mismo — el costo extra es solo
+// una query Supabase (~50ms) por visitante en ventanas de 60s.
+export const revalidate = 60;
 
 const TELEGRAM_BOT_URL = "https://t.me/AlertasClaraBot";
 
@@ -187,6 +193,11 @@ export default async function Home() {
 
   return (
     <>
+      {/* Auto-refresh discreto cuando entra un nuevo destacado al cache.
+          Polea /api/fires cada 60s y dispara router.refresh() solo si
+          high subió. No renderiza nada visible. */}
+      <HeroAutoRefresh initialHigh={high} />
+
       {/* ─── HERO ─── */}
       <section className="relative border-b border-border">
         <div
