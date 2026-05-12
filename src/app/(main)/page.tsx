@@ -19,45 +19,60 @@ export const revalidate = 900; // 15 min — matches FIRMS sync cadence
 
 const TELEGRAM_BOT_URL = "https://t.me/AlertasClaraBot";
 
-async function getFireCounts(): Promise<{
-  wild: number;
+/**
+ * Umbral FRP (MW) para que un foco califique como "alta intensidad" en el
+ * hero. 20 MW es el corte entre "incendio activo en desarrollo" y "incendio
+ * forestal significativo" según la misma escala que muestra el popup del
+ * mapa. Quemas agrícolas y flaring quedan abajo del corte y no inflan el
+ * número grande de portada.
+ */
+const HERO_FRP_THRESHOLD_MW = 20;
+
+interface FireCounts {
+  /** Wildfires con FRP ≥ HERO_FRP_THRESHOLD_MW — número grande del hero. */
+  high: number;
+  /** Wildfires con 5 ≤ FRP < 20 — actividad real, sub-line. */
+  moderate: number;
+  /** Wildfires con FRP < 5 — quema agricola/menor, sub-line. */
+  low: number;
+  /** Detecciones reclasificadas como flaring/offshore/volcano. */
   industrial: number;
-  total: number;
+  /** Preliminares GOES pendientes de confirmación FIRMS. */
   preliminary: number;
-}> {
+}
+
+async function getFireCounts(): Promise<FireCounts> {
+  const empty: FireCounts = { high: 0, moderate: 0, low: 0, industrial: 0, preliminary: 0 };
   try {
-    const { classifyFireType } = await import("@/lib/fire-classification");
+    const { fetchFires } = await import("@/lib/firms");
     const { createClient } = await import("@supabase/supabase-js");
+
+    // fetchFires() ya aplica polígono ARG + classifyFireType, así que lo que
+    // sale acá es "lo que está adentro de Argentina, post-reclasificación".
+    const firesPromise = fetchFires();
+
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!url || !key) return { wild: 0, industrial: 0, total: 0, preliminary: 0 };
-    const sb = createClient(url, key);
+    const prelimPromise = url && key
+      ? createClient(url, key)
+          .from("goes_preliminary")
+          .select("id", { count: "exact", head: true })
+          .eq("high_confidence", true)
+      : Promise.resolve({ count: 0 });
 
-    const [firesRes, prelimRes] = await Promise.all([
-      sb.from("fires_cache").select("fires").eq("id", 1).single(),
-      // WHI-584 follow-up — count currently-pending preliminaries.
-      // Dismissed/orphan rows get pruned by /api/goes-dismissals (hourly),
-      // so what's in goes_preliminary now is "actividad activa, sin confirmar".
-      sb
-        .from("goes_preliminary")
-        .select("id", { count: "exact", head: true })
-        .eq("high_confidence", true),
-    ]);
+    const [fires, prelimRes] = await Promise.all([firesPromise, prelimPromise]);
 
-    const fires = (firesRes.data?.fires ?? []) as {
-      type?: number;
-      latitude: number;
-      longitude: number;
-      frp: number;
-    }[];
-    const classified = fires.map((f) =>
-      classifyFireType(f.type ?? 0, f.latitude, f.longitude, f.frp)
-    );
-    const wild = classified.filter((t) => t === 0 || t === 1).length;
-    const preliminary = prelimRes.count ?? 0;
-    return { wild, industrial: fires.length - wild, total: fires.length, preliminary };
+    let high = 0, moderate = 0, low = 0, industrial = 0;
+    for (const f of fires) {
+      const isWild = (f.type ?? 0) === 0 || f.type === 1;
+      if (!isWild) { industrial++; continue; }
+      if (f.frp >= HERO_FRP_THRESHOLD_MW) high++;
+      else if (f.frp >= 5) moderate++;
+      else low++;
+    }
+    return { high, moderate, low, industrial, preliminary: prelimRes.count ?? 0 };
   } catch {
-    return { wild: 0, industrial: 0, total: 0, preliminary: 0 };
+    return empty;
   }
 }
 
@@ -134,7 +149,13 @@ const STEPS = [
 ] as const;
 
 export default async function Home() {
-  const { wild: fireCount, industrial: industrialCount, preliminary: preliminaryCount } = await getFireCounts();
+  const { high, moderate, low, industrial: industrialCount, preliminary: preliminaryCount } = await getFireCounts();
+  // Hay actividad de cualquier tipo? Eso decide si mostramos número/buckets o el fallback "sin focos".
+  const hasAnyActivity = high + moderate + low + industrialCount > 0;
+  // Sub-line de buckets bajos: solo aparece si hay algo abajo del umbral.
+  const subBuckets: string[] = [];
+  if (moderate > 0) subBuckets.push(`${moderate} ${moderate === 1 ? "moderado" : "moderados"}`);
+  if (low > 0) subBuckets.push(`${low} ${low === 1 ? "bajo" : "bajos"}`);
   const timestamp = new Date().toLocaleString("es-AR", {
     timeZone: "America/Argentina/Buenos_Aires",
     day: "2-digit",
@@ -147,9 +168,14 @@ export default async function Home() {
     { label: "Provincias monitoreadas", value: "24", sub: "cobertura nacional" },
     { label: "Ciudades activas", value: "78", sub: "sensores OMS" },
     {
-      label: "Incendios 24h",
-      value: fireCount > 0 ? fireCount.toLocaleString("es-AR") : "—",
-      sub: industrialCount > 0 ? `+ ${industrialCount} industrial${industrialCount === 1 ? "" : "es"}` : "VIIRS 375m",
+      label: "Alta intensidad 24h",
+      value: high > 0 ? high.toLocaleString("es-AR") : "—",
+      sub:
+        high > 0
+          ? `FRP ≥ ${HERO_FRP_THRESHOLD_MW} MW · VIIRS 375m`
+          : moderate + low > 0
+            ? `${moderate + low} foco${moderate + low === 1 ? "" : "s"} de menor intensidad`
+            : "VIIRS 375m",
       tone: "accent" as const,
     },
     {
@@ -188,7 +214,7 @@ export default async function Home() {
             </StaggerReveal>
 
             <StaggerReveal delay={0.2}>
-              {fireCount > 0 || industrialCount > 0 ? (
+              {hasAnyActivity ? (
                 <div>
                   <h1
                     className="clara-hero-h1 text-foreground m-0"
@@ -204,7 +230,7 @@ export default async function Home() {
                       className="text-accent tabular-nums"
                       style={{ fontVariantNumeric: "tabular-nums" }}
                     >
-                      <FireCounter count={fireCount} />
+                      <FireCounter count={high} />
                     </span>
                     <br />
                     <span
@@ -217,10 +243,10 @@ export default async function Home() {
                         letterSpacing: "-0.02em",
                       }}
                     >
-                      {fireCount === 1 ? "incendio detectado" : "incendios detectados"}
+                      {high === 1 ? "incendio destacado" : "incendios destacados"}
                     </span>
                   </h1>
-                  {industrialCount > 0 && (
+                  {(subBuckets.length > 0 || industrialCount > 0) && (
                     <p
                       className="font-mono mt-4 m-0"
                       style={{
@@ -229,7 +255,10 @@ export default async function Home() {
                         letterSpacing: "0.02em",
                       }}
                     >
-                      + {industrialCount} {industrialCount === 1 ? "foco" : "focos"} industrial{industrialCount === 1 ? "" : "es"} (flaring / offshore)
+                      {subBuckets.length > 0 && subBuckets.join(" · ")}
+                      {subBuckets.length > 0 && industrialCount > 0 && " · "}
+                      {industrialCount > 0 &&
+                        `+ ${industrialCount} ${industrialCount === 1 ? "foco" : "focos"} industrial${industrialCount === 1 ? "" : "es"}`}
                     </p>
                   )}
                 </div>

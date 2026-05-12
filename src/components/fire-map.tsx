@@ -17,6 +17,7 @@ interface FirePoint {
 /* ─── Filter definitions ─── */
 
 type FireType = 0 | 1 | 2 | 3;
+type Intensity = "high" | "moderate" | "low";
 
 const FIRE_FILTERS: {
   type: FireType;
@@ -29,6 +30,30 @@ const FIRE_FILTERS: {
   { type: 2, label: "Flaring", icon: "🏭", color: "#8a8a7e" },
   { type: 3, label: "Offshore", icon: "🛢️", color: "#8a8a7e" },
 ];
+
+/**
+ * Tres niveles de intensidad coordinados con el hero de portada:
+ *  - high     → FRP ≥ 20 MW (Alta + Muy alta del popup)
+ *  - moderate → 5 ≤ FRP < 20 MW (Moderada)
+ *  - low      → FRP < 5 MW (Baja + Muy baja)
+ * Solo aplica a wildfires (type 0/1) — flaring industrial no tiene gradiente útil.
+ */
+const INTENSITY_FILTERS: {
+  key: Intensity;
+  label: string;
+  color: string;
+  range: string;
+}[] = [
+  { key: "high", label: "Alta intensidad", color: "#dc2626", range: "≥ 20 MW" },
+  { key: "moderate", label: "Moderada", color: "#ef4444", range: "5–20 MW" },
+  { key: "low", label: "Baja", color: "#f97316", range: "< 5 MW" },
+];
+
+function frpBucket(frp: number): Intensity {
+  if (frp >= 20) return "high";
+  if (frp >= 5) return "moderate";
+  return "low";
+}
 
 /* ─── Helpers ─── */
 
@@ -170,30 +195,66 @@ function createFireMarker(f: FirePoint): L.Layer {
 export function FireMap() {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<L.Map | null>(null);
-  const layerGroups = useRef<Record<number, L.LayerGroup>>({});
+  // Una sola capa para todos los markers visibles. En cada cambio de filtro
+  // la vaciamos y la rellenamos con lo que matchea — para los volúmenes que
+  // maneja FIRMS sobre Argentina (≤ 500 puntos) es instantáneo y mantiene
+  // el state model trivial.
+  const markersLayer = useRef<L.LayerGroup | null>(null);
+  const allFires = useRef<FirePoint[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeFilters, setActiveFilters] = useState<Set<FireType>>(
+  const [activeTypes, setActiveTypes] = useState<Set<FireType>>(
     new Set([0, 1, 2, 3])
   );
-  const [counts, setCounts] = useState<Record<number, number>>({});
+  const [activeIntensities, setActiveIntensities] = useState<Set<Intensity>>(
+    new Set(["high", "moderate", "low"])
+  );
+  // Conteos congelados en el momento del fetch — se computan junto con el
+  // poblado de allFires en el efecto inicial, no durante render.
+  const [counts, setCounts] = useState<{
+    byType: Record<number, number>;
+    byIntensity: Record<Intensity, number>;
+  }>({
+    byType: {},
+    byIntensity: { high: 0, moderate: 0, low: 0 },
+  });
 
-  const toggleFilter = useCallback((type: FireType) => {
-    setActiveFilters((prev) => {
+  // Re-renderiza markers cada vez que cambian los filtros activos o
+  // cuando entran los datos. Itera sobre la lista cruda en memoria
+  // (no vuelve a llamar a /api/fires).
+  const renderMarkers = useCallback(() => {
+    const layer = markersLayer.current;
+    if (!layer) return;
+    layer.clearLayers();
+    for (const f of allFires.current) {
+      const t = (f.type ?? 0) as FireType;
+      if (!activeTypes.has(t)) continue;
+      const isWild = t === 0 || t === 1;
+      // Filtro de intensidad solo aplica a wildfires. Flaring/offshore se
+      // muestran si su tipo está activo, sin importar los chips de intensidad.
+      if (isWild && !activeIntensities.has(frpBucket(f.frp))) continue;
+      createFireMarker(f).addTo(layer);
+    }
+  }, [activeTypes, activeIntensities]);
+
+  const toggleType = useCallback((type: FireType) => {
+    setActiveTypes((prev) => {
       const next = new Set(prev);
-      if (next.has(type)) {
-        next.delete(type);
-        layerGroups.current[type]?.remove();
-      } else {
-        next.add(type);
-        const map = mapInstance.current;
-        if (map && layerGroups.current[type]) {
-          layerGroups.current[type].addTo(map);
-        }
-      }
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
       return next;
     });
   }, []);
 
+  const toggleIntensity = useCallback((key: Intensity) => {
+    setActiveIntensities((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  // Inicialización del mapa + fetch inicial. Solo corre una vez.
   useEffect(() => {
     if (!mapRef.current || mapInstance.current) return;
 
@@ -211,26 +272,23 @@ export function FireMap() {
 
     L.control.zoom({ position: "bottomright" }).addTo(map);
 
+    const layer = L.layerGroup().addTo(map);
+    markersLayer.current = layer;
     mapInstance.current = map;
 
     fetch("/api/fires")
       .then((r) => r.json())
       .then((data) => {
-        const fires: FirePoint[] = data.fires || [];
-        const groups: Record<number, L.LayerGroup> = {};
-        const typeCounts: Record<number, number> = {};
-
-        fires.forEach((f) => {
+        const fires = (data.fires || []) as FirePoint[];
+        allFires.current = fires;
+        const byType: Record<number, number> = {};
+        const byIntensity: Record<Intensity, number> = { high: 0, moderate: 0, low: 0 };
+        for (const f of fires) {
           const t = f.type ?? 0;
-          if (!groups[t]) groups[t] = L.layerGroup();
-          typeCounts[t] = (typeCounts[t] || 0) + 1;
-          createFireMarker(f).addTo(groups[t]);
-        });
-
-        Object.values(groups).forEach((group) => group.addTo(map));
-
-        layerGroups.current = groups;
-        setCounts(typeCounts);
+          byType[t] = (byType[t] || 0) + 1;
+          if (t === 0 || t === 1) byIntensity[frpBucket(f.frp)]++;
+        }
+        setCounts({ byType, byIntensity });
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -238,43 +296,88 @@ export function FireMap() {
     return () => {
       map.remove();
       mapInstance.current = null;
+      markersLayer.current = null;
     };
   }, []);
+
+  // Repinta cuando entran datos o cambian filtros.
+  useEffect(() => {
+    if (!loading) renderMarkers();
+  }, [loading, renderMarkers]);
 
   return (
     <div className="relative w-full h-full">
       <div ref={mapRef} className="w-full h-full" />
 
-      {/* Filter badges */}
+      {/* Filter rows: tipo arriba, intensidad abajo */}
       {!loading && (
-        <div className="absolute bottom-4 left-4 right-4 flex flex-wrap gap-2 z-[1000]">
-          {FIRE_FILTERS.map((filter) => {
-            const count = counts[filter.type] || 0;
-            if (count === 0) return null;
-            const isActive = activeFilters.has(filter.type);
-            return (
-              <button
-                key={filter.type}
-                onClick={() => toggleFilter(filter.type)}
-                className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-mono transition-all duration-200 border select-none cursor-pointer"
-                style={{
-                  background: isActive ? `${filter.color}18` : "#0a0a08cc",
-                  borderColor: isActive ? `${filter.color}40` : "#25252080",
-                  color: isActive ? filter.color : "#8a8a7e60",
-                  opacity: isActive ? 1 : 0.6,
-                }}
-              >
-                <span className="text-sm leading-none">{filter.icon}</span>
-                <span>{filter.label}</span>
-                <span
-                  className="font-semibold tabular-nums"
-                  style={{ color: isActive ? filter.color : "#8a8a7e40" }}
+        <div className="absolute bottom-4 left-4 right-4 flex flex-col gap-2 z-[1000]">
+          {/* Fila 1: tipo de detección */}
+          <div className="flex flex-wrap gap-2">
+            {FIRE_FILTERS.map((filter) => {
+              const count = counts.byType[filter.type] || 0;
+              if (count === 0) return null;
+              const isActive = activeTypes.has(filter.type);
+              return (
+                <button
+                  key={filter.type}
+                  onClick={() => toggleType(filter.type)}
+                  className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-mono transition-all duration-200 border select-none cursor-pointer"
+                  style={{
+                    background: isActive ? `${filter.color}18` : "#0a0a08cc",
+                    borderColor: isActive ? `${filter.color}40` : "#25252080",
+                    color: isActive ? filter.color : "#8a8a7e60",
+                    opacity: isActive ? 1 : 0.6,
+                  }}
                 >
-                  {count}
-                </span>
-              </button>
-            );
-          })}
+                  <span className="text-sm leading-none">{filter.icon}</span>
+                  <span>{filter.label}</span>
+                  <span
+                    className="font-semibold tabular-nums"
+                    style={{ color: isActive ? filter.color : "#8a8a7e40" }}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Fila 2: intensidad (solo si hay wildfires) */}
+          {(counts.byType[0] || counts.byType[1] || 0) > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-mono text-[9px] text-muted tracking-[0.15em] uppercase pr-1 select-none">
+                Intensidad
+              </span>
+              {INTENSITY_FILTERS.map((f) => {
+                const count = counts.byIntensity[f.key] || 0;
+                if (count === 0) return null;
+                const isActive = activeIntensities.has(f.key);
+                return (
+                  <button
+                    key={f.key}
+                    onClick={() => toggleIntensity(f.key)}
+                    title={`${f.label} · ${f.range}`}
+                    className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-mono transition-all duration-200 border select-none cursor-pointer"
+                    style={{
+                      background: isActive ? `${f.color}18` : "#0a0a08cc",
+                      borderColor: isActive ? `${f.color}40` : "#25252080",
+                      color: isActive ? f.color : "#8a8a7e60",
+                      opacity: isActive ? 1 : 0.6,
+                    }}
+                  >
+                    <span>{f.label}</span>
+                    <span
+                      className="font-semibold tabular-nums"
+                      style={{ color: isActive ? f.color : "#8a8a7e40" }}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

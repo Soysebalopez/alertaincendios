@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { PROVINCES } from "@/lib/argentina-cities";
@@ -11,6 +11,7 @@ interface FirePoint {
   longitude: number;
   confidence: string;
   frp: number;
+  type?: number;
 }
 
 interface LayerState {
@@ -19,17 +20,58 @@ interface LayerState {
   wind: boolean;
 }
 
+type Intensity = "high" | "moderate" | "low";
+
+/**
+ * Coordinado con el hero y src/components/fire-map.tsx — mismos tres
+ * niveles para que el lenguaje del producto sea consistente.
+ */
+const INTENSITY_META: Record<
+  Intensity,
+  { label: string; color: string; range: string }
+> = {
+  high: { label: "Alta intensidad", color: "#dc2626", range: "≥ 20 MW" },
+  moderate: { label: "Moderada", color: "#ef4444", range: "5–20 MW" },
+  low: { label: "Baja", color: "#f97316", range: "< 5 MW" },
+};
+
+function frpBucket(frp: number): Intensity {
+  if (frp >= 20) return "high";
+  if (frp >= 5) return "moderate";
+  return "low";
+}
+
 export function ArgentinaMap() {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<L.Map | null>(null);
   const layerGroups = useRef<Record<string, L.LayerGroup>>({});
+  // Fires se renderizan por intensidad — los guardamos crudos en memoria
+  // para repintar al cambiar filtros sin re-fetchear /api/fires.
+  const allFires = useRef<FirePoint[]>([]);
   const [layers, setLayers] = useState<LayerState>({
     fires: true,
     air: true,
     wind: false,
   });
+  const [intensities, setIntensities] = useState<Set<Intensity>>(
+    new Set(["high", "moderate", "low"])
+  );
+  const [intensityCounts, setIntensityCounts] = useState<Record<Intensity, number>>({
+    high: 0,
+    moderate: 0,
+    low: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ fires: 0, cities: 0 });
+
+  const toggleIntensity = useCallback((key: Intensity) => {
+    setIntensities((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     if (!mapRef.current || mapInstance.current) return;
@@ -59,28 +101,18 @@ export function ArgentinaMap() {
     layerGroups.current.wind = L.layerGroup();
 
     // Load all data
-    loadFires(layerGroups.current.fires);
+    loadFires();
     loadAirQuality(layerGroups.current.air);
     loadWind(layerGroups.current.wind);
 
-    async function loadFires(group: L.LayerGroup) {
+    async function loadFires() {
       try {
         const data = await fetch("/api/fires").then((r) => r.json());
         const fires: FirePoint[] = data.fires || [];
-        fires.forEach((f) => {
-          const radius = Math.max(3, Math.min(8, f.frp / 4));
-          const color =
-            f.confidence === "h" || f.confidence === "high"
-              ? "#ef4444"
-              : "#f97316";
-          L.circleMarker([f.latitude, f.longitude], {
-            radius,
-            color,
-            fillColor: color,
-            fillOpacity: 0.7,
-            weight: 1,
-          }).addTo(group);
-        });
+        allFires.current = fires;
+        const c: Record<Intensity, number> = { high: 0, moderate: 0, low: 0 };
+        for (const f of fires) c[frpBucket(f.frp)]++;
+        setIntensityCounts(c);
         setStats((s) => ({ ...s, fires: fires.length }));
       } catch {}
     }
@@ -183,6 +215,27 @@ export function ArgentinaMap() {
     }
   }, [layers]);
 
+  // Repinta la capa de focos cuando cambian los buckets seleccionados.
+  // Se ejecuta también al final del fetch inicial (intensityCounts cambia).
+  useEffect(() => {
+    const group = layerGroups.current.fires;
+    if (!group) return;
+    group.clearLayers();
+    for (const f of allFires.current) {
+      if (!intensities.has(frpBucket(f.frp))) continue;
+      const radius = Math.max(3, Math.min(8, f.frp / 4));
+      const color =
+        f.confidence === "h" || f.confidence === "high" ? "#ef4444" : "#f97316";
+      L.circleMarker([f.latitude, f.longitude], {
+        radius,
+        color,
+        fillColor: color,
+        fillOpacity: 0.7,
+        weight: 1,
+      }).addTo(group);
+    }
+  }, [intensities, intensityCounts]);
+
   return (
     <div className="relative w-full" style={{ height: "100%", minHeight: "600px" }}>
       <div ref={mapRef} style={{ width: "100%", height: "100%", position: "absolute", inset: 0 }} />
@@ -196,6 +249,36 @@ export function ArgentinaMap() {
           count={stats.fires}
           onClick={() => setLayers((l) => ({ ...l, fires: !l.fires }))}
         />
+        {/* Sub-chips de intensidad — solo aparecen si la capa Focos está activa */}
+        {layers.fires && stats.fires > 0 && (
+          <div className="flex flex-col gap-1 ml-3 mt-0.5 pl-2 border-l border-border/60">
+            {(Object.keys(INTENSITY_META) as Intensity[]).map((key) => {
+              const meta = INTENSITY_META[key];
+              const count = intensityCounts[key];
+              if (count === 0) return null;
+              const active = intensities.has(key);
+              return (
+                <button
+                  key={key}
+                  onClick={() => toggleIntensity(key)}
+                  title={meta.range}
+                  className="flex items-center gap-2 rounded-md px-2 py-1 text-[10px] font-mono transition-all bg-surface-2/70 backdrop-blur-sm"
+                  style={{
+                    color: active ? meta.color : "#8a8a7e80",
+                    opacity: active ? 1 : 0.55,
+                  }}
+                >
+                  <span
+                    className="h-1.5 w-1.5 rounded-full shrink-0"
+                    style={{ backgroundColor: active ? meta.color : "#333" }}
+                  />
+                  {meta.label}
+                  <span className="text-muted/60 tabular-nums">{count}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
         <LayerToggle
           label="Aire"
           color="#22c55e"
