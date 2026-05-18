@@ -16,6 +16,12 @@ import { LiveCityGrid } from "@/components/live-city-grid";
 import { HeroAutoRefresh } from "@/components/hero-auto-refresh";
 import { HeroRefreshFlash } from "@/components/hero-refresh-flash";
 import { Beacon, Pill, DataSourceLogo } from "@/components/clara-ui";
+import {
+  computeNextPassOverArgentina,
+  formatCountdown,
+  type NextPass,
+  type SatelliteTLE,
+} from "@/lib/satellites";
 
 // force-dynamic: cada visita corre SSR fresco (~50ms Supabase + render).
 // Antes era revalidate=60 pero el segment cache de Next 16 ignoraba a
@@ -47,6 +53,27 @@ interface FireCounts {
   industrial: number;
   /** Preliminares GOES pendientes de confirmación FIRMS. */
   preliminary: number;
+}
+
+/**
+ * Próximo pase VIIRS sobre Argentina, calculado server-side. WHI-753.
+ * Devuelve null si no hay TLEs frescos (<7 días) o si no hay pase en 24h —
+ * el badge desaparece sin romper el hero.
+ */
+async function getNextSatellitePass(): Promise<NextPass | null> {
+  try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !key) return null;
+    const { createClient } = await import("@supabase/supabase-js");
+    const { data } = await createClient(url, key)
+      .from("satellite_tles")
+      .select("norad_id, name, line1, line2, fetched_at");
+    if (!data || data.length === 0) return null;
+    return computeNextPassOverArgentina(data as SatelliteTLE[]);
+  } catch {
+    return null;
+  }
 }
 
 async function getFireCounts(): Promise<FireCounts> {
@@ -157,7 +184,11 @@ const STEPS = [
 ] as const;
 
 export default async function Home() {
-  const { high, moderate, low, industrial: industrialCount, preliminary: preliminaryCount } = await getFireCounts();
+  const [fireCounts, nextPass] = await Promise.all([
+    getFireCounts(),
+    getNextSatellitePass(),
+  ]);
+  const { high, moderate, low, industrial: industrialCount, preliminary: preliminaryCount } = fireCounts;
   // Hay actividad de cualquier tipo? Eso decide si mostramos número/buckets o el fallback "sin focos".
   const hasAnyActivity = high + moderate + low + industrialCount > 0;
   // Sub-line de buckets bajos: solo aparece si hay algo abajo del umbral.
@@ -228,6 +259,14 @@ export default async function Home() {
                     junto al timestamp para que se lea como "actualizado a
                     las HH:MM, recién". */}
                 <HeroRefreshFlash />
+                {/* WHI-753: próximo pase VIIRS. Server-side, calculado en SSR.
+                    Si no hay TLE fresco o no hay pase en 24h, no renderiza. */}
+                {nextPass && (
+                  <Pill>
+                    <span aria-hidden>🛰</span>
+                    Pase VIIRS en {formatCountdown(nextPass.msUntil)}
+                  </Pill>
+                )}
               </div>
             </StaggerReveal>
 
