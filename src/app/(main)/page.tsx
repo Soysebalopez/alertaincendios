@@ -20,8 +20,8 @@ import {
   computeNextPassOverArgentina,
   formatCountdown,
   type NextPass,
-  type SatelliteTLE,
 } from "@/lib/satellites";
+import { fetchTLEs } from "@/lib/satellites-server";
 
 // force-dynamic: cada visita corre SSR fresco (~50ms Supabase + render).
 // Antes era revalidate=60 pero el segment cache de Next 16 ignoraba a
@@ -61,19 +61,9 @@ interface FireCounts {
  * el badge desaparece sin romper el hero.
  */
 async function getNextSatellitePass(): Promise<NextPass | null> {
-  try {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!url || !key) return null;
-    const { createClient } = await import("@supabase/supabase-js");
-    const { data } = await createClient(url, key)
-      .from("satellite_tles")
-      .select("norad_id, name, line1, line2, fetched_at");
-    if (!data || data.length === 0) return null;
-    return computeNextPassOverArgentina(data as SatelliteTLE[]);
-  } catch {
-    return null;
-  }
+  const tles = await fetchTLEs();
+  if (tles.length === 0) return null;
+  return computeNextPassOverArgentina(tles);
 }
 
 async function getFireCounts(): Promise<FireCounts> {
