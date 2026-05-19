@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { haversineKm } from "@/lib/geo";
 import { sendMessage } from "@/lib/telegram";
-import { findForestZone } from "@/lib/forest-zones";
+import { findForestZone } from "@/lib/forest-zones-geo";
 
 /**
  * GET /api/goes-alerts

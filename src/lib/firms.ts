@@ -11,7 +11,7 @@
 import { getSupabase } from "./supabase";
 import { classifyFireType } from "./fire-classification";
 import { isInArgentina } from "./argentina-polygon";
-import { findForestZone } from "./forest-zones";
+import { findForestZone } from "./forest-zones-geo";
 
 export interface FirePoint {
   latitude: number;
