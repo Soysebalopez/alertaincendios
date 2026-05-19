@@ -12,6 +12,8 @@ interface FirePoint {
   confidence: string;
   frp: number;
   type?: number;
+  /** WHI-757: id de zona forestal, viene desde fetchFires() vía /api/fires. */
+  forestZone?: string;
 }
 
 interface LayerState {
@@ -61,6 +63,10 @@ export function ArgentinaMap() {
     moderate: 0,
     low: 0,
   });
+  // WHI-757: por default mostramos solo focos en zona forestal. El usuario puede
+  // activar "ver no-forestal" para sumar quemas agrícolas/flaring (visual más bajo).
+  const [showNonForest, setShowNonForest] = useState(false);
+  const [nonForestCount, setNonForestCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ fires: 0, cities: 0 });
 
@@ -111,9 +117,16 @@ export function ArgentinaMap() {
         const fires: FirePoint[] = data.fires || [];
         allFires.current = fires;
         const c: Record<Intensity, number> = { high: 0, moderate: 0, low: 0 };
-        for (const f of fires) c[frpBucket(f.frp)]++;
+        let nonForest = 0;
+        for (const f of fires) {
+          if (f.forestZone) c[frpBucket(f.frp)]++;
+          else nonForest++;
+        }
         setIntensityCounts(c);
-        setStats((s) => ({ ...s, fires: fires.length }));
+        setNonForestCount(nonForest);
+        // El contador top-level "Focos" refleja únicamente los forestales por
+        // default. Suma los no-forestales solo cuando el toggle está activo.
+        setStats((s) => ({ ...s, fires: c.high + c.moderate + c.low }));
       } catch {}
     }
 
@@ -215,26 +228,42 @@ export function ArgentinaMap() {
     }
   }, [layers]);
 
-  // Repinta la capa de focos cuando cambian los buckets seleccionados.
-  // Se ejecuta también al final del fetch inicial (intensityCounts cambia).
+  // Repinta la capa de focos cuando cambian los buckets seleccionados o el
+  // toggle de no-forestal. WHI-757: focos no-forestales se renderizan con
+  // opacidad más baja y sin color de intensidad para no compitir visualmente
+  // con los focos forestales (el mensaje del producto es prevención forestal).
   useEffect(() => {
     const group = layerGroups.current.fires;
     if (!group) return;
     group.clearLayers();
     for (const f of allFires.current) {
-      if (!intensities.has(frpBucket(f.frp))) continue;
+      const inForest = Boolean(f.forestZone);
+      if (!inForest && !showNonForest) continue;
+      if (inForest && !intensities.has(frpBucket(f.frp))) continue;
+
       const radius = Math.max(3, Math.min(8, f.frp / 4));
-      const color =
-        f.confidence === "h" || f.confidence === "high" ? "#ef4444" : "#f97316";
-      L.circleMarker([f.latitude, f.longitude], {
-        radius,
-        color,
-        fillColor: color,
-        fillOpacity: 0.7,
-        weight: 1,
-      }).addTo(group);
+      if (inForest) {
+        const color =
+          f.confidence === "h" || f.confidence === "high" ? "#ef4444" : "#f97316";
+        L.circleMarker([f.latitude, f.longitude], {
+          radius,
+          color,
+          fillColor: color,
+          fillOpacity: 0.7,
+          weight: 1,
+        }).addTo(group);
+      } else {
+        // No forestal: gris translúcido, sin border. Se ve pero no domina.
+        L.circleMarker([f.latitude, f.longitude], {
+          radius: Math.max(2, Math.min(5, f.frp / 6)),
+          color: "#8a8a7e",
+          fillColor: "#8a8a7e",
+          fillOpacity: 0.25,
+          weight: 0,
+        }).addTo(group);
+      }
     }
-  }, [intensities, intensityCounts]);
+  }, [intensities, intensityCounts, showNonForest]);
 
   return (
     <div className="relative w-full" style={{ height: "100%", minHeight: "600px" }}>
@@ -243,7 +272,7 @@ export function ArgentinaMap() {
       {/* Layer toggles */}
       <div className="absolute top-4 right-4 z-[1000] flex flex-col gap-1">
         <LayerToggle
-          label="Focos"
+          label="Focos forestales"
           color="#f97316"
           active={layers.fires}
           count={stats.fires}
@@ -277,6 +306,29 @@ export function ArgentinaMap() {
                 </button>
               );
             })}
+          </div>
+        )}
+        {/* WHI-757: toggle "ver no forestal". Solo visible si hay focos
+            no-forestales para sumar (i.e. cuando hay actividad agro/industrial
+            detectada esa jornada). */}
+        {layers.fires && nonForestCount > 0 && (
+          <div className="ml-3 mt-0.5 pl-2 border-l border-border/60">
+            <button
+              onClick={() => setShowNonForest((v) => !v)}
+              title="Quemas agrícolas, flaring y otra actividad fuera de zona forestal"
+              className="flex items-center gap-2 rounded-md px-2 py-1 text-[10px] font-mono transition-all bg-surface-2/70 backdrop-blur-sm"
+              style={{
+                color: showNonForest ? "#8a8a7e" : "#8a8a7e80",
+                opacity: showNonForest ? 1 : 0.55,
+              }}
+            >
+              <span
+                className="h-1.5 w-1.5 rounded-full shrink-0"
+                style={{ backgroundColor: showNonForest ? "#8a8a7e" : "#333" }}
+              />
+              + No forestal
+              <span className="text-muted/60 tabular-nums">{nonForestCount}</span>
+            </button>
           </div>
         )}
         <LayerToggle
