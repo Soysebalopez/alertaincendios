@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import type { SatelliteTLE } from "@/lib/satellites";
 
 const FireMap = dynamic(
   () => import("@/components/fire-map").then((m) => m.FireMap),
@@ -16,6 +17,6 @@ const FireMap = dynamic(
   }
 );
 
-export function FireMapLoader() {
-  return <FireMap />;
+export function FireMapLoader({ tles = [] }: { tles?: SatelliteTLE[] }) {
+  return <FireMap tles={tles} />;
 }

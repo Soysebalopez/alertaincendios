@@ -20,6 +20,7 @@ import {
   computeNextPassOverArgentina,
   formatCountdown,
   type NextPass,
+  type SatelliteTLE,
 } from "@/lib/satellites";
 import { fetchTLEs } from "@/lib/satellites-server";
 
@@ -63,14 +64,17 @@ interface FireCounts {
 }
 
 /**
- * Próximo pase VIIRS sobre Argentina, calculado server-side. WHI-753.
- * Devuelve null si no hay TLEs frescos (<7 días) o si no hay pase en 24h —
- * el badge desaparece sin romper el hero.
+ * WHI-753 + WHI-754 hero: TLEs + próximo pase VIIRS, computados server-side
+ * en un solo fetch. Los TLEs los consume FireMapLoader para dibujar ground
+ * tracks; el badge usa nextPass.
  */
-async function getNextSatellitePass(): Promise<NextPass | null> {
+async function getSatelliteData(): Promise<{
+  tles: SatelliteTLE[];
+  nextPass: NextPass | null;
+}> {
   const tles = await fetchTLEs();
-  if (tles.length === 0) return null;
-  return computeNextPassOverArgentina(tles);
+  if (tles.length === 0) return { tles: [], nextPass: null };
+  return { tles, nextPass: computeNextPassOverArgentina(tles) };
 }
 
 async function getFireCounts(): Promise<FireCounts> {
@@ -190,11 +194,12 @@ const STEPS = [
 ] as const;
 
 export default async function Home() {
-  // WHI-757 + WHI-753: fetch paralelo de counts forestales y próximo pase VIIRS.
-  const [fireCounts, nextPass] = await Promise.all([
+  // WHI-757 + WHI-753: fetch paralelo de counts forestales y data satelital.
+  const [fireCounts, satData] = await Promise.all([
     getFireCounts(),
-    getNextSatellitePass(),
+    getSatelliteData(),
   ]);
+  const { tles, nextPass } = satData;
   const {
     high,
     moderate,
@@ -472,7 +477,7 @@ export default async function Home() {
             className="clara-hero-map relative border-l border-border"
             style={{ minHeight: 480 }}
           >
-            <FireMapLoader />
+            <FireMapLoader tles={tles} />
             {/* Overlay badge */}
             <div
               className="absolute top-4 left-4 flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-border z-[500]"
