@@ -1,10 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { PROVINCES } from "@/lib/argentina-cities";
 import { AIR_LEVEL_COLORS, type AirLevel } from "@/lib/air-quality";
+import {
+  computeGroundTrack,
+  currentSubSatellitePoint,
+  type SatelliteTLE,
+} from "@/lib/satellites";
 
 interface FirePoint {
   latitude: number;
@@ -20,7 +25,18 @@ interface LayerState {
   fires: boolean;
   air: boolean;
   wind: boolean;
+  satellites: boolean;
 }
+
+// WHI-754 — color por satélite VIIRS. Tonos azules para que la familia se lea
+// como "una sola cosa" pero distinguibles entre sí.
+const SATELLITE_META: Record<number, { label: string; color: string }> = {
+  37849: { label: "Suomi NPP", color: "#4b8bd4" },
+  43013: { label: "NOAA-20", color: "#5fb3c7" },
+  54234: { label: "NOAA-21", color: "#7ed3e8" },
+};
+
+const MARKER_REFRESH_MS = 5_000;
 
 type Intensity = "high" | "moderate" | "low";
 
@@ -43,10 +59,13 @@ function frpBucket(frp: number): Intensity {
   return "low";
 }
 
-export function ArgentinaMap() {
+export function ArgentinaMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<L.Map | null>(null);
   const layerGroups = useRef<Record<string, L.LayerGroup>>({});
+  // Markers por satélite, separados del polyline group para poder reposicionar
+  // sin re-trazar la trayectoria entera cada 5s.
+  const satelliteMarkers = useRef<Map<number, L.CircleMarker>>(new Map());
   // Fires se renderizan por intensidad — los guardamos crudos en memoria
   // para repintar al cambiar filtros sin re-fetchear /api/fires.
   const allFires = useRef<FirePoint[]>([]);
@@ -54,7 +73,11 @@ export function ArgentinaMap() {
     fires: true,
     air: true,
     wind: false,
+    satellites: false,
   });
+  const [selectedSats, setSelectedSats] = useState<Set<number>>(
+    () => new Set(tles.map((t) => t.norad_id))
+  );
   const [intensities, setIntensities] = useState<Set<Intensity>>(
     new Set(["high", "moderate", "low"])
   );
@@ -78,6 +101,22 @@ export function ArgentinaMap() {
       return next;
     });
   }, []);
+
+  const toggleSat = useCallback((noradId: number) => {
+    setSelectedSats((prev) => {
+      const next = new Set(prev);
+      if (next.has(noradId)) next.delete(noradId);
+      else next.add(noradId);
+      return next;
+    });
+  }, []);
+
+  // TLEs frescos (<7 días) con metadata. Filtra acá una sola vez en vez de
+  // dentro de cada useEffect.
+  const renderableTles = useMemo(
+    () => tles.filter((t) => t.line1 && t.line2 && SATELLITE_META[t.norad_id]),
+    [tles]
+  );
 
   useEffect(() => {
     if (!mapRef.current || mapInstance.current) return;
@@ -105,6 +144,7 @@ export function ArgentinaMap() {
     layerGroups.current.fires = L.layerGroup().addTo(map);
     layerGroups.current.air = L.layerGroup().addTo(map);
     layerGroups.current.wind = L.layerGroup();
+    layerGroups.current.satellites = L.layerGroup();
 
     // Load all data
     loadFires();
@@ -228,10 +268,83 @@ export function ArgentinaMap() {
     }
   }, [layers]);
 
-  // Repinta la capa de focos cuando cambian los buckets seleccionados o el
-  // toggle de no-forestal. WHI-757: focos no-forestales se renderizan con
-  // opacidad más baja y sin color de intensidad para no compitir visualmente
-  // con los focos forestales (el mensaje del producto es prevención forestal).
+  // WHI-754 — repinta ground tracks cuando cambia la selección de satélites o
+  // cuando la capa se activa por primera vez. Cada track son 360 puntos (3h @
+  // 30s), segmentados en el cruce del antimeridiano. Las polylines + markers
+  // se borran enteros y se redibujan — más simple que diffear y a esa escala
+  // (< 4 sats × < 10 segmentos) imperceptible.
+  useEffect(() => {
+    const group = layerGroups.current.satellites;
+    if (!group || !layers.satellites) {
+      satelliteMarkers.current.clear();
+      group?.clearLayers();
+      return;
+    }
+    group.clearLayers();
+    satelliteMarkers.current.clear();
+    const now = new Date();
+
+    for (const tle of renderableTles) {
+      if (!selectedSats.has(tle.norad_id)) continue;
+      const meta = SATELLITE_META[tle.norad_id];
+      const segments = computeGroundTrack(tle, 3 * 60 * 60_000, 30_000, now);
+      if (!segments) continue;
+
+      for (const seg of segments) {
+        if (seg.length < 2) continue;
+        L.polyline(
+          seg.map((p) => [p.lat, p.lng] as [number, number]),
+          {
+            color: meta.color,
+            weight: 1.5,
+            opacity: 0.7,
+            dashArray: "4 6",
+          }
+        ).addTo(group);
+      }
+
+      const ssp = currentSubSatellitePoint(tle, now);
+      if (ssp) {
+        const marker = L.circleMarker([ssp.lat, ssp.lng], {
+          radius: 6,
+          color: meta.color,
+          fillColor: meta.color,
+          fillOpacity: 0.85,
+          weight: 2,
+        });
+        marker.bindTooltip(
+          `<b>${meta.label}</b><br/>NORAD ${tle.norad_id}<br/>` +
+            `<a href="https://www.n2yo.com/passes/?s=${tle.norad_id}" target="_blank" rel="noopener noreferrer">próximos pases (n2yo)</a>`,
+          { direction: "top" }
+        );
+        marker.addTo(group);
+        satelliteMarkers.current.set(tle.norad_id, marker);
+      }
+    }
+  }, [layers.satellites, selectedSats, renderableTles]);
+
+  // WHI-754 — reposiciona los markers de satélites cada 5s sin re-trazar las
+  // polylines. La trayectoria 3h forward no cambia perceptiblemente entre
+  // ticks; solo la posición del satélite "ahora" se mueve.
+  useEffect(() => {
+    if (!layers.satellites) return;
+    const interval = setInterval(() => {
+      const now = new Date();
+      for (const tle of renderableTles) {
+        if (!selectedSats.has(tle.norad_id)) continue;
+        const marker = satelliteMarkers.current.get(tle.norad_id);
+        if (!marker) continue;
+        const ssp = currentSubSatellitePoint(tle, now);
+        if (ssp) marker.setLatLng([ssp.lat, ssp.lng]);
+      }
+    }, MARKER_REFRESH_MS);
+    return () => clearInterval(interval);
+  }, [layers.satellites, selectedSats, renderableTles]);
+
+  // WHI-757: repinta la capa de focos cuando cambian los buckets seleccionados
+  // o el toggle de no-forestal. Focos no-forestales se renderizan con opacidad
+  // más baja y sin color de intensidad para no competir visualmente con los
+  // forestales (el mensaje del producto es prevención forestal).
   useEffect(() => {
     const group = layerGroups.current.fires;
     if (!group) return;
@@ -344,6 +457,43 @@ export function ArgentinaMap() {
           active={layers.wind}
           onClick={() => setLayers((l) => ({ ...l, wind: !l.wind }))}
         />
+        {renderableTles.length > 0 && (
+          <>
+            <LayerToggle
+              label="Satélites"
+              color="#7ed3e8"
+              active={layers.satellites}
+              count={renderableTles.length}
+              onClick={() => setLayers((l) => ({ ...l, satellites: !l.satellites }))}
+            />
+            {layers.satellites && (
+              <div className="flex flex-col gap-1 ml-3 mt-0.5 pl-2 border-l border-border/60">
+                {renderableTles.map((tle) => {
+                  const meta = SATELLITE_META[tle.norad_id];
+                  const active = selectedSats.has(tle.norad_id);
+                  return (
+                    <button
+                      key={tle.norad_id}
+                      onClick={() => toggleSat(tle.norad_id)}
+                      title={`NORAD ${tle.norad_id} · ground track 3h forward`}
+                      className="flex items-center gap-2 rounded-md px-2 py-1 text-[10px] font-mono transition-all bg-surface-2/70 backdrop-blur-sm"
+                      style={{
+                        color: active ? meta.color : "#8a8a7e80",
+                        opacity: active ? 1 : 0.55,
+                      }}
+                    >
+                      <span
+                        className="h-1.5 w-1.5 rounded-full shrink-0"
+                        style={{ backgroundColor: active ? meta.color : "#333" }}
+                      />
+                      {meta.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {loading && (

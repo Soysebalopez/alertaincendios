@@ -16,6 +16,12 @@ import { LiveCityGrid } from "@/components/live-city-grid";
 import { HeroAutoRefresh } from "@/components/hero-auto-refresh";
 import { HeroRefreshFlash } from "@/components/hero-refresh-flash";
 import { Beacon, Pill, DataSourceLogo } from "@/components/clara-ui";
+import {
+  computeNextPassOverArgentina,
+  formatCountdown,
+  type NextPass,
+} from "@/lib/satellites";
+import { fetchTLEs } from "@/lib/satellites-server";
 
 // force-dynamic: cada visita corre SSR fresco (~50ms Supabase + render).
 // Antes era revalidate=60 pero el segment cache de Next 16 ignoraba a
@@ -35,6 +41,11 @@ const TELEGRAM_BOT_URL = "https://t.me/AlertasClaraBot";
  * número grande de portada.
  */
 const HERO_FRP_THRESHOLD_MW = 20;
+// Ventana del contador "Preliminares activos" — alineada con DISMISSAL_AFTER_HOURS
+// en /api/goes-dismissals. Sin esta ventana, el count acumula preliminaries ya
+// confirmadas por FIRMS (sobreviven hasta goes-prune a los 7 días) y crece
+// monotónicamente. Ver WHI-750.
+const PRELIMINARY_ACTIVE_WINDOW_HOURS = 4;
 
 interface FireCounts {
   /** WHI-757: wildfires con FRP ≥ HERO_FRP_THRESHOLD_MW en zona forestal — número grande del hero. */
@@ -49,6 +60,17 @@ interface FireCounts {
   industrial: number;
   /** Preliminares GOES pendientes de confirmación FIRMS. */
   preliminary: number;
+}
+
+/**
+ * Próximo pase VIIRS sobre Argentina, calculado server-side. WHI-753.
+ * Devuelve null si no hay TLEs frescos (<7 días) o si no hay pase en 24h —
+ * el badge desaparece sin romper el hero.
+ */
+async function getNextSatellitePass(): Promise<NextPass | null> {
+  const tles = await fetchTLEs();
+  if (tles.length === 0) return null;
+  return computeNextPassOverArgentina(tles);
 }
 
 async function getFireCounts(): Promise<FireCounts> {
@@ -67,11 +89,15 @@ async function getFireCounts(): Promise<FireCounts> {
 
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const prelimCutoff = new Date(
+      Date.now() - PRELIMINARY_ACTIVE_WINDOW_HOURS * 60 * 60 * 1000
+    ).toISOString();
     const prelimPromise = url && key
       ? createClient(url, key)
           .from("goes_preliminary")
           .select("id", { count: "exact", head: true })
           .eq("high_confidence", true)
+          .gte("detected_at", prelimCutoff)
       : Promise.resolve({ count: 0 });
 
     const [fires, prelimRes] = await Promise.all([firesPromise, prelimPromise]);
@@ -164,6 +190,11 @@ const STEPS = [
 ] as const;
 
 export default async function Home() {
+  // WHI-757 + WHI-753: fetch paralelo de counts forestales y próximo pase VIIRS.
+  const [fireCounts, nextPass] = await Promise.all([
+    getFireCounts(),
+    getNextSatellitePass(),
+  ]);
   const {
     high,
     moderate,
@@ -171,7 +202,7 @@ export default async function Home() {
     nonForestWild,
     industrial: industrialCount,
     preliminary: preliminaryCount,
-  } = await getFireCounts();
+  } = fireCounts;
   // WHI-757: el hero refleja todos los focos forestales activos (no solo los
   // de alta intensidad). En temporada baja el número de "destacados FRP≥20"
   // suele ser 0, lo que daba un hero deprimente; mostrar el total da una
@@ -252,6 +283,14 @@ export default async function Home() {
                     junto al timestamp para que se lea como "actualizado a
                     las HH:MM, recién". */}
                 <HeroRefreshFlash />
+                {/* WHI-753: próximo pase VIIRS. Server-side, calculado en SSR.
+                    Si no hay TLE fresco o no hay pase en 24h, no renderiza. */}
+                {nextPass && (
+                  <Pill>
+                    <span aria-hidden>🛰</span>
+                    Pase VIIRS en {formatCountdown(nextPass.msUntil)}
+                  </Pill>
+                )}
               </div>
             </StaggerReveal>
 
