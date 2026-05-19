@@ -25,35 +25,38 @@ import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { flagFlashAvailable, REFRESH_FLAG_KEY } from "@/lib/refresh-flag";
 
-const HIGH_FRP_MW = 20;
-
 interface FirePoint {
   type?: number;
   frp: number;
+  /** WHI-757: foco está dentro de una de las zonas forestales argentinas. */
+  forestZone?: string;
 }
 
-function countHigh(fires: FirePoint[]): number {
+// WHI-757: el contador del hero ahora refleja focos forestales activos
+// (cualquier FRP), no solo los de alta intensidad. El threshold ≥ 20 dejaba
+// "0 focos destacados" la mayor parte del año fuera de temporada alta.
+function countForestActive(fires: FirePoint[]): number {
   let n = 0;
   for (const f of fires) {
     const isWild = (f.type ?? 0) === 0 || f.type === 1;
-    if (isWild && f.frp >= HIGH_FRP_MW) n++;
+    if (isWild && f.forestZone) n++;
   }
   return n;
 }
 
-export function HeroAutoRefresh({ initialHigh }: { initialHigh: number }) {
+export function HeroAutoRefresh({ initialCount }: { initialCount: number }) {
   const router = useRouter();
   // baseline contra el que comparamos cuando llega el evento Realtime.
   // Se resetea cuando el SSR re-monta el componente con un conteo nuevo —
   // eso pasa después de cada router.refresh() exitoso, así no entramos
   // en un bucle de refresh.
-  const baselineRef = useRef(initialHigh);
+  const baselineRef = useRef(initialCount);
   const refreshingRef = useRef(false);
 
   useEffect(() => {
-    baselineRef.current = initialHigh;
+    baselineRef.current = initialCount;
     refreshingRef.current = false;
-  }, [initialHigh]);
+  }, [initialCount]);
 
   useEffect(() => {
     const supabase = createSupabaseBrowserClient();
@@ -73,8 +76,8 @@ export function HeroAutoRefresh({ initialHigh }: { initialHigh: number }) {
             if (!res.ok) return;
             const data = await res.json();
             const fires = (data.fires ?? []) as FirePoint[];
-            const high = countHigh(fires);
-            if (high > baselineRef.current) {
+            const forestActive = countForestActive(fires);
+            if (forestActive > baselineRef.current) {
               refreshingRef.current = true;
               try {
                 sessionStorage.setItem(REFRESH_FLAG_KEY, Date.now().toString());

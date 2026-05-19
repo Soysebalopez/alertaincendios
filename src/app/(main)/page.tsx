@@ -48,12 +48,14 @@ const HERO_FRP_THRESHOLD_MW = 20;
 const PRELIMINARY_ACTIVE_WINDOW_HOURS = 4;
 
 interface FireCounts {
-  /** Wildfires con FRP ≥ HERO_FRP_THRESHOLD_MW — número grande del hero. */
+  /** WHI-757: wildfires con FRP ≥ HERO_FRP_THRESHOLD_MW en zona forestal — número grande del hero. */
   high: number;
-  /** Wildfires con 5 ≤ FRP < 20 — actividad real, sub-line. */
+  /** WHI-757: 5 ≤ FRP < 20 en zona forestal — sub-line. */
   moderate: number;
-  /** Wildfires con FRP < 5 — quema agricola/menor, sub-line. */
+  /** WHI-757: FRP < 5 en zona forestal — sub-line. */
   low: number;
+  /** WHI-757: wildfires fuera de zona forestal — agrícolas/otros, informativo. */
+  nonForestWild: number;
   /** Detecciones reclasificadas como flaring/offshore/volcano. */
   industrial: number;
   /** Preliminares GOES pendientes de confirmación FIRMS. */
@@ -72,13 +74,17 @@ async function getNextSatellitePass(): Promise<NextPass | null> {
 }
 
 async function getFireCounts(): Promise<FireCounts> {
-  const empty: FireCounts = { high: 0, moderate: 0, low: 0, industrial: 0, preliminary: 0 };
+  const empty: FireCounts = {
+    high: 0, moderate: 0, low: 0, nonForestWild: 0, industrial: 0, preliminary: 0,
+  };
   try {
     const { fetchFires } = await import("@/lib/firms");
     const { createClient } = await import("@supabase/supabase-js");
 
-    // fetchFires() ya aplica polígono ARG + classifyFireType, así que lo que
-    // sale acá es "lo que está adentro de Argentina, post-reclasificación".
+    // fetchFires() ya aplica polígono ARG + classifyFireType + tag forestZone
+    // (WHI-757). El número grande del hero refleja únicamente focos en zona
+    // forestal — la misión del producto es prevención de incendios forestales,
+    // no monitoreo térmico general.
     const firesPromise = fetchFires();
 
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -96,15 +102,16 @@ async function getFireCounts(): Promise<FireCounts> {
 
     const [fires, prelimRes] = await Promise.all([firesPromise, prelimPromise]);
 
-    let high = 0, moderate = 0, low = 0, industrial = 0;
+    let high = 0, moderate = 0, low = 0, nonForestWild = 0, industrial = 0;
     for (const f of fires) {
       const isWild = (f.type ?? 0) === 0 || f.type === 1;
       if (!isWild) { industrial++; continue; }
+      if (!f.forestZone) { nonForestWild++; continue; }
       if (f.frp >= HERO_FRP_THRESHOLD_MW) high++;
       else if (f.frp >= 5) moderate++;
       else low++;
     }
-    return { high, moderate, low, industrial, preliminary: prelimRes.count ?? 0 };
+    return { high, moderate, low, nonForestWild, industrial, preliminary: prelimRes.count ?? 0 };
   } catch {
     return empty;
   }
@@ -183,17 +190,35 @@ const STEPS = [
 ] as const;
 
 export default async function Home() {
+  // WHI-757 + WHI-753: fetch paralelo de counts forestales y próximo pase VIIRS.
   const [fireCounts, nextPass] = await Promise.all([
     getFireCounts(),
     getNextSatellitePass(),
   ]);
-  const { high, moderate, low, industrial: industrialCount, preliminary: preliminaryCount } = fireCounts;
-  // Hay actividad de cualquier tipo? Eso decide si mostramos número/buckets o el fallback "sin focos".
-  const hasAnyActivity = high + moderate + low + industrialCount > 0;
-  // Sub-line de buckets bajos: solo aparece si hay algo abajo del umbral.
-  const subBuckets: string[] = [];
-  if (moderate > 0) subBuckets.push(`${moderate} ${moderate === 1 ? "moderado" : "moderados"}`);
-  if (low > 0) subBuckets.push(`${low} ${low === 1 ? "bajo" : "bajos"}`);
+  const {
+    high,
+    moderate,
+    low,
+    nonForestWild,
+    industrial: industrialCount,
+    preliminary: preliminaryCount,
+  } = fireCounts;
+  // WHI-757: el hero refleja todos los focos forestales activos (no solo los
+  // de alta intensidad). En temporada baja el número de "destacados FRP≥20"
+  // suele ser 0, lo que daba un hero deprimente; mostrar el total da una
+  // señal más honesta de presencia/ausencia de actividad forestal.
+  const forestTotal = high + moderate + low;
+  const hasAnyForestActivity = forestTotal > 0;
+  // Breakdown por intensidad como sub-line. Solo aparece si hay desglose
+  // (más de un bucket con actividad).
+  const intensityBuckets: string[] = [];
+  if (high > 0) intensityBuckets.push(`${high} ${high === 1 ? "alta" : "altas"}`);
+  if (moderate > 0) intensityBuckets.push(`${moderate} ${moderate === 1 ? "moderada" : "moderadas"}`);
+  if (low > 0) intensityBuckets.push(`${low} ${low === 1 ? "baja" : "bajas"}`);
+  // "Fuera de zona forestal" agrupa wildfires no forestales + industrial
+  // (flaring, offshore, volcánico). Lo presentamos como secundario para no
+  // confundir al usuario con quemas agrícolas planificadas.
+  const nonForestTotal = nonForestWild + industrialCount;
   const timestamp = new Date().toLocaleString("es-AR", {
     timeZone: "America/Argentina/Buenos_Aires",
     day: "2-digit",
@@ -228,7 +253,7 @@ export default async function Home() {
       {/* Auto-refresh discreto cuando entra un nuevo destacado al cache.
           Polea /api/fires cada 60s y dispara router.refresh() solo si
           high subió. No renderiza nada visible. */}
-      <HeroAutoRefresh initialHigh={high} />
+      <HeroAutoRefresh initialCount={forestTotal} />
 
       {/* ─── HERO ─── */}
       <section className="relative border-b border-border">
@@ -270,7 +295,7 @@ export default async function Home() {
             </StaggerReveal>
 
             <StaggerReveal delay={0.2}>
-              {hasAnyActivity ? (
+              {hasAnyForestActivity ? (
                 <div>
                   <h1
                     className="clara-hero-h1 text-foreground m-0"
@@ -286,7 +311,7 @@ export default async function Home() {
                       className="text-accent tabular-nums"
                       style={{ fontVariantNumeric: "tabular-nums" }}
                     >
-                      <FireCounter count={high} />
+                      <FireCounter count={forestTotal} />
                     </span>
                     <br />
                     <span
@@ -299,10 +324,10 @@ export default async function Home() {
                         letterSpacing: "-0.02em",
                       }}
                     >
-                      {high === 1 ? "foco destacado" : "focos destacados"}
+                      {forestTotal === 1 ? "foco forestal activo" : "focos forestales activos"}
                     </span>
                   </h1>
-                  {(subBuckets.length > 0 || industrialCount > 0) && (
+                  {(intensityBuckets.length > 0 || nonForestTotal > 0) && (
                     <p
                       className="font-mono mt-4 m-0"
                       style={{
@@ -311,10 +336,10 @@ export default async function Home() {
                         letterSpacing: "0.02em",
                       }}
                     >
-                      {subBuckets.length > 0 && subBuckets.join(" · ")}
-                      {subBuckets.length > 0 && industrialCount > 0 && " · "}
-                      {industrialCount > 0 &&
-                        `+ ${industrialCount} ${industrialCount === 1 ? "foco" : "focos"} industrial${industrialCount === 1 ? "" : "es"}`}
+                      {intensityBuckets.length > 0 && intensityBuckets.join(" · ")}
+                      {intensityBuckets.length > 0 && nonForestTotal > 0 && " · "}
+                      {nonForestTotal > 0 &&
+                        `+ ${nonForestTotal} fuera de zona forestal`}
                     </p>
                   )}
                 </div>
@@ -340,9 +365,21 @@ export default async function Home() {
                         "color-mix(in oklab, var(--foreground) 75%, transparent)",
                     }}
                   >
-                    sin focos detectados
+                    sin focos forestales activos
                   </span>
                 </h1>
+              )}
+              {!hasAnyForestActivity && nonForestTotal > 0 && (
+                <p
+                  className="font-mono mt-4 m-0"
+                  style={{
+                    fontSize: 13,
+                    color: "var(--muted)",
+                    letterSpacing: "0.02em",
+                  }}
+                >
+                  {nonForestTotal} {nonForestTotal === 1 ? "foco detectado" : "focos detectados"} fuera de zona forestal
+                </p>
               )}
             </StaggerReveal>
 

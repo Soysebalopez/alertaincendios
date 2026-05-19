@@ -11,6 +11,7 @@
 import { getSupabase } from "./supabase";
 import { classifyFireType } from "./fire-classification";
 import { isInArgentina } from "./argentina-polygon";
+import { findForestZone } from "./forest-zones";
 
 export interface FirePoint {
   latitude: number;
@@ -22,6 +23,8 @@ export interface FirePoint {
   frp: number;
   /** VIIRS detection type: 0=vegetation, 1=volcano, 2=static land (flaring), 3=offshore */
   type: number;
+  /** WHI-757: id de la zona forestal si el foco cae adentro de una. */
+  forestZone?: string;
 }
 
 // Argentina bounding box (continental)
@@ -57,10 +60,14 @@ export async function fetchFires(): Promise<FirePoint[]> {
       // polígono ARG para no contar focos de países limítrofes.
       return fires
         .filter((f) => isInArgentina(f.latitude, f.longitude))
-        .map((f) => ({
-          ...f,
-          type: classifyFireType(f.type ?? 0, f.latitude, f.longitude, f.frp),
-        }));
+        .map((f) => {
+          const zone = findForestZone(f.latitude, f.longitude);
+          return {
+            ...f,
+            type: classifyFireType(f.type ?? 0, f.latitude, f.longitude, f.frp),
+            forestZone: zone?.id,
+          };
+        });
     }
   } catch (e) {
     console.error("fires_cache read error:", e);
