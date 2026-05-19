@@ -2,6 +2,12 @@ import type { Metadata } from "next";
 import { MapLoader } from "@/components/map/map-loader";
 import { MapInterpretation } from "@/components/map/map-interpretation";
 import { Eye } from "@phosphor-icons/react/dist/ssr";
+import { fetchTLEs } from "@/lib/satellites-server";
+
+// WHI-754 — TLEs los necesita el cliente para propagar SGP4 y dibujar
+// ground tracks. Los pasamos como prop server-side. force-dynamic para
+// que cada visita use el último refresh del cron.
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Mapa",
@@ -18,7 +24,8 @@ export const metadata: Metadata = {
   },
 };
 
-export default function MapaPage() {
+export default async function MapaPage() {
+  const tles = await fetchTLEs();
   return (
     <main className="relative z-10 border-t border-border">
       {/* Mapa con altura fija para dejar espacio scrolleable a la sección
@@ -28,7 +35,7 @@ export default function MapaPage() {
         className="relative"
         style={{ height: "75vh", minHeight: 540 }}
       >
-        <MapLoader />
+        <MapLoader tles={tles} />
         <div className="absolute top-4 left-4 flex items-center gap-2 bg-background/80 backdrop-blur-sm border border-border rounded-lg px-3 py-2 z-[1000]">
           <Eye size={14} className="text-accent" />
           <span className="font-mono text-[11px] text-muted">
