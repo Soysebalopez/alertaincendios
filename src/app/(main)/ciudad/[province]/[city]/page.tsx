@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowLeft, MapPin, Bell } from "@phosphor-icons/react/dist/ssr";
 import { PROVINCES } from "@/lib/argentina-cities";
 import { CityDashboard } from "@/components/city/city-dashboard";
+import { CityForestFires } from "@/components/city/city-forest-fires";
 import { CityJsonLd } from "@/components/jsonld";
 import { Pill } from "@/components/clara-ui";
 
@@ -45,14 +46,17 @@ export async function generateMetadata({
   const match = findCity(province, city);
   if (!match) return { title: "Ciudad no encontrada — C.L.A.R.A." };
 
-  const title = `${match.city.name}, ${match.province.name} — Calidad del Aire`;
-  const description = `Monitoreo ambiental ciudadano para ${match.city.name}. Calidad del aire, viento y resumen en lenguaje simple.`;
+  // WHI-759: doble entry SEO. Las páginas ya rankean por "calidad del aire en X";
+  // ahora también por "incendios forestales / focos cerca de X". Title se mantiene
+  // breve para evitar truncation en SERP — el detalle va en description y OG.
+  const title = `${match.city.name}, ${match.province.name} — Focos forestales y calidad del aire`;
+  const description = `Focos forestales cerca de ${match.city.name}, calidad del aire y monitoreo ambiental en tiempo real. Alertas tempranas vía Telegram.`;
 
   return {
     title,
     description,
     openGraph: {
-      title: `${match.city.name} — Calidad del Aire — C.L.A.R.A.`,
+      title: `${match.city.name} — Focos forestales · C.L.A.R.A.`,
       description,
     },
     twitter: {
@@ -149,7 +153,15 @@ export default async function CiudadPage({ params }: PageProps) {
 
       {/* Dashboard */}
       <section className="clara-section-padded" style={{ padding: "32px" }}>
-        <div className="max-w-[1400px] mx-auto">
+        <div className="max-w-[1400px] mx-auto flex flex-col gap-6">
+          {/* WHI-759: focos forestales en radio de 100 km. Va PRIMERO porque
+              es la información que más se alinea con la misión del producto.
+              Calidad del aire (preexistente) sigue debajo para SEO + valor. */}
+          <CityForestFires
+            cityName={match.city.name}
+            lat={match.city.lat}
+            lng={match.city.lng}
+          />
           <CityDashboard
             cityName={match.city.name}
             provinceName={match.province.name}
