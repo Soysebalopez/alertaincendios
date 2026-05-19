@@ -56,11 +56,15 @@ Central de Localizacion y Alerta de Riesgo Ambiental — alerta temprana de ince
 
 ### API Routes — Cron (auth CRON_SECRET)
 - `/api/fires/sync` — manual FIRMS sync (IP residencial)
-- `/api/alerts` — FIRMS → Telegram, con confirmation upgrade si matchea preliminary GOES (<5km, <2h)
+- `/api/alerts` — FIRMS → Telegram, con confirmation upgrade si matchea preliminary GOES (<5km, <2h). **Filtro forestal (WHI-758)**: civilian solo alertas en zona forestal, fireman ve todo.
 - `/api/goes-sync` — **Python**, descarga GOES-19 ABI-L2-FDCF, filtros, inserta en goes_preliminary, guarda stats en goes_sync_runs
-- `/api/goes-alerts` — preliminary → Telegram + tracking en goes_alerted
+- `/api/goes-alerts` — preliminary → Telegram + tracking en goes_alerted. Mismo filtro forestal que `/api/alerts`.
 - `/api/goes-dismissals` — falsa alarma + DELETE preliminary descartadas + huérfanos
 - `/api/lightning-alerts` — tormenta seca (OpenWeather + Open-Meteo fallback)
+- `/api/satellites/sync-tles` — baja TLEs de CelesTrak para Suomi NPP/NOAA-20/NOAA-21 (WHI-753)
+
+### API Routes — Públicas (sat data)
+- `/api/satellites/tles` — read-only, devuelve los TLEs almacenados. Cache CDN 1h + SWR 5min. Lo consume `<CitySatelliteCoverage>` para computar cobertura sin requerir cómputo server-side por las 78 páginas SSG.
 
 ## Data Sources (all free)
 - **NASA FIRMS VIIRS**: focos confirmados, ~15 min, 375m res
@@ -88,6 +92,9 @@ Central de Localizacion y Alerta de Riesgo Ambiental — alerta temprana de ince
 - `goes_alerted` (id bigserial PK, goes_id FK→goes_preliminary ON DELETE CASCADE, chat_id, preliminary_sent_at, confirmed_sent_at, dismissed_at, firms_fire_key) — UNIQUE (goes_id, chat_id)
 - `goes_sync_runs` (id bigserial PK, scan_start, s3_key, fire_pixels_global, after_mask, after_polygon, after_urban, after_flaring, agricultural_count, after_dedup, inserted, persistent, download/process/total_seconds, created_at) — funnel + timing por scan
 
+### Satélites (Fase 4 — WHI-752/753)
+- `satellite_tles` (norad_id int PK, name, line1, line2, fetched_at) — Two-Line Elements de CelesTrak para Suomi NPP (37849), NOAA-20 (43013), NOAA-21 (54234). Refresh diario vía pg_cron. Si fetched_at > 7 días, la lib descarta el TLE (propagación con datos viejos da resultados sin sentido).
+
 ### Lightning
 - `lightning_alerted` (id bigserial PK, chat_id, alerted_at) — rate-limit 30 min/sub
 
@@ -103,6 +110,7 @@ Central de Localizacion y Alerta de Riesgo Ambiental — alerta temprana de ince
 - `goes-alerts` (`7,17,27,37,47,57 * * * *`) — `/api/goes-alerts` preliminary → Telegram
 - `goes-dismissals` (`37 * * * *` hourly) — falsa alarma + DELETE preliminary descartadas + huérfanos
 - `goes-prune` (`30 3 * * *` daily) — cleanup defensivo >7 días
+- `satellites-sync-tles` (`30 4 * * *` daily, 01:30 ART) — `/api/satellites/sync-tles` baja TLEs frescos de CelesTrak (WHI-753)
 
 ## Supabase Functions / RPC
 - `fires_sync_step1_fetch()` — HTTP GET a FIRMS via pg_net
@@ -127,6 +135,49 @@ Central de Localizacion y Alerta de Riesgo Ambiental — alerta temprana de ince
 - Doble confirmación: preliminary GOES → confirmation upgrade FIRMS si <5km/<2h → dismissal automático tras 4h
 - Preliminaries descartadas se BORRAN de goes_preliminary (cascade goes_alerted) — el landing metric "Preliminares activos" refleja solo lo pendiente
 
+## Forest classification (Fase 4 — WHI-756 a WHI-761)
+
+**Pivote conceptual del producto**: CLARA pasó de "monitor de detecciones térmicas con filtros de exclusión" a "monitor de focos en zona forestal con opcional ver todo". El landing, mapa, /ciudad y bot Telegram aplican el mismo filtro.
+
+### Datos
+- **Fuente**: MapBiomas Argentina Colección 2 (2024), clase 3 "Formación Forestal". 6 polígonos pre-procesados a JSON:
+  - `andino-patagonico`, `yungas`, `selva-misionera`, `espinal-mesopotamico`, `sierras-cordoba`, `chaco-norte` en `src/lib/forest-polygons/*.json`
+- **Pipeline reproducible** (en local, no en CI):
+  - Download `argentina_coverage_2024.tif` de `storage.googleapis.com/mapbiomas-public/initiatives/argentina/collection-2/coverage/`
+  - Por zona: `gdal_translate -projwin` → `gdal_calc "A==3"` → `gdalwarp -tr 0.005` (downsample a ~500m) → `gdal_polygonize` → `mapshaper -filter-islands min-area=20km2 -dissolve -simplify dp 2% keep-shapes -clean` → precision 3 decimales
+  - **Total: 167 KB** combinados, server-only.
+
+### Arquitectura del lib
+- `src/lib/forest-zones.ts` — **client-safe**, metadata only (id + name + `forestZoneName()`). 35 líneas.
+- `src/lib/forest-zones-geo.ts` — **server-only** (`import "server-only"`). Carga los 6 JSON polígonos + expone `findForestZone()` con buffer WUI 5km y fast-reject por bbox pre-computado.
+- IDs de zona estables — los tags `forestZone` en `fires_cache` no necesitan migración entre versiones.
+
+### Buffer WUI 5km
+- `findForestZone()` devuelve la zona si el punto cae adentro **o si está a <5km del borde** (`FOREST_BUFFER_KM`).
+- Captura el wildland-urban interface (Bariloche, Villa Carlos Paz, El Bolsón) donde los incendios forestales son más peligrosos para personas.
+- Fast path (point-in-polygon con bbox filter) → slow path (cross-track distance al ring) solo si el primer no matchea.
+
+### Aplicado en
+- **Hero**: `forestTotal = high + moderate + low` (todos los wildfires en forestZone). Sub-line muestra "+N fuera de zona forestal".
+- **Mapa `/`**: capa Focos forestales filtra `f.forestZone` truthy. Toggle "+ No forestal" muestra los grises translúcidos (no-forestal con opacidad baja para no competir visualmente).
+- **`/ciudad/[p]/[c]`**: bloque `<CityForestFires>` muestra los 3 focos forestales más cercanos en 100km. Si 0, mensaje positivo "Sin actividad forestal en 100 km" (tono `--good`).
+- **Bot Telegram**: `/api/alerts` y `/api/goes-alerts` filtran focos no forestales para subscribers civilian. Fireman siempre recibe todo. Mensaje incluye línea "🌲 Zona: {nombre}".
+
+## Satellite trajectories (WHI-752 a WHI-755)
+
+**Visualización de cobertura satelital VIIRS sobre Argentina**. Datos de NORAD/CelesTrak, propagación SGP4 client-side con `satellite.js@5`.
+
+⚠️ **CRÍTICO: usar `satellite.js@5`, no @6 o @7**. Las versiones 6+ importan `node:worker_threads` y `node:module` en builds WASM internas, que rompen el bundle del browser. Webpack falla con `UnhandledSchemeError`, Turbopack se cuelga silenciosamente en "Creating optimized production build". v5 es la última versión 100% JS pura con la misma API pública.
+
+### Lib
+- `src/lib/satellites.ts` — client-safe: `computeNextPassOverArgentina`, `computeGroundTrack` (con split por antimeridiano), `currentSubSatellitePoint`, `findLastVIIRSCoverage`, `findNextVIIRSCoverage`, `formatCountdown`, `formatTimeAgo`. Tipo `SatelliteTLE`.
+- `src/lib/satellites-server.ts` — `fetchTLEs()` (lee `satellite_tles` con SERVICE_ROLE). Server-only.
+
+### Renderizado
+- **Hero** (`src/app/(main)/page.tsx`): badge "🛰 Pase VIIRS en Xh Ymin" en pill row. Mini-mapa (`fire-map.tsx`) muestra ground tracks 90 min + emoji 🛰 en posición actual (sin marker animado, render una sola vez).
+- **`/mapa`** (`argentina-map.tsx`): capa "Satélites" activa por default. Ground tracks 3h con polylines punteadas. Marker emoji 🛰 con tooltip (NORAD + link n2yo). Reposiciona cada 5s vía `setLatLng()` sin re-trazar la polyline. Toggle on/off + sub-chips por satélite.
+- **`/ciudad/[p]/[c]`** (`<CitySatelliteCoverage>`): card con "Última pasada VIIRS hace Xh" + "Próxima pasada en Yh". Fetch a `/api/satellites/tles` (1h CDN cache), re-computa cada 5min client-side. Para evitar React 19 purity rule, guarda `computedAt` con el state.
+
 ## SEO
 - Title template: "%s — CLARA"
 - robots.ts: allow all excepto /api/, /dashboard, /login
@@ -143,12 +194,24 @@ Central de Localizacion y Alerta de Riesgo Ambiental — alerta temprana de ince
 - Secrets fuera del repo (.env*, scripts/*.env gitignored). Templates en *.env.example
 - Procedimiento de rotación documentado en `SECURITY-AUDIT.md`
 
-## Project Status (2026-05-11)
+## Project Status (2026-05-19)
 - **Fase 1** Mejoras inmediatas: 67% (falta WHI-542 dominio — owner action)
 - **Fase 2** GOES detection: ✅ **100%** (WHI-545/546/547 + v2/v3 + filter funnel)
 - **Fase 3** Optimización: solo queda WHI-550 WhatsApp — owner action. WHI-548 (GLM) y WHI-549 (super-res) Canceled con docs.
+- **Fase 4** Trayectorias satelitales: ✅ **100%** (WHI-752/753/754/755)
+- **Fase 5** Pivote forestal: ✅ **100%** (WHI-756/757/758/759/760/761 + Chaco Norte)
 
-### Tickets cerrados recientes
+### Tickets cerrados recientes (sesión 2026-05-19)
+- WHI-750: fix contador preliminares + copy "Focos" vs "Incendios"
+- WHI-752-755: sistema de trayectorias satelitales (badge hero, ground tracks /mapa, cobertura por ciudad)
+- WHI-756: pivote conceptual a producto de prevención forestal (parent)
+- WHI-757: filtro forestal en landing + mapa (focos no-forestales pasan a opacidad baja)
+- WHI-758: filtro forestal en bot Telegram (civilian → solo forestal, fireman → todo)
+- WHI-759: bloque "focos forestales cerca de [ciudad]" en /ciudad para SEO + valor al usuario
+- WHI-760: WUI buffer 5km en `findForestZone` para capturar interfaz urbano-forestal
+- WHI-761: reemplazo de polígonos hand-drawn por MapBiomas Coll 2 oficial + Chaco Norte
+
+### Tickets cerrados (sesiones previas)
 - WHI-545: pipeline GOES-19 production
 - WHI-546: filtros v1/v2/v3 (mask, polígono ARG, urban, dedup, persistencia, Vaca Muerta, agricultural)
 - WHI-547: doble confirmación (preliminary/confirmed/dismissed)
