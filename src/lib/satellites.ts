@@ -203,3 +203,127 @@ export function formatCountdown(msUntil: number): string {
   if (hours === 0) return `${minutes} min`;
   return `${hours}h ${minutes}min`;
 }
+
+// VIIRS swath: 3040 km wide → 1520 km a cada lado del ground track. Una ciudad
+// está "dentro del swath" durante una pasada si su distancia mínima al SSP en
+// algún instante del pase es <1520 km (aproximación: el track es curvo, así que
+// la perpendicular real puede diferir hasta ~medio paso ≈ 105 km a 30s steps).
+const VIIRS_SWATH_HALF_KM = 1520;
+const COVERAGE_STEP_MS = 60_000; // 1 min
+const COVERAGE_HORIZON_MS = 24 * 60 * 60_000; // 24h
+
+export type CoverageEvent = {
+  norad_id: number;
+  name: string;
+  at: Date;
+  distanceKm: number;
+};
+
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+/**
+ * Busca la última cobertura VIIRS sobre (lat, lng) en las últimas 24h.
+ * WHI-755 — base del card "VIIRS pasó hace 4h sin focos en tu zona".
+ *
+ * Estrategia: para cada satélite, itera HACIA ATRÁS en pasos de 1 min hasta
+ * encontrar un instante con distancia city→SSP < swath. Devuelve el evento
+ * más reciente (mayor timestamp) entre todos los sats.
+ *
+ * Costo: 3 sats × 1440 steps × (propagación SGP4 + haversine) ≈ 30 ms client.
+ */
+export function findLastVIIRSCoverage(
+  lat: number,
+  lng: number,
+  tles: SatelliteTLE[],
+  now: Date = new Date()
+): CoverageEvent | null {
+  let best: CoverageEvent | null = null;
+  for (const tle of tles) {
+    if (!tle.line1 || !tle.line2) continue;
+    const fetchedAt = Date.parse(tle.fetched_at);
+    if (!Number.isFinite(fetchedAt) || Date.now() - fetchedAt > STALE_TLE_MS) continue;
+
+    let satrec;
+    try {
+      satrec = twoline2satrec(tle.line1, tle.line2);
+    } catch {
+      continue;
+    }
+
+    for (let dt = 0; dt < COVERAGE_HORIZON_MS; dt += COVERAGE_STEP_MS) {
+      const date = new Date(now.getTime() - dt);
+      const ssp = subSatellitePoint(satrec, date);
+      if (!ssp) continue;
+      const distance = haversineKm(lat, lng, ssp.lat, ssp.lng);
+      if (distance < VIIRS_SWATH_HALF_KM) {
+        if (!best || date.getTime() > best.at.getTime()) {
+          best = { norad_id: tle.norad_id, name: tle.name, at: date, distanceKm: distance };
+        }
+        break; // first hit walking backward = most recent for this sat
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * Busca la próxima cobertura VIIRS sobre (lat, lng) en las próximas 24h.
+ * WHI-755 — base del countdown "Próxima pasada VIIRS: 1h 47min" por ciudad.
+ *
+ * Misma estrategia que findLastVIIRSCoverage pero forward.
+ */
+export function findNextVIIRSCoverage(
+  lat: number,
+  lng: number,
+  tles: SatelliteTLE[],
+  now: Date = new Date()
+): CoverageEvent | null {
+  let best: CoverageEvent | null = null;
+  for (const tle of tles) {
+    if (!tle.line1 || !tle.line2) continue;
+    const fetchedAt = Date.parse(tle.fetched_at);
+    if (!Number.isFinite(fetchedAt) || Date.now() - fetchedAt > STALE_TLE_MS) continue;
+
+    let satrec;
+    try {
+      satrec = twoline2satrec(tle.line1, tle.line2);
+    } catch {
+      continue;
+    }
+
+    for (let dt = 0; dt < COVERAGE_HORIZON_MS; dt += COVERAGE_STEP_MS) {
+      const date = new Date(now.getTime() + dt);
+      const ssp = subSatellitePoint(satrec, date);
+      if (!ssp) continue;
+      const distance = haversineKm(lat, lng, ssp.lat, ssp.lng);
+      if (distance < VIIRS_SWATH_HALF_KM) {
+        if (!best || date.getTime() < best.at.getTime()) {
+          best = { norad_id: tle.norad_id, name: tle.name, at: date, distanceKm: distance };
+        }
+        break;
+      }
+    }
+  }
+  return best;
+}
+
+export function formatTimeAgo(ms: number): string {
+  if (ms < 60_000) return "recién";
+  const totalMinutes = Math.floor(ms / 60_000);
+  if (totalMinutes < 60) return `hace ${totalMinutes} min`;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours < 24) return minutes === 0 ? `hace ${hours}h` : `hace ${hours}h ${minutes}min`;
+  const days = Math.floor(hours / 24);
+  return `hace ${days}d`;
+}
