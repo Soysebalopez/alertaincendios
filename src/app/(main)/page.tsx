@@ -35,6 +35,11 @@ const TELEGRAM_BOT_URL = "https://t.me/AlertasClaraBot";
  * número grande de portada.
  */
 const HERO_FRP_THRESHOLD_MW = 20;
+// Ventana del contador "Preliminares activos" — alineada con DISMISSAL_AFTER_HOURS
+// en /api/goes-dismissals. Sin esta ventana, el count acumula preliminaries ya
+// confirmadas por FIRMS (sobreviven hasta goes-prune a los 7 días) y crece
+// monotónicamente. Ver WHI-750.
+const PRELIMINARY_ACTIVE_WINDOW_HOURS = 4;
 
 interface FireCounts {
   /** Wildfires con FRP ≥ HERO_FRP_THRESHOLD_MW — número grande del hero. */
@@ -61,11 +66,15 @@ async function getFireCounts(): Promise<FireCounts> {
 
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const prelimCutoff = new Date(
+      Date.now() - PRELIMINARY_ACTIVE_WINDOW_HOURS * 60 * 60 * 1000
+    ).toISOString();
     const prelimPromise = url && key
       ? createClient(url, key)
           .from("goes_preliminary")
           .select("id", { count: "exact", head: true })
           .eq("high_confidence", true)
+          .gte("detected_at", prelimCutoff)
       : Promise.resolve({ count: 0 });
 
     const [fires, prelimRes] = await Promise.all([firesPromise, prelimPromise]);
@@ -261,7 +270,7 @@ export default async function Home() {
                         letterSpacing: "-0.02em",
                       }}
                     >
-                      {high === 1 ? "incendio destacado" : "incendios destacados"}
+                      {high === 1 ? "foco destacado" : "focos destacados"}
                     </span>
                   </h1>
                   {(subBuckets.length > 0 || industrialCount > 0) && (
