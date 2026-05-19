@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { haversineKm } from "@/lib/geo";
 import { sendMessage } from "@/lib/telegram";
+import { findForestZone } from "@/lib/forest-zones";
 
 /**
  * GET /api/goes-alerts
@@ -64,6 +65,9 @@ export async function GET(request: Request) {
 
     let alertsSent = 0;
     let skippedLowFrpSingleFrame = 0;
+    // WHI-758: pares (foco × civilian) descartados porque el GOES preliminar
+    // cae fuera de zona forestal. Métrica para validar el impacto del filtro.
+    let skippedNonForestCivilian = 0;
 
     for (const det of detections) {
       // WHI-584 — gating: single-frame low-FRP detections are too noisy to
@@ -74,7 +78,19 @@ export async function GET(request: Request) {
         skippedLowFrpSingleFrame++;
         continue;
       }
+      // WHI-758: clasificar zona forestal una sola vez por detection.
+      const zone = findForestZone(det.lat, det.lng);
+
       for (const sub of subscribers) {
+        const isFireman = (sub as { role?: string }).role === "fireman";
+
+        // WHI-758: civilian solo recibe preliminares en zona forestal.
+        // Fireman ve todo para coordinación general.
+        if (!isFireman && !zone) {
+          skippedNonForestCivilian++;
+          continue;
+        }
+
         // Skip if already alerted (per goes_id, chat_id)
         const { data: existing } = await db
           .from("goes_alerted")
@@ -88,11 +104,10 @@ export async function GET(request: Request) {
         if (distKm > RADIUS_KM) continue;
 
         // WHI-588 — fireman role gets operational format
-        const isFireman = (sub as { role?: string }).role === "fireman";
         const cuartel = (sub as { cuartel_name?: string }).cuartel_name ?? null;
         const message = isFireman
-          ? formatFiremanPreliminary(det, sub.city_name, distKm, cuartel)
-          : formatPreliminary(det, sub.city_name, distKm);
+          ? formatFiremanPreliminary(det, sub.city_name, distKm, cuartel, zone?.name ?? null)
+          : formatPreliminary(det, sub.city_name, distKm, zone?.name ?? null);
         await sendMessage(sub.chat_id, message);
 
         await db.from("goes_alerted").insert({
@@ -109,6 +124,7 @@ export async function GET(request: Request) {
       subscribers: subscribers.length,
       alerts: alertsSent,
       skippedLowFrpSingleFrame,
+      skippedNonForestCivilian,
     });
   } catch (error) {
     console.error("goes-alerts error:", error);
@@ -134,7 +150,8 @@ function formatFiremanPreliminary(
   },
   cityName: string,
   distKm: number,
-  cuartelName: string | null
+  cuartelName: string | null,
+  zoneName: string | null
 ): string {
   const dist = Math.round(distKm * 10) / 10;
   const ageMin = minutesSince(det.scan_start);
@@ -147,6 +164,7 @@ function formatFiremanPreliminary(
     `🔥 FRP estimado: ${frp}\n` +
     `🛰️ NOAA GOES-19 · detección hace ~${ageMin} min\n` +
     `🧭 Coords: <code>${det.lat.toFixed(4)}, ${det.lng.toFixed(4)}</code>\n` +
+    `🌲 Zona: ${zoneName ?? "fuera de zona forestal"}\n` +
     `📌 <a href="${gMaps}">Maps</a>\n\n` +
     `<i>Preliminar — NASA FIRMS confirma en 1-3 h. Validá visualmente antes de despachar.</i>` +
     `\n—\nC.L.A.R.A. · Coordinación interna${cuartelName ? ` · ${cuartelName}` : ""}`
@@ -163,7 +181,8 @@ function formatPreliminary(
     scan_start: string;
   },
   cityName: string,
-  distKm: number
+  distKm: number,
+  zoneName: string | null
 ): string {
   const dist = Math.round(distKm * 10) / 10;
   const ageMin = minutesSince(det.scan_start);
@@ -176,8 +195,9 @@ function formatPreliminary(
     `📍 A <b>${dist} km</b> de ${cityName}\n` +
     `🛰️ Fuente: NOAA GOES-19 — escaneo cada 10 min\n` +
     `⏱️ Detectado hace ~${ageMin} min\n` +
-    `🔥 Potencia estimada: ${frp}\n\n` +
-    `<i>Esta detección viene de un satélite geoestacionario y es rápida, ` +
+    `🔥 Potencia estimada: ${frp}\n` +
+    (zoneName ? `🌲 Zona: ${zoneName}\n` : "") +
+    `\n<i>Esta detección viene de un satélite geoestacionario y es rápida, ` +
     `pero menos precisa. NASA FIRMS suele confirmar en 1-3 horas. ` +
     `Si vas a tomar acción, validá visualmente o esperá la confirmación.</i>\n\n` +
     `📌 <a href="${gMaps}">Ver en Google Maps</a>\n\n` +
