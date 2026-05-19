@@ -119,6 +119,82 @@ export function computeNextPassOverArgentina(
   return best;
 }
 
+export type GroundTrackPoint = { lat: number; lng: number; at: number };
+
+/**
+ * Propaga la trayectoria sub-satelital de un TLE para visualización en mapa.
+ * WHI-754 — ground track polyline en /mapa.
+ *
+ * Devuelve segmentos (no un array plano) porque la polyline se parte cuando
+ * cruza el antimeridiano (lng salta de -180↔+180); si no, Leaflet traza una
+ * línea recta que cruza el globo entero.
+ *
+ * Devuelve null si el TLE es viejo (>7 días) o malformado.
+ *
+ * stepMs por defecto = 30s — granularidad suficiente para que la polyline se
+ * vea suave (el ground track se mueve ~7 km/s, 30s ≈ 210 km entre puntos).
+ */
+export function computeGroundTrack(
+  tle: SatelliteTLE,
+  durationMs = 3 * 60 * 60_000, // 3h forward (≈2 órbitas LEO)
+  stepMs = 30_000,
+  from: Date = new Date()
+): GroundTrackPoint[][] | null {
+  if (!tle.line1 || !tle.line2) return null;
+  const fetchedAt = Date.parse(tle.fetched_at);
+  if (!Number.isFinite(fetchedAt)) return null;
+  if (Date.now() - fetchedAt > STALE_TLE_MS) return null;
+
+  let satrec;
+  try {
+    satrec = twoline2satrec(tle.line1, tle.line2);
+  } catch {
+    return null;
+  }
+
+  const segments: GroundTrackPoint[][] = [];
+  let current: GroundTrackPoint[] = [];
+  let prevLng: number | null = null;
+
+  for (let dt = 0; dt < durationMs; dt += stepMs) {
+    const date = new Date(from.getTime() + dt);
+    const ssp = subSatellitePoint(satrec, date);
+    if (!ssp) continue;
+
+    // Antimeridian crossing: split into a new segment so Leaflet doesn't draw
+    // a horizontal line across the entire globe.
+    if (prevLng !== null && Math.abs(ssp.lng - prevLng) > 180) {
+      if (current.length > 0) segments.push(current);
+      current = [];
+    }
+    current.push({ lat: ssp.lat, lng: ssp.lng, at: date.getTime() });
+    prevLng = ssp.lng;
+  }
+  if (current.length > 0) segments.push(current);
+  return segments;
+}
+
+/**
+ * Posición actual del satélite (sub-satellite point en el instante `date`).
+ * Devuelve null si el TLE es viejo o malformado.
+ */
+export function currentSubSatellitePoint(
+  tle: SatelliteTLE,
+  date: Date = new Date()
+): { lat: number; lng: number } | null {
+  if (!tle.line1 || !tle.line2) return null;
+  const fetchedAt = Date.parse(tle.fetched_at);
+  if (!Number.isFinite(fetchedAt) || Date.now() - fetchedAt > STALE_TLE_MS) {
+    return null;
+  }
+  try {
+    const satrec = twoline2satrec(tle.line1, tle.line2);
+    return subSatellitePoint(satrec, date);
+  } catch {
+    return null;
+  }
+}
+
 export function formatCountdown(msUntil: number): string {
   if (msUntil <= 0) return "ahora";
   const totalMinutes = Math.floor(msUntil / 60_000);

@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import type { SatelliteTLE } from "@/lib/satellites";
 
 const ArgentinaMap = dynamic(
   () =>
@@ -17,6 +18,6 @@ const ArgentinaMap = dynamic(
   },
 );
 
-export function MapLoader() {
-  return <ArgentinaMap />;
+export function MapLoader({ tles = [] }: { tles?: SatelliteTLE[] }) {
+  return <ArgentinaMap tles={tles} />;
 }
