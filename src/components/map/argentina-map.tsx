@@ -64,8 +64,10 @@ export function ArgentinaMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
   const mapInstance = useRef<L.Map | null>(null);
   const layerGroups = useRef<Record<string, L.LayerGroup>>({});
   // Markers por satélite, separados del polyline group para poder reposicionar
-  // sin re-trazar la trayectoria entera cada 5s.
-  const satelliteMarkers = useRef<Map<number, L.CircleMarker>>(new Map());
+  // sin re-trazar la trayectoria entera cada 5s. Usamos L.Marker con divIcon
+  // (emoji 🛰) en lugar de circleMarker para mantener consistencia visual
+  // con el hero.
+  const satelliteMarkers = useRef<Map<number, L.Marker>>(new Map());
   // Fires se renderizan por intensidad — los guardamos crudos en memoria
   // para repintar al cambiar filtros sin re-fetchear /api/fires.
   const allFires = useRef<FirePoint[]>([]);
@@ -73,7 +75,10 @@ export function ArgentinaMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
     fires: true,
     air: true,
     wind: false,
-    satellites: false,
+    // WHI-754 follow-up: capa de satélites activa por default. Los TLEs
+    // que llegan como prop ya están filtrados a los frescos, así que el
+    // costo de render inicial es predecible (3 sats × ~360 puntos).
+    satellites: true,
   });
   const [selectedSats, setSelectedSats] = useState<Set<number>>(
     () => new Set(tles.map((t) => t.norad_id))
@@ -305,12 +310,13 @@ export function ArgentinaMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
 
       const ssp = currentSubSatellitePoint(tle, now);
       if (ssp) {
-        const marker = L.circleMarker([ssp.lat, ssp.lng], {
-          radius: 6,
-          color: meta.color,
-          fillColor: meta.color,
-          fillOpacity: 0.85,
-          weight: 2,
+        const marker = L.marker([ssp.lat, ssp.lng], {
+          icon: L.divIcon({
+            html: `<span style="font-size:18px;line-height:1;filter:drop-shadow(0 0 5px ${meta.color})">🛰</span>`,
+            className: "",
+            iconSize: [18, 18],
+            iconAnchor: [9, 9],
+          }),
         });
         marker.bindTooltip(
           `<b>${meta.label}</b><br/>NORAD ${tle.norad_id}<br/>` +
