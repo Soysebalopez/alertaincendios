@@ -4,6 +4,7 @@ import { fetchFires, FirePoint } from "@/lib/firms";
 import { fetchWind, degreesToCardinal } from "@/lib/wind";
 import { haversineKm, isUpwind, smokeEtaMinutes } from "@/lib/geo";
 import { sendMessage } from "@/lib/telegram";
+import { forestZoneName } from "@/lib/forest-zones";
 
 /**
  * GET /api/alerts
@@ -45,11 +46,26 @@ export async function GET(request: Request) {
 
     let alertsSent = 0;
     let confirmations = 0;
+    // WHI-758: contadores de filtro forestal para observabilidad. "Skipped"
+    // = par (foco, subscriber civilian) descartado porque el foco no cae en
+    // zona forestal. Útil para confirmar el impacto del filtro post-deploy.
+    let skippedNonForestCivilian = 0;
 
     for (const fire of fires) {
       const fireKey = buildFireKey(fire);
+      const zoneName = forestZoneName(fire.forestZone);
 
       for (const sub of subscribers) {
+        const isFireman = (sub as { role?: string }).role === "fireman";
+
+        // WHI-758: civilian recibe solo alertas en zona forestal. Fireman
+        // recibe todo — los cuarteles necesitan vista completa para
+        // coordinación de respuesta general (no solo forestal).
+        if (!isFireman && !fire.forestZone) {
+          skippedNonForestCivilian++;
+          continue;
+        }
+
         // Check if already alerted
         const { data: existing } = await db
           .from("ai_alerted_fires")
@@ -77,13 +93,12 @@ export async function GET(request: Request) {
 
         // WHI-588 — fireman role gets an operational message format, not the
         // citizen-facing alert. Same data path, different tone + structure.
-        const isFireman = (sub as { role?: string }).role === "fireman";
         const cuartel = (sub as { cuartel_name?: string }).cuartel_name ?? null;
         const message = isFireman
-          ? formatFiremanAlert(fire, sub, distKm, eta, level, cuartel, match != null)
+          ? formatFiremanAlert(fire, sub, distKm, eta, level, cuartel, match != null, zoneName)
           : match
-            ? await formatConfirmedFromPreliminary(fire, sub, distKm, eta, level, match.preliminary_sent_at)
-            : await formatAlert(fire, sub, distKm, eta, level);
+            ? await formatConfirmedFromPreliminary(fire, sub, distKm, eta, level, match.preliminary_sent_at, zoneName)
+            : await formatAlert(fire, sub, distKm, eta, level, zoneName);
 
         await sendMessage(sub.chat_id, message);
 
@@ -111,6 +126,10 @@ export async function GET(request: Request) {
       subscribers: subscribers.length,
       alerts: alertsSent,
       confirmations,
+      // WHI-758: cuántos pares (foco × civilian) se ahorraron por el filtro
+      // forestal. Si es mucho más alto que `alerts`, el filtro está cortando
+      // ruido como esperamos.
+      skippedNonForestCivilian,
     });
   } catch (error) {
     console.error("Alerts cron error:", error);
@@ -179,7 +198,8 @@ async function formatAlert(
   sub: { lat: number; lng: number; city_name: string },
   distKm: number,
   etaMinutes: number,
-  level: "danger" | "warning" | "info"
+  level: "danger" | "warning" | "info",
+  zoneName: string | null
 ): Promise<string> {
   const dist = Math.round(distKm * 10) / 10;
   const emoji = level === "danger" ? "🚨" : level === "warning" ? "⚠️" : "ℹ️";
@@ -209,6 +229,7 @@ async function formatAlert(
   msg += `${frpBars(fire.frp)} ${fire.frp} MW — ${frpLabel(fire.frp).split(" (")[0]}\n`;
   msg += `🛰️ Fuente: NASA FIRMS\n`;
   msg += `⏱️ Detectado hace ${ageMin} min\n`;
+  if (zoneName) msg += `🌲 Zona: ${zoneName}\n`;
 
   if (interpretation) {
     msg += `\n<i>${interpretation}</i>\n`;
@@ -330,7 +351,8 @@ function formatFiremanAlert(
   etaMinutes: number,
   level: "danger" | "warning" | "info",
   cuartelName: string | null,
-  wasPreliminary: boolean
+  wasPreliminary: boolean,
+  zoneName: string | null
 ): string {
   const dist = Math.round(distKm * 10) / 10;
   const gMapsUrl = `https://www.google.com/maps?q=${fire.latitude},${fire.longitude}&z=12`;
@@ -350,6 +372,7 @@ function formatFiremanAlert(
   msg += `💨 Viento: ${windToward ? `<b>hacia el suscriptor</b> (ETA humo ~${etaMinutes} min)` : "fuera del suscriptor"}\n`;
   msg += `🛰️ ${wasPreliminary ? "GOES preliminar + " : ""}FIRMS VIIRS · detección hace ${ageMin} min\n`;
   msg += `🧭 Coords: <code>${fire.latitude.toFixed(4)}, ${fire.longitude.toFixed(4)}</code>\n`;
+  msg += `🌲 Zona: ${zoneName ?? "fuera de zona forestal"}\n`;
   msg += `📌 <a href="${gMapsUrl}">Maps</a>\n\n`;
   msg += `<i>Mensaje operativo — sin interpretación AI, datos crudos.</i>`;
   msg += `\n—\nC.L.A.R.A. · Coordinación interna${cuartelName ? ` · ${cuartelName}` : ""}`;
@@ -362,7 +385,8 @@ async function formatConfirmedFromPreliminary(
   distKm: number,
   etaMinutes: number,
   level: "danger" | "warning" | "info",
-  preliminarySentAt: string
+  preliminarySentAt: string,
+  zoneName: string | null
 ): Promise<string> {
   const dist = Math.round(distKm * 10) / 10;
   const gMapsUrl = `https://www.google.com/maps?q=${fire.latitude},${fire.longitude}&z=12`;
@@ -386,6 +410,7 @@ async function formatConfirmedFromPreliminary(
   msg += `${frpBars(fire.frp)} ${fire.frp} MW — ${frpLabel(fire.frp).split(" (")[0]}\n`;
   msg += `🛰️ Validado por NASA FIRMS (VIIRS 375m)\n`;
   msg += `⏱️ Alerta preliminar hace ${sinceMin} min, confirmada ahora\n`;
+  if (zoneName) msg += `🌲 Zona: ${zoneName}\n`;
   msg += `\n<i>El foco preliminar GOES que te avisamos antes acaba de ser ` +
     `confirmado por la pasada de VIIRS. La detección era real, no falsa alarma. ` +
     (level === "danger"

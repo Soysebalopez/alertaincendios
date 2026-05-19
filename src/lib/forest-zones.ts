@@ -126,3 +126,12 @@ export function findForestZone(lat: number, lng: number): ForestZone | null {
 export function isInForestZone(lat: number, lng: number): boolean {
   return findForestZone(lat, lng) !== null;
 }
+
+/**
+ * Lookup del nombre legible a partir del id (que es lo que viaja en
+ * FirePoint.forestZone). Útil para mensajes de bot y tooltips.
+ */
+export function forestZoneName(id?: string | null): string | null {
+  if (!id) return null;
+  return FOREST_ZONES.find((z) => z.id === id)?.name ?? null;
+}
