@@ -1,8 +1,24 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import {
+  computeGroundTrack,
+  currentSubSatellitePoint,
+  type SatelliteTLE,
+} from "@/lib/satellites";
+
+// WHI-754 hero: tonos azules diferenciados por sat (alineado con /mapa).
+const SATELLITE_META: Record<number, { color: string }> = {
+  37849: { color: "#4b8bd4" }, // Suomi NPP
+  43013: { color: "#5fb3c7" }, // NOAA-20
+  54234: { color: "#7ed3e8" }, // NOAA-21
+};
+
+// 90 min forward — más corto que /mapa (3h). El mini-mapa del hero se ve más
+// limpio sin tantos pasajes que cruzan toda la pantalla.
+const HERO_TRACK_DURATION_MS = 90 * 60_000;
 
 interface FirePoint {
   latitude: number;
@@ -236,7 +252,7 @@ function createFireMarker(f: FirePoint): L.Layer {
 
 /* ─── Component ─── */
 
-export function FireMap() {
+export function FireMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<L.Map | null>(null);
   // Una sola capa para todos los markers visibles. En cada cambio de filtro
@@ -244,7 +260,16 @@ export function FireMap() {
   // maneja FIRMS sobre Argentina (≤ 500 puntos) es instantáneo y mantiene
   // el state model trivial.
   const markersLayer = useRef<L.LayerGroup | null>(null);
+  // WHI-754 hero: capa dedicada a polylines de ground tracks satelitales.
+  // Renderiza una sola vez con los TLEs disponibles — no hay refresh ni
+  // marker animado en el hero (eso vive en /mapa, donde el contexto es más
+  // pesado y el usuario está en modo exploración).
+  const satellitesLayer = useRef<L.LayerGroup | null>(null);
   const allFires = useRef<FirePoint[]>([]);
+  const renderableTles = useMemo(
+    () => tles.filter((t) => t.line1 && t.line2 && SATELLITE_META[t.norad_id]),
+    [tles]
+  );
   const [loading, setLoading] = useState(true);
   const [activeTypes, setActiveTypes] = useState<Set<FireType>>(
     new Set([0, 1, 2, 3])
@@ -318,6 +343,10 @@ export function FireMap() {
 
     const layer = L.layerGroup().addTo(map);
     markersLayer.current = layer;
+    // WHI-754 hero: capa de ground tracks debajo de los markers para que los
+    // focos siempre queden visibles encima de las líneas satelitales.
+    const satLayer = L.layerGroup().addTo(map);
+    satellitesLayer.current = satLayer;
     mapInstance.current = map;
 
     fetch("/api/fires")
@@ -341,8 +370,53 @@ export function FireMap() {
       map.remove();
       mapInstance.current = null;
       markersLayer.current = null;
+      satellitesLayer.current = null;
     };
   }, []);
+
+  // WHI-754 hero: dibuja ground tracks + marker 🛰 en la posición actual de
+  // cada satélite. Render una sola vez al montar (no hay refresh animado en
+  // el hero — todo lo dinámico vive en /mapa).
+  useEffect(() => {
+    const layer = satellitesLayer.current;
+    if (!layer) return;
+    layer.clearLayers();
+    if (renderableTles.length === 0) return;
+    const now = new Date();
+    for (const tle of renderableTles) {
+      const meta = SATELLITE_META[tle.norad_id];
+      const segments = computeGroundTrack(tle, HERO_TRACK_DURATION_MS, 30_000, now);
+      if (!segments) continue;
+      for (const seg of segments) {
+        if (seg.length < 2) continue;
+        L.polyline(
+          seg.map((p) => [p.lat, p.lng] as [number, number]),
+          {
+            color: meta.color,
+            weight: 1.2,
+            opacity: 0.5,
+            dashArray: "3 5",
+            interactive: false,
+          }
+        ).addTo(layer);
+      }
+
+      // Marker emoji 🛰 en la posición actual del satélite. divIcon en lugar
+      // de circleMarker porque queremos el glyph del satélite, no un punto.
+      const ssp = currentSubSatellitePoint(tle, now);
+      if (ssp) {
+        L.marker([ssp.lat, ssp.lng], {
+          icon: L.divIcon({
+            html: `<span style="font-size:16px;line-height:1;filter:drop-shadow(0 0 4px ${meta.color})">🛰</span>`,
+            className: "",
+            iconSize: [16, 16],
+            iconAnchor: [8, 8],
+          }),
+          interactive: false,
+        }).addTo(layer);
+      }
+    }
+  }, [renderableTles]);
 
   // Repinta cuando entran datos o cambian filtros.
   useEffect(() => {
