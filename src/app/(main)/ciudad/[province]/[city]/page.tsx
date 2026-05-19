@@ -5,6 +5,7 @@ import { ArrowLeft, MapPin, Bell } from "@phosphor-icons/react/dist/ssr";
 import { PROVINCES } from "@/lib/argentina-cities";
 import { CityDashboard } from "@/components/city/city-dashboard";
 import { CityForestFires } from "@/components/city/city-forest-fires";
+import { CitySatelliteCoverage } from "@/components/city/city-satellite-coverage";
 import { CityJsonLd } from "@/components/jsonld";
 import { Pill } from "@/components/clara-ui";
 
@@ -168,6 +169,13 @@ export default async function CiudadPage({ params }: PageProps) {
             lat={match.city.lat}
             lng={match.city.lng}
           />
+          <div className="mt-6">
+            <CitySatelliteCoverage
+              lat={match.city.lat}
+              lng={match.city.lng}
+              cityName={match.city.name}
+            />
+          </div>
         </div>
       </section>
 

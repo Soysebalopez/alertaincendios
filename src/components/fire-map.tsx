@@ -25,7 +25,7 @@ const FIRE_FILTERS: {
   icon: string;
   color: string;
 }[] = [
-  { type: 0, label: "Incendios", icon: "🔥", color: "#e8622c" },
+  { type: 0, label: "Focos", icon: "🔥", color: "#e8622c" },
   { type: 1, label: "Volcanes", icon: "🌋", color: "#ef4444" },
   { type: 2, label: "Flaring", icon: "🏭", color: "#8a8a7e" },
   { type: 3, label: "Offshore", icon: "🛢️", color: "#8a8a7e" },
