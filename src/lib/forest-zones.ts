@@ -109,15 +109,97 @@ function pointInPolygon(lng: number, lat: number, ring: Array<[number, number]>)
   return inside;
 }
 
+// WHI-760: distancia perpendicular del punto a un segmento, en kilómetros.
+// Para nuestras escalas (buffer 5km vs polígonos de 100s km) la fórmula de
+// cross-track distance del gran círculo es adecuada (<1% de error).
+const EARTH_R_KM = 6371;
+
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
+  return 2 * EARTH_R_KM * Math.asin(Math.sqrt(a));
+}
+
+function bearingRad(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const φ1 = (lat1 * Math.PI) / 180;
+  const φ2 = (lat2 * Math.PI) / 180;
+  const Δλ = ((lng2 - lng1) * Math.PI) / 180;
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x =
+    Math.cos(φ1) * Math.sin(φ2) -
+    Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return Math.atan2(y, x);
+}
+
+function pointToSegmentDistanceKm(
+  lat: number,
+  lng: number,
+  sLat: number,
+  sLng: number,
+  eLat: number,
+  eLng: number
+): number {
+  const δ13 = haversineKm(sLat, sLng, lat, lng) / EARTH_R_KM;
+  if (δ13 === 0) return 0;
+  const θ13 = bearingRad(sLat, sLng, lat, lng);
+  const θ12 = bearingRad(sLat, sLng, eLat, eLng);
+  const dxt = Math.asin(Math.sin(δ13) * Math.sin(θ13 - θ12)) * EARTH_R_KM;
+  const dat = Math.acos(Math.cos(δ13) / Math.cos(dxt / EARTH_R_KM)) * EARTH_R_KM;
+  const segLength = haversineKm(sLat, sLng, eLat, eLng);
+  if (Number.isNaN(dat) || dat < 0) return haversineKm(lat, lng, sLat, sLng);
+  if (dat > segLength) return haversineKm(lat, lng, eLat, eLng);
+  return Math.abs(dxt);
+}
+
+function minDistanceKmToRing(
+  lat: number,
+  lng: number,
+  ring: Array<[number, number]>
+): number {
+  let min = Infinity;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [sLng, sLat] = ring[j];
+    const [eLng, eLat] = ring[i];
+    const d = pointToSegmentDistanceKm(lat, lng, sLat, sLng, eLat, eLng);
+    if (d < min) min = d;
+  }
+  return min;
+}
+
+/** WHI-760: buffer WUI alrededor de zonas forestales. */
+export const FOREST_BUFFER_KM = 5;
+
 /**
  * Clasifica un punto (lat, lng) como dentro/fuera de las zonas forestales.
- * Devuelve la zona si match, o null si está fuera de todas.
+ * Devuelve la zona si match (incluido buffer WUI de FOREST_BUFFER_KM), o
+ * null si está fuera de todas.
+ *
+ * WHI-760: el buffer captura el wildland-urban interface — focos en bordes
+ * urbanos de zonas forestales (Bariloche, Villa Carlos Paz, Esquel) que
+ * conceptualmente son zona de prevención forestal aunque su coordenada
+ * caiga unos km afuera del polígono nativo.
  */
 export function findForestZone(lat: number, lng: number): ForestZone | null {
+  // Fast path: punto adentro de algún polígono.
   for (const zone of FOREST_ZONES) {
     if (pointInPolygon(lng, lat, zone.polygon)) return zone;
   }
-  return null;
+  // Slow path: punto cerca del borde de algún polígono (WUI buffer).
+  let bestZone: ForestZone | null = null;
+  let bestDistance = FOREST_BUFFER_KM;
+  for (const zone of FOREST_ZONES) {
+    const d = minDistanceKmToRing(lat, lng, zone.polygon);
+    if (d < bestDistance) {
+      bestDistance = d;
+      bestZone = zone;
+    }
+  }
+  return bestZone;
 }
 
 /**
