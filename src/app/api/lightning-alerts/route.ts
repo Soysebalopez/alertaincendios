@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { fetchLightningRisk } from "@/lib/lightning";
 import { sendMessage } from "@/lib/telegram";
+import { isCronAuthorized } from "@/lib/cron-auth";
 
 /**
  * GET /api/lightning-alerts
@@ -13,12 +14,7 @@ import { sendMessage } from "@/lib/telegram";
  * Solo alerta si hay tormenta + condiciones secas (humedad < 60%, lluvia < 0.5 mm).
  */
 export async function GET(request: Request) {
-  const secret = new URL(request.url).searchParams.get("secret");
-  const bearerToken = request.headers.get("authorization")?.replace("Bearer ", "");
-  const isAuthorized =
-    secret === process.env.CRON_SECRET || bearerToken === process.env.CRON_SECRET;
-
-  if (!isAuthorized) {
+  if (!isCronAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

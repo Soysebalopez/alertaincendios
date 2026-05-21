@@ -3,6 +3,8 @@ import { getSupabase } from "@/lib/supabase";
 import { haversineKm } from "@/lib/geo";
 import { sendMessage } from "@/lib/telegram";
 import { findForestZone } from "@/lib/forest-zones-geo";
+import { isCronAuthorized } from "@/lib/cron-auth";
+import { log } from "@/lib/logger";
 
 /**
  * GET /api/goes-alerts
@@ -24,12 +26,7 @@ const RADIUS_KM = 100;
 const SINGLE_FRAME_FRP_THRESHOLD_MW = 10;
 
 export async function GET(request: Request) {
-  const secret = new URL(request.url).searchParams.get("secret");
-  const bearerToken = request.headers.get("authorization")?.replace("Bearer ", "");
-  const isAuthorized =
-    secret === process.env.CRON_SECRET || bearerToken === process.env.CRON_SECRET;
-
-  if (!isAuthorized) {
+  if (!isCronAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -91,7 +88,7 @@ export async function GET(request: Request) {
           continue;
         }
 
-        // Skip if already alerted (per goes_id, chat_id)
+        // Pre-check dedup (fast path para no calcular distancia si ya alertamos).
         const { data: existing } = await db
           .from("goes_alerted")
           .select("id")
@@ -103,17 +100,53 @@ export async function GET(request: Request) {
         const distKm = haversineKm(sub.lat, sub.lng, det.lat, det.lng);
         if (distKm > RADIUS_KM) continue;
 
+        // H-08 — INSERT como lock primario. UNIQUE (goes_id, chat_id) garantiza
+        // que solo una invocación gana la race; las demás reciben 23505 y skip.
+        const { data: claimed, error: claimErr } = await db
+          .from("goes_alerted")
+          .insert({ goes_id: det.id, chat_id: sub.chat_id })
+          .select("id")
+          .single();
+
+        if (claimErr) {
+          if (claimErr.code !== "23505") {
+            log.error({
+              event: "goes_alerts.claim_failed",
+              goesId: det.id,
+              chatId: sub.chat_id,
+              code: claimErr.code,
+              err: claimErr.message,
+            });
+          }
+          continue;
+        }
+        if (!claimed) continue;
+
         // WHI-588 — fireman role gets operational format
         const cuartel = (sub as { cuartel_name?: string }).cuartel_name ?? null;
         const message = isFireman
           ? formatFiremanPreliminary(det, sub.city_name, distKm, cuartel, zone?.name ?? null)
           : formatPreliminary(det, sub.city_name, distKm, zone?.name ?? null);
-        await sendMessage(sub.chat_id, message);
-
-        await db.from("goes_alerted").insert({
-          goes_id: det.id,
-          chat_id: sub.chat_id,
-        });
+        try {
+          await sendMessage(sub.chat_id, message);
+          log.info({
+            event: "goes_alerts.sent",
+            goesId: det.id,
+            chatId: sub.chat_id,
+            role: isFireman ? "fireman" : "civilian",
+            distKm: Math.round(distKm),
+            frp: det.frp_mw,
+            seenInScans,
+          });
+        } catch (sendErr) {
+          log.error({
+            event: "goes_alerts.send_failed",
+            goesId: det.id,
+            chatId: sub.chat_id,
+            err: sendErr instanceof Error ? sendErr.message : String(sendErr),
+          });
+          continue;
+        }
 
         alertsSent++;
       }
@@ -127,7 +160,10 @@ export async function GET(request: Request) {
       skippedNonForestCivilian,
     });
   } catch (error) {
-    console.error("goes-alerts error:", error);
+    log.error({
+      event: "goes_alerts.cron_failed",
+      err: error instanceof Error ? error.message : String(error),
+    });
     return NextResponse.json({ error: "goes_alerts_failed" }, { status: 500 });
   }
 }

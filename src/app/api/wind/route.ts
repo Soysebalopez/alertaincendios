@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { degreesToCardinal, cardinalToSpanish } from "@/lib/wind";
+import {
+  checkRateLimit,
+  clientIp,
+  isInternalCall,
+  rateLimitHeaders,
+} from "@/lib/ratelimit";
 
 /**
  * GET /api/wind?lat=-34.6&lng=-58.38
@@ -8,6 +14,11 @@ import { degreesToCardinal, cardinalToSpanish } from "@/lib/wind";
  */
 
 const OPEN_METEO_BASE = "https://api.open-meteo.com/v1/forecast";
+
+// H-10 — protege la cuota de Open-Meteo. 60 req/min por IP es generoso para
+// uso real (todo el grid de 12 ciudades en el hero cuenta como 12), pero corta
+// loops de abuso. /api/summary llama internamente — usa el bypass header.
+const RATE_LIMIT_PER_MIN = 60;
 
 export async function GET(request: NextRequest) {
   const lat = request.nextUrl.searchParams.get("lat");
@@ -18,6 +29,21 @@ export async function GET(request: NextRequest) {
       { error: "lat and lng are required" },
       { status: 400 },
     );
+  }
+
+  if (!isInternalCall(request)) {
+    const rl = await checkRateLimit({
+      key: clientIp(request),
+      limit: RATE_LIMIT_PER_MIN,
+      windowSec: 60,
+      namespace: "wind",
+    });
+    if (!rl.ok) {
+      return NextResponse.json(
+        { error: "rate_limited" },
+        { status: 429, headers: rateLimitHeaders(rl, RATE_LIMIT_PER_MIN) },
+      );
+    }
   }
 
   try {

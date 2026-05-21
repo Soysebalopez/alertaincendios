@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancela runs viejos sobre la misma PR para no quemar minutos GHA en pushes
+# rápidos al branch. Cancel-in-progress es seguro porque build/test son
+# stateless. github.workflow + github.ref no son user-injectable.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      # vitest primero — es rápido y caza regresiones de lógica pura sin
+      # cargar el build completo de Next. Si rompe, el build no se intenta.
+      - name: Test (vitest contract tests)
+        run: npm test
+
+      - name: Lint
+        run: npm run lint
+        # Lint actualmente tiene warnings pre-existentes (Date.now en render
+        # del dashboard, vars sin usar). No los blokeamos hasta resolverlos —
+        # pero corremos lint para ver el delta en PRs nuevas.
+        continue-on-error: true
+
+      # Build con TypeScript strict — caza tipos rotos antes que Vercel.
+      # Las env vars que se leen en SSR son opcionales y los lib clients
+      # tienen fallback, así que el build no necesita valores reales.
+      - name: Build (next build)
+        run: npm run build
+        env:
+          # Variables dummy para que el build no falle por env.* indefinidos.
+          # No se usan: el build solo necesita que existan al evaluar el
+          # módulo, no que sean válidas.
+          NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co"
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: "build-time-placeholder"
+          SUPABASE_SERVICE_ROLE_KEY: "build-time-placeholder"

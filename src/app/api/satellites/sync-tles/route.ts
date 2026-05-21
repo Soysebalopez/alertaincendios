@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { VIIRS_NORAD_IDS } from "@/lib/satellites";
+import { isCronAuthorized } from "@/lib/cron-auth";
 
 /**
  * GET /api/satellites/sync-tles
@@ -16,12 +17,7 @@ const CELESTRAK_BASE = "https://celestrak.org/NORAD/elements/gp.php";
 const USER_AGENT = "C.L.A.R.A. https://alertaincendios.vercel.app";
 
 export async function GET(request: Request) {
-  const secret = new URL(request.url).searchParams.get("secret");
-  const bearerToken = request.headers.get("authorization")?.replace("Bearer ", "");
-  const isAuthorized =
-    secret === process.env.CRON_SECRET || bearerToken === process.env.CRON_SECRET;
-
-  if (!isAuthorized) {
+  if (!isCronAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

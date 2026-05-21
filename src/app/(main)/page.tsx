@@ -61,6 +61,12 @@ interface FireCounts {
   industrial: number;
   /** Preliminares GOES pendientes de confirmación FIRMS. */
   preliminary: number;
+  /**
+   * Snapshot crudo de focos pasado al mini-mapa del hero como prop. Garantiza
+   * que counter y puntos visualizados vienen del MISMO fetchFires() — antes
+   * el mini-mapa hacía su propio fetch a /api/fires y podía mostrar otra cosa.
+   */
+  fires: import("@/lib/firms").FirePoint[];
 }
 
 /**
@@ -79,7 +85,7 @@ async function getSatelliteData(): Promise<{
 
 async function getFireCounts(): Promise<FireCounts> {
   const empty: FireCounts = {
-    high: 0, moderate: 0, low: 0, nonForestWild: 0, industrial: 0, preliminary: 0,
+    high: 0, moderate: 0, low: 0, nonForestWild: 0, industrial: 0, preliminary: 0, fires: [],
   };
   try {
     const { fetchFires } = await import("@/lib/firms");
@@ -115,7 +121,16 @@ async function getFireCounts(): Promise<FireCounts> {
       else if (f.frp >= 5) moderate++;
       else low++;
     }
-    return { high, moderate, low, nonForestWild, industrial, preliminary: prelimRes.count ?? 0 };
+    return {
+      high,
+      moderate,
+      low,
+      nonForestWild,
+      industrial,
+      preliminary: prelimRes.count ?? 0,
+      // Pasamos el snapshot al mini-mapa para garantizar consistencia con el counter.
+      fires,
+    };
   } catch {
     return empty;
   }
@@ -207,6 +222,7 @@ export default async function Home() {
     nonForestWild,
     industrial: industrialCount,
     preliminary: preliminaryCount,
+    fires: heroFires,
   } = fireCounts;
   // WHI-757: el hero refleja todos los focos forestales activos (no solo los
   // de alta intensidad). En temporada baja el número de "destacados FRP≥20"
@@ -477,7 +493,7 @@ export default async function Home() {
             className="clara-hero-map relative border-l border-border"
             style={{ minHeight: 480 }}
           >
-            <FireMapLoader tles={tles} />
+            <FireMapLoader tles={tles} fires={heroFires} />
             {/* Overlay badge */}
             <div
               className="absolute top-4 left-4 flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-border z-[500]"
