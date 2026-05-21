@@ -45,7 +45,7 @@ export async function generateMetadata({
 }: PageProps): Promise<Metadata> {
   const { province, city } = await params;
   const match = findCity(province, city);
-  if (!match) return { title: "Ciudad no encontrada — C.L.A.R.A." };
+  if (!match) return { title: "Ciudad no encontrada — AlertaForestal" };
 
   // WHI-759: doble entry SEO. Las páginas ya rankean por "calidad del aire en X";
   // ahora también por "incendios forestales / focos cerca de X". Title se mantiene
@@ -56,19 +56,20 @@ export async function generateMetadata({
   return {
     title,
     description,
+    alternates: { canonical: `/ciudad/${match.province.id}/${city}` },
     openGraph: {
-      title: `${match.city.name} — Focos forestales · C.L.A.R.A.`,
+      title: `${match.city.name} — Focos forestales · AlertaForestal`,
       description,
     },
     twitter: {
       card: "summary",
-      title: `${match.city.name} — C.L.A.R.A.`,
+      title: `${match.city.name} — AlertaForestal`,
       description,
     },
   };
 }
 
-const TELEGRAM_BOT_URL = "https://t.me/AlertasClaraBot";
+const TELEGRAM_BOT_URL = "https://t.me/alertaforestal_bot";
 
 export default async function CiudadPage({ params }: PageProps) {
   const { province, city } = await params;
@@ -80,7 +81,7 @@ export default async function CiudadPage({ params }: PageProps) {
   );
 
   const siteUrl =
-    process.env.NEXT_PUBLIC_SITE_URL || "https://alertaincendios.vercel.app";
+    process.env.NEXT_PUBLIC_SITE_URL || "https://alertaforestal.org";
 
   return (
     <>

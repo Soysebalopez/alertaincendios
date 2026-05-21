@@ -12,7 +12,7 @@ function slugify(name: string): string {
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl =
-    process.env.NEXT_PUBLIC_SITE_URL || "https://alertaincendios.vercel.app";
+    process.env.NEXT_PUBLIC_SITE_URL || "https://alertaforestal.org";
 
   const routes: MetadataRoute.Sitemap = [
     {

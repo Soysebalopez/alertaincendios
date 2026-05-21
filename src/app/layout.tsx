@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://alertaincendios.vercel.app";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://alertaforestal.org";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -26,11 +26,22 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "C.L.A.R.A. — Central de Localizacion y Alerta de Riesgo Ambiental",
-    template: "%s — C.L.A.R.A.",
+    default: "AlertaForestal — Alertas tempranas de incendios forestales en Argentina",
+    template: "%s — AlertaForestal",
   },
   description:
-    "Sistema de alerta temprana de incendios forestales para Argentina. Deteccion via NASA FIRMS VIIRS. Alertas por Telegram con modelo de dispersion de humo.",
+    "Sistema de alerta temprana de incendios forestales para Argentina. Detección vía NASA FIRMS VIIRS + NOAA GOES-19. Alertas por Telegram con modelo de dispersión de humo.",
+  // Canonical raíz + hreflang es-AR. Evita duplicados cuando la app responde
+  // también en alertaincendios.vercel.app (preview/legacy) y le dice a Google
+  // que el target geográfico es Argentina, no es-ES o es-MX. Las páginas hijas
+  // heredan metadataBase y pueden override con su propio canonical relativo.
+  alternates: {
+    canonical: "/",
+    languages: {
+      "es-AR": "/",
+      "x-default": "/",
+    },
+  },
   robots: {
     index: true,
     follow: true,
@@ -42,17 +53,17 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     locale: "es_AR",
-    siteName: "C.L.A.R.A.",
-    title: "C.L.A.R.A. — Alerta de Incendios Argentina",
+    siteName: "AlertaForestal",
+    title: "AlertaForestal — Alertas de incendios forestales en Argentina",
     description:
-      "Monitoreo ambiental ciudadano. Focos de calor, calidad del aire y alertas por Telegram para toda Argentina.",
+      "Monitoreo y alerta temprana de focos forestales. Datos abiertos de NASA, NOAA y Copernicus. Alertas por Telegram para toda Argentina.",
     url: SITE_URL,
   },
   twitter: {
     card: "summary_large_image",
-    title: "C.L.A.R.A. — Alerta de Incendios Argentina",
+    title: "AlertaForestal — Alertas de incendios forestales en Argentina",
     description:
-      "Monitoreo ambiental ciudadano. Focos de calor, calidad del aire y alertas por Telegram.",
+      "Detección temprana de focos forestales. Alertas por Telegram con distancia, dirección y ETA.",
   },
 };
 

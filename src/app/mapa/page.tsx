@@ -13,13 +13,14 @@ export const metadata: Metadata = {
   title: "Mapa",
   description:
     "Mapa interactivo de Argentina con focos de calor, calidad del aire y datos de viento en tiempo real.",
+  alternates: { canonical: "/mapa" },
   openGraph: {
-    title: "Mapa — C.L.A.R.A.",
+    title: "Mapa — AlertaForestal",
     description: "Mapa interactivo con focos de calor, calidad del aire y viento en tiempo real.",
   },
   twitter: {
     card: "summary",
-    title: "Mapa — C.L.A.R.A.",
+    title: "Mapa — AlertaForestal",
     description: "Mapa interactivo de monitoreo ambiental para Argentina.",
   },
 };
