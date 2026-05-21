@@ -4,6 +4,7 @@ import { sendMessage } from "@/lib/telegram";
 import { geocodeCity } from "@/lib/geocode";
 import { fetchFires } from "@/lib/firms";
 import { haversineKm } from "@/lib/geo";
+import { log } from "@/lib/logger";
 
 /**
  * POST /api/bot/telegram
@@ -102,7 +103,12 @@ export async function POST(request: NextRequest) {
       );
     }
   } catch (err) {
-    console.error("Bot error:", err);
+    log.error({
+      event: "bot.command_failed",
+      chatId,
+      command: text || (location ? "<location>" : "<unknown>"),
+      err: err instanceof Error ? err.message : String(err),
+    });
     await sendMessage(chatId, "Error interno. Intenta de nuevo en unos minutos.");
   }
 
@@ -501,7 +507,12 @@ async function handleSoyBombero(chatId: number, code: string) {
   });
 
   if (rpcErr) {
-    console.error("consume_fireman_code rpc error:", rpcErr);
+    log.error({
+      event: "bot.consume_fireman_code_rpc_failed",
+      chatId,
+      code: rpcErr.code,
+      err: rpcErr.message,
+    });
     await sendMessage(
       chatId,
       "❌ Error interno al validar el código. Probá de nuevo en unos minutos." +
@@ -540,7 +551,11 @@ async function handleSoyBombero(chatId: number, code: string) {
     return;
   }
   if (status !== "ok" || !cuartel) {
-    console.error("consume_fireman_code unexpected status:", status, result);
+    log.error({
+      event: "bot.consume_fireman_code_unexpected",
+      chatId,
+      status,
+    });
     await sendMessage(
       chatId,
       "❌ Error interno al validar el código. Probá de nuevo en unos minutos." +
@@ -548,6 +563,12 @@ async function handleSoyBombero(chatId: number, code: string) {
     );
     return;
   }
+
+  log.info({
+    event: "bot.fireman_promoted",
+    chatId,
+    cuartel,
+  });
 
   await sendMessage(
     chatId,

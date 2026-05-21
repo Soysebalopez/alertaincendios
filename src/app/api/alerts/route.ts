@@ -6,6 +6,7 @@ import { haversineKm, isUpwind, smokeEtaMinutes } from "@/lib/geo";
 import { sendMessage } from "@/lib/telegram";
 import { forestZoneName } from "@/lib/forest-zones";
 import { isCronAuthorized } from "@/lib/cron-auth";
+import { log } from "@/lib/logger";
 
 /**
  * GET /api/alerts
@@ -62,7 +63,9 @@ export async function GET(request: Request) {
           continue;
         }
 
-        // Check if already alerted
+        // Pre-check de dedup. Es solo un fast-path para evitar hacer el fetch
+        // de viento si ya alertamos — la garantía real anti-duplicado vive en
+        // el INSERT ON CONFLICT más abajo, que serializa con otros cron runs.
         const { data: existing } = await db
           .from("ai_alerted_fires")
           .select("fire_key")
@@ -83,6 +86,38 @@ export async function GET(request: Request) {
         const level = classifyAlert(distKm, upwind.isUpwind);
         if (level === "none") continue;
 
+        // H-08 — INSERT como lock primario. Si otra invocación del cron ganó
+        // la race, el conflict no devuelve row y skipeamos. Esto convierte
+        // ai_alerted_fires en el lock distribuido — antes era SELECT + INSERT
+        // separados con ventana de race.
+        const { data: claimed, error: claimErr } = await db
+          .from("ai_alerted_fires")
+          .insert({
+            fire_key: fireKey,
+            chat_id: sub.chat_id,
+            alerted_at: new Date().toISOString(),
+          })
+          .select("fire_key")
+          .single();
+
+        if (claimErr) {
+          // PostgREST devuelve 23505 (unique_violation) cuando ON CONFLICT
+          // dispara con la PK (fire_key, chat_id). Esa es exactamente la
+          // señal "otro cron run ya está mandando esto" — skip sin error.
+          // Cualquier otro error sí es problema real.
+          if (claimErr.code !== "23505") {
+            log.error({
+              event: "alerts.claim_failed",
+              fireKey,
+              chatId: sub.chat_id,
+              code: claimErr.code,
+              err: claimErr.message,
+            });
+          }
+          continue;
+        }
+        if (!claimed) continue;
+
         // WHI-547 — does this FIRMS fire confirm a recent GOES preliminary
         // alert we already sent to this subscriber?
         const match = await findPendingPreliminary(db, sub.chat_id, fire);
@@ -96,7 +131,30 @@ export async function GET(request: Request) {
             ? await formatConfirmedFromPreliminary(fire, sub, distKm, eta, level, match.preliminary_sent_at, zoneName)
             : await formatAlert(fire, sub, distKm, eta, level, zoneName);
 
-        await sendMessage(sub.chat_id, message);
+        // Si Telegram falla, la row de dedup ya quedó registrada. Loguear con
+        // contexto suficiente (chat_id, fire_key) para reenvío manual desde
+        // /dashboard si fuera necesario. Alternativa rechazada: revertir el
+        // INSERT — abre una ventana de race nueva entre el delete y otro cron.
+        try {
+          await sendMessage(sub.chat_id, message);
+          log.info({
+            event: "alerts.sent",
+            fireKey,
+            chatId: sub.chat_id,
+            role: isFireman ? "fireman" : "civilian",
+            distKm: Math.round(distKm),
+            level,
+            isConfirmation: match != null,
+          });
+        } catch (sendErr) {
+          log.error({
+            event: "alerts.send_failed",
+            fireKey,
+            chatId: sub.chat_id,
+            err: sendErr instanceof Error ? sendErr.message : String(sendErr),
+          });
+          continue;
+        }
 
         if (match) {
           await db
@@ -105,13 +163,6 @@ export async function GET(request: Request) {
             .eq("id", match.id);
           confirmations++;
         }
-
-        // Record to avoid duplicate alerts on the FIRMS side too
-        await db.from("ai_alerted_fires").insert({
-          fire_key: fireKey,
-          chat_id: sub.chat_id,
-          alerted_at: new Date().toISOString(),
-        });
 
         alertsSent++;
       }
@@ -128,7 +179,10 @@ export async function GET(request: Request) {
       skippedNonForestCivilian,
     });
   } catch (error) {
-    console.error("Alerts cron error:", error);
+    log.error({
+      event: "alerts.cron_failed",
+      err: error instanceof Error ? error.message : String(error),
+    });
     return NextResponse.json({ error: "Alert processing failed" }, { status: 500 });
   }
 }
