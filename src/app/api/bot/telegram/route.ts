@@ -28,6 +28,35 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Bot not configured" });
   }
 
+  // WHI-XXX — verificación de origen Telegram.
+  //
+  // Telegram firma cada call al webhook con el header
+  // `X-Telegram-Bot-API-Secret-Token` (cuyo valor se setea al registrar el
+  // webhook con `setWebhook?secret_token=...`). Sin esta verificación,
+  // cualquiera con el chat_id de una víctima podía hacer un POST manual y
+  // ejecutar comandos en su nombre (e.g. `/soybombero <code>`, `/cancelar`).
+  //
+  // Comportamiento si la env var no está seteada: WARN y dejar pasar. Esto es
+  // un fallback de transición — una vez seteada en Vercel y re-registrado el
+  // webhook con el mismo secret_token, todas las requests del cliente real
+  // van a matchear y las request spoofeadas van a fallar con 401.
+  const expected = process.env.TELEGRAM_WEBHOOK_SECRET;
+  if (expected) {
+    const received = request.headers.get("x-telegram-bot-api-secret-token");
+    if (received !== expected) {
+      // Importante no devolver detalles del header recibido — sería un hint
+      // útil para un atacante que está iterando para encontrar la forma de
+      // pasar el check.
+      return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+    }
+  } else {
+    // Log explícito en cada call hasta que se configure. El warn vive en
+    // Vercel logs; sirve como recordatorio operativo.
+    console.warn(
+      "[telegram] TELEGRAM_WEBHOOK_SECRET no configurado — webhook acepta requests sin verificar origen. Setealo en Vercel y re-registrá el webhook con setWebhook?secret_token=..."
+    );
+  }
+
   const update: TelegramUpdate = await request.json();
   const chatId = update.message?.chat.id;
   if (!chatId) return NextResponse.json({ ok: true });
@@ -427,8 +456,10 @@ async function logBotCommand(chatId: number, command: string, args?: string) {
 }
 
 // WHI-588 Sprint 1 — /soybombero <code> elevates a subscriber to role 'fireman'.
-// The code is validated against the fireman_codes table (codes distributed by
-// the project owner to fire brigades, one or many per cuartel).
+// El consumo del código va por la RPC `consume_fireman_code` (ver migration
+// scripts/sql/whi-fireman-codes-hardening.sql) que encapsula atómicamente:
+// validación, registro en fireman_code_usage, incremento de used_count y
+// promoción del subscriber. Sin esto había TOCTTOU + reuse por mismo chat_id.
 async function handleSoyBombero(chatId: number, code: string) {
   if (!code) {
     await sendMessage(
@@ -444,7 +475,8 @@ async function handleSoyBombero(chatId: number, code: string) {
 
   const db = getSupabase();
 
-  // Verify subscriber exists
+  // Subscriber tiene que existir antes — la RPC promueve un row existente
+  // (no lo crea desde cero, así no perdemos lat/lng/city_name).
   const { data: sub } = await db
     .from("subscribers")
     .select("chat_id, role")
@@ -462,23 +494,35 @@ async function handleSoyBombero(chatId: number, code: string) {
     return;
   }
 
-  // Lookup the code
-  const { data: codeRow } = await db
-    .from("fireman_codes")
-    .select("code, cuartel_name, used_count, max_uses")
-    .eq("code", code)
-    .maybeSingle();
+  type ConsumeResult = { status: string; cuartel_name: string | null };
+  const { data: rpcRows, error: rpcErr } = await db.rpc("consume_fireman_code", {
+    p_chat_id: chatId,
+    p_code: code,
+  });
 
-  if (!codeRow) {
+  if (rpcErr) {
+    console.error("consume_fireman_code rpc error:", rpcErr);
     await sendMessage(
       chatId,
-      "❌ Código inválido. Pedile a tu cuartel el código correcto." +
+      "❌ Error interno al validar el código. Probá de nuevo en unos minutos." +
         FOOTER
     );
     return;
   }
 
-  if (codeRow.max_uses != null && codeRow.used_count >= codeRow.max_uses) {
+  // La RPC devuelve un SETOF (una row). Manejamos los 4 outcomes posibles.
+  const result = Array.isArray(rpcRows) ? (rpcRows[0] as ConsumeResult) : (rpcRows as ConsumeResult | null);
+  const status = result?.status ?? "unknown";
+  const cuartel = result?.cuartel_name;
+
+  if (status === "not_found") {
+    await sendMessage(
+      chatId,
+      "❌ Código inválido. Pedile a tu cuartel el código correcto." + FOOTER
+    );
+    return;
+  }
+  if (status === "exhausted") {
     await sendMessage(
       chatId,
       "❌ Este código ya alcanzó su límite de usos. Pedile uno nuevo a tu cuartel." +
@@ -486,21 +530,28 @@ async function handleSoyBombero(chatId: number, code: string) {
     );
     return;
   }
-
-  // Elevate
-  await db
-    .from("subscribers")
-    .update({ role: "fireman", cuartel_name: codeRow.cuartel_name })
-    .eq("chat_id", chatId);
-
-  await db
-    .from("fireman_codes")
-    .update({ used_count: (codeRow.used_count ?? 0) + 1 })
-    .eq("code", codeRow.code);
+  if (status === "already_used") {
+    await sendMessage(
+      chatId,
+      `ℹ️ Ya estás registrado como bombero${cuartel ? ` de ${cuartel}` : ""}. ` +
+        "Si querés cancelar, usá <code>/cancelar</code>." +
+        FOOTER
+    );
+    return;
+  }
+  if (status !== "ok" || !cuartel) {
+    console.error("consume_fireman_code unexpected status:", status, result);
+    await sendMessage(
+      chatId,
+      "❌ Error interno al validar el código. Probá de nuevo en unos minutos." +
+        FOOTER
+    );
+    return;
+  }
 
   await sendMessage(
     chatId,
-    `✅ <b>Listo, bombero de ${codeRow.cuartel_name}</b>\n\n` +
+    `✅ <b>Listo, bombero de ${cuartel}</b>\n\n` +
       "Desde ahora vas a recibir <b>mensajes operativos</b> cuando se detecte un " +
       "foco confirmado en tu zona. Más conciso, con info para coordinar respuesta.\n\n" +
       "Si querés volver a alertas civiles, escribí <code>/cancelar</code> y " +

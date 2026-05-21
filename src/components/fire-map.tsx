@@ -28,24 +28,14 @@ interface FirePoint {
   acqDate: string;
   acqTime: string;
   type?: number;
+  /** WHI-757: tag de zona forestal calculado server-side. */
+  forestZone?: string;
 }
 
 /* ─── Filter definitions ─── */
 
 type FireType = 0 | 1 | 2 | 3;
 type Intensity = "high" | "moderate" | "low";
-
-const FIRE_FILTERS: {
-  type: FireType;
-  label: string;
-  icon: string;
-  color: string;
-}[] = [
-  { type: 0, label: "Focos", icon: "🔥", color: "#e8622c" },
-  { type: 1, label: "Volcanes", icon: "🌋", color: "#ef4444" },
-  { type: 2, label: "Flaring", icon: "🏭", color: "#8a8a7e" },
-  { type: 3, label: "Offshore", icon: "🛢️", color: "#8a8a7e" },
-];
 
 /**
  * Tres niveles de intensidad coordinados con el hero de portada:
@@ -252,7 +242,26 @@ function createFireMarker(f: FirePoint): L.Layer {
 
 /* ─── Component ─── */
 
-export function FireMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
+/**
+ * Mini-mapa del hero. Recibe los focos por prop desde el SSR del hero, así
+ * el contador y los puntos del mapa SIEMPRE muestran el mismo snapshot. Antes
+ * el componente hacía su propio fetch a /api/fires, lo que abría una ventana
+ * de inconsistencia (SSR fetch a T → cliente fetch a T+200ms; pg_cron pudo
+ * haber actualizado fires_cache en el medio) y peor, el filtro forestal del
+ * pivote WHI-757 quedó solo aplicado al hero counter — el mini-mapa seguía
+ * mostrando todos los focos.
+ *
+ * Mantiene paridad con /mapa: por default muestra solo focos forestales,
+ * con toggle "+ no forestal" para sumar quemas agrícolas/flaring (gris
+ * translúcido).
+ */
+export function FireMap({
+  tles = [],
+  fires = [],
+}: {
+  tles?: SatelliteTLE[];
+  fires?: FirePoint[];
+}) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<L.Map | null>(null);
   // Una sola capa para todos los markers visibles. En cada cambio de filtro
@@ -265,27 +274,39 @@ export function FireMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
   // marker animado en el hero (eso vive en /mapa, donde el contexto es más
   // pesado y el usuario está en modo exploración).
   const satellitesLayer = useRef<L.LayerGroup | null>(null);
-  const allFires = useRef<FirePoint[]>([]);
   const renderableTles = useMemo(
     () => tles.filter((t) => t.line1 && t.line2 && SATELLITE_META[t.norad_id]),
     [tles]
   );
-  const [loading, setLoading] = useState(true);
-  const [activeTypes, setActiveTypes] = useState<Set<FireType>>(
-    new Set([0, 1, 2, 3])
-  );
   const [activeIntensities, setActiveIntensities] = useState<Set<Intensity>>(
     new Set(["high", "moderate", "low"])
   );
-  // Conteos congelados en el momento del fetch — se computan junto con el
-  // poblado de allFires en el efecto inicial, no durante render.
-  const [counts, setCounts] = useState<{
-    byType: Record<number, number>;
-    byIntensity: Record<Intensity, number>;
-  }>({
-    byType: {},
-    byIntensity: { high: 0, moderate: 0, low: 0 },
-  });
+  // WHI-757: paridad con /mapa — por default solo forestal. El usuario puede
+  // sumar no-forestal con un toggle si quiere ver actividad agrícola/flaring.
+  const [showNonForest, setShowNonForest] = useState(false);
+
+  // Conteos derivados del snapshot SSR. Memoized para no recalcular en cada
+  // render de filtros.
+  const counts = useMemo(() => {
+    const byIntensity: Record<Intensity, number> = { high: 0, moderate: 0, low: 0 };
+    let nonForestWild = 0;
+    let industrial = 0;
+    for (const f of fires) {
+      const t = (f.type ?? 0) as FireType;
+      const isWild = t === 0 || t === 1;
+      if (!isWild) {
+        industrial++;
+        continue;
+      }
+      if (!f.forestZone) {
+        nonForestWild++;
+        continue;
+      }
+      byIntensity[frpBucket(f.frp)]++;
+    }
+    const forestTotal = byIntensity.high + byIntensity.moderate + byIntensity.low;
+    return { byIntensity, forestTotal, nonForestWild, industrial };
+  }, [fires]);
 
   // Re-renderiza markers cada vez que cambian los filtros activos o
   // cuando entran los datos. Itera sobre la lista cruda en memoria
@@ -294,25 +315,20 @@ export function FireMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
     const layer = markersLayer.current;
     if (!layer) return;
     layer.clearLayers();
-    for (const f of allFires.current) {
+    for (const f of fires) {
       const t = (f.type ?? 0) as FireType;
-      if (!activeTypes.has(t)) continue;
       const isWild = t === 0 || t === 1;
-      // Filtro de intensidad solo aplica a wildfires. Flaring/offshore se
-      // muestran si su tipo está activo, sin importar los chips de intensidad.
-      if (isWild && !activeIntensities.has(frpBucket(f.frp))) continue;
+      const inForest = Boolean(f.forestZone);
+      // WHI-757 paridad con hero counter:
+      //  - wildfire forestal       → siempre se ve (sujeto a chip intensidad)
+      //  - wildfire no forestal    → solo si toggle "+ no forestal" está on
+      //  - industrial (flaring/offshore/volcano) → solo si toggle on
+      if (!isWild && !showNonForest) continue;
+      if (isWild && !inForest && !showNonForest) continue;
+      if (isWild && inForest && !activeIntensities.has(frpBucket(f.frp))) continue;
       createFireMarker(f).addTo(layer);
     }
-  }, [activeTypes, activeIntensities]);
-
-  const toggleType = useCallback((type: FireType) => {
-    setActiveTypes((prev) => {
-      const next = new Set(prev);
-      if (next.has(type)) next.delete(type);
-      else next.add(type);
-      return next;
-    });
-  }, []);
+  }, [fires, activeIntensities, showNonForest]);
 
   const toggleIntensity = useCallback((key: Intensity) => {
     setActiveIntensities((prev) => {
@@ -323,7 +339,8 @@ export function FireMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
     });
   }, []);
 
-  // Inicialización del mapa + fetch inicial. Solo corre una vez.
+  // Inicialización del mapa. Solo corre una vez (no fetch — los focos vienen
+  // por prop desde el SSR del hero).
   useEffect(() => {
     if (!mapRef.current || mapInstance.current) return;
 
@@ -348,23 +365,6 @@ export function FireMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
     const satLayer = L.layerGroup().addTo(map);
     satellitesLayer.current = satLayer;
     mapInstance.current = map;
-
-    fetch("/api/fires")
-      .then((r) => r.json())
-      .then((data) => {
-        const fires = (data.fires || []) as FirePoint[];
-        allFires.current = fires;
-        const byType: Record<number, number> = {};
-        const byIntensity: Record<Intensity, number> = { high: 0, moderate: 0, low: 0 };
-        for (const f of fires) {
-          const t = f.type ?? 0;
-          byType[t] = (byType[t] || 0) + 1;
-          if (t === 0 || t === 1) byIntensity[frpBucket(f.frp)]++;
-        }
-        setCounts({ byType, byIntensity });
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
 
     return () => {
       map.remove();
@@ -418,120 +418,96 @@ export function FireMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
     }
   }, [renderableTles]);
 
-  // Repinta cuando entran datos o cambian filtros.
+  // Repinta cuando cambian filtros, toggle no-forestal o entran focos nuevos
+  // (cada vez que el SSR pasa una prop nueva por router.refresh()).
   useEffect(() => {
-    if (!loading) renderMarkers();
-  }, [loading, renderMarkers]);
+    renderMarkers();
+  }, [renderMarkers]);
+
+  const nonForestTotal = counts.nonForestWild + counts.industrial;
 
   return (
     <div className="relative w-full h-full">
       <div ref={mapRef} className="w-full h-full" />
 
-      {/* Filter rows: tipo arriba, intensidad abajo */}
-      {!loading && (
+      {/* Filtros: paridad con /mapa — intensidad + toggle no-forestal. El total
+          forestal del hero matchea exactamente la suma de chips activos. */}
+      {counts.forestTotal > 0 && (
         <div className="absolute bottom-4 left-4 right-4 flex flex-col gap-2 z-[1000]">
-          {/* Fila 1: tipo de detección */}
-          <div className="flex flex-wrap gap-2">
-            {FIRE_FILTERS.map((filter) => {
-              const count = counts.byType[filter.type] || 0;
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-[9px] text-muted tracking-[0.15em] uppercase pr-1 select-none">
+              Forestal
+            </span>
+            {INTENSITY_FILTERS.map((f) => {
+              const count = counts.byIntensity[f.key] || 0;
               if (count === 0) return null;
-              const isActive = activeTypes.has(filter.type);
+              const isActive = activeIntensities.has(f.key);
               return (
                 <button
-                  key={filter.type}
-                  onClick={() => toggleType(filter.type)}
-                  className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-mono transition-all duration-200 border select-none cursor-pointer"
+                  key={f.key}
+                  onClick={() => toggleIntensity(f.key)}
+                  title={`${f.label} · ${f.range}`}
+                  className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-mono transition-all duration-200 border select-none cursor-pointer"
                   style={{
-                    background: isActive ? `${filter.color}18` : "#0a0a08cc",
-                    borderColor: isActive ? `${filter.color}40` : "#25252080",
-                    color: isActive ? filter.color : "#8a8a7e60",
+                    background: isActive ? `${f.color}18` : "#0a0a08cc",
+                    borderColor: isActive ? `${f.color}40` : "#25252080",
+                    color: isActive ? f.color : "#8a8a7e60",
                     opacity: isActive ? 1 : 0.6,
                   }}
                 >
-                  <span className="text-sm leading-none">{filter.icon}</span>
-                  <span>{filter.label}</span>
+                  <span>{f.label}</span>
                   <span
                     className="font-semibold tabular-nums"
-                    style={{ color: isActive ? filter.color : "#8a8a7e40" }}
+                    style={{ color: isActive ? f.color : "#8a8a7e40" }}
                   >
                     {count}
                   </span>
                 </button>
               );
             })}
-          </div>
-
-          {/* Fila 2: intensidad (solo si hay wildfires) */}
-          {(counts.byType[0] || counts.byType[1] || 0) > 0 && (
-            <>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-mono text-[9px] text-muted tracking-[0.15em] uppercase pr-1 select-none">
-                  Intensidad
-                </span>
-                {INTENSITY_FILTERS.map((f) => {
-                  const count = counts.byIntensity[f.key] || 0;
-                  if (count === 0) return null;
-                  const isActive = activeIntensities.has(f.key);
-                  return (
-                    <button
-                      key={f.key}
-                      onClick={() => toggleIntensity(f.key)}
-                      title={`${f.label} · ${f.range}`}
-                      className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-mono transition-all duration-200 border select-none cursor-pointer"
-                      style={{
-                        background: isActive ? `${f.color}18` : "#0a0a08cc",
-                        borderColor: isActive ? `${f.color}40` : "#25252080",
-                        color: isActive ? f.color : "#8a8a7e60",
-                        opacity: isActive ? 1 : 0.6,
-                      }}
-                    >
-                      <span>{f.label}</span>
-                      <span
-                        className="font-semibold tabular-nums"
-                        style={{ color: isActive ? f.color : "#8a8a7e40" }}
-                      >
-                        {count}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-              {/* Leyenda: una fila por color real de marker (5 bandas FRP). */}
-              <div
-                className="flex flex-col gap-1 rounded-lg px-3 py-2 font-mono text-[10px] leading-tight select-none"
+            {nonForestTotal > 0 && (
+              <button
+                onClick={() => setShowNonForest((v) => !v)}
+                title="Quemas agrícolas, flaring y otra actividad fuera de zona forestal"
+                className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-mono transition-all duration-200 border select-none cursor-pointer"
                 style={{
-                  background: "#0a0a08cc",
-                  border: "1px solid #25252080",
-                  color: "#8a8a7eb0",
-                  backdropFilter: "blur(4px)",
-                  WebkitBackdropFilter: "blur(4px)",
+                  background: showNonForest ? "#8a8a7e22" : "#0a0a08cc",
+                  borderColor: showNonForest ? "#8a8a7e60" : "#25252080",
+                  color: showNonForest ? "#d4d4cc" : "#8a8a7e60",
+                  opacity: showNonForest ? 1 : 0.6,
                 }}
               >
-                {INTENSITY_LEGEND.map((l) => (
-                  <span
-                    key={l.label}
-                    className="inline-flex items-baseline gap-1.5"
-                  >
-                    <span
-                      className="h-2.5 w-2.5 rounded-full shrink-0 self-center"
-                      style={{ background: l.color }}
-                    />
-                    <span style={{ color: "#d4d4cc" }}>{l.label}</span>
-                    <span style={{ color: "#8a8a7e80" }}>({l.range}):</span>{" "}
-                    <span>{l.meaning}</span>
-                  </span>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      {loading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-background/60">
-          <span className="font-mono text-xs text-muted animate-pulse">
-            Cargando focos...
-          </span>
+                <span>+ No forestal</span>
+                <span className="font-semibold tabular-nums">{nonForestTotal}</span>
+              </button>
+            )}
+          </div>
+          {/* Leyenda: una fila por color real de marker (5 bandas FRP). */}
+          <div
+            className="flex flex-col gap-1 rounded-lg px-3 py-2 font-mono text-[10px] leading-tight select-none"
+            style={{
+              background: "#0a0a08cc",
+              border: "1px solid #25252080",
+              color: "#8a8a7eb0",
+              backdropFilter: "blur(4px)",
+              WebkitBackdropFilter: "blur(4px)",
+            }}
+          >
+            {INTENSITY_LEGEND.map((l) => (
+              <span
+                key={l.label}
+                className="inline-flex items-baseline gap-1.5"
+              >
+                <span
+                  className="h-2.5 w-2.5 rounded-full shrink-0 self-center"
+                  style={{ background: l.color }}
+                />
+                <span style={{ color: "#d4d4cc" }}>{l.label}</span>
+                <span style={{ color: "#8a8a7e80" }}>({l.range}):</span>{" "}
+                <span>{l.meaning}</span>
+              </span>
+            ))}
+          </div>
         </div>
       )}
     </div>

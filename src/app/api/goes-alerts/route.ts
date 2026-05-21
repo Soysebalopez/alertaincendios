@@ -3,6 +3,7 @@ import { getSupabase } from "@/lib/supabase";
 import { haversineKm } from "@/lib/geo";
 import { sendMessage } from "@/lib/telegram";
 import { findForestZone } from "@/lib/forest-zones-geo";
+import { isCronAuthorized } from "@/lib/cron-auth";
 
 /**
  * GET /api/goes-alerts
@@ -24,12 +25,7 @@ const RADIUS_KM = 100;
 const SINGLE_FRAME_FRP_THRESHOLD_MW = 10;
 
 export async function GET(request: Request) {
-  const secret = new URL(request.url).searchParams.get("secret");
-  const bearerToken = request.headers.get("authorization")?.replace("Bearer ", "");
-  const isAuthorized =
-    secret === process.env.CRON_SECRET || bearerToken === process.env.CRON_SECRET;
-
-  if (!isAuthorized) {
+  if (!isCronAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

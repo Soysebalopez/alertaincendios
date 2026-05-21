@@ -5,6 +5,7 @@ import { fetchWind, degreesToCardinal } from "@/lib/wind";
 import { haversineKm, isUpwind, smokeEtaMinutes } from "@/lib/geo";
 import { sendMessage } from "@/lib/telegram";
 import { forestZoneName } from "@/lib/forest-zones";
+import { isCronAuthorized } from "@/lib/cron-auth";
 
 /**
  * GET /api/alerts
@@ -16,12 +17,7 @@ import { forestZoneName } from "@/lib/forest-zones";
  * 4. Deduplicates via ai_alerted_fires table
  */
 export async function GET(request: Request) {
-  const secret = new URL(request.url).searchParams.get("secret");
-  const bearerToken = request.headers.get("authorization")?.replace("Bearer ", "");
-  const isAuthorized =
-    secret === process.env.CRON_SECRET || bearerToken === process.env.CRON_SECRET;
-
-  if (!isAuthorized) {
+  if (!isCronAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
