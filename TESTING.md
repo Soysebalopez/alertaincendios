@@ -11,7 +11,7 @@ Esta guía cubre todo lo que se desplegó hoy:
 ## 0. Verificación rápida visual (2 min)
 
 ```
-1. Abrí https://alertaincendios.vercel.app
+1. Abrí https://alertaforestal.org
 2. Scrollá a "Cómo funciona" → paso 02 menciona GOES-19 + FIRMS
 3. Scrollá a "Fuentes de datos" → aparece NOAA GOES-19 con icon de satélite
 4. Tira de métricas → "Preliminares 24h" en la cuarta tarjeta
@@ -28,7 +28,7 @@ Vía Supabase SQL Editor (necesita CRON_SECRET — está en Vercel env):
 
 ```sql
 SELECT net.http_get(
-  'https://alertaincendios.vercel.app/api/goes-sync?secret=<CRON_SECRET>',
+  'https://alertaforestal.org/api/goes-sync?secret=<CRON_SECRET>',
   timeout_milliseconds := 60000
 ) AS request_id;
 ```
@@ -118,7 +118,7 @@ el campo `seen_in_scans` se va a llenar para focos reales.
 
 ```sql
 SELECT net.http_get(
-  'https://alertaincendios.vercel.app/api/goes-alerts?secret=<CRON_SECRET>',
+  'https://alertaforestal.org/api/goes-alerts?secret=<CRON_SECRET>',
   timeout_milliseconds := 60000
 );
 ```
@@ -189,7 +189,7 @@ Las 8 tablas deben dar `rls_enabled = true`.
 
 ### 4.2 — Verificar que nada se rompió
 
-- Visitá https://alertaincendios.vercel.app → si las "Incendios 24h" muestran
+- Visitá https://alertaforestal.org → si las "Incendios 24h" muestran
   números, los reads desde el service role funcionan.
 - Mandá `/estado` al bot → si responde con focos, los queries del bot funcionan.
 - Trigger manual de `/api/goes-sync` (paso 1.1) → si inserta, los writes
@@ -204,7 +204,7 @@ Pasos detallados en `scripts/WHI-581-bot-rotation.md`. Resumen:
 
 1. Actualizar `TELEGRAM_BOT_TOKEN` en Vercel env vars (Production + Preview + Dev)
 2. Redeploy production
-3. `curl -F "url=https://alertaincendios.vercel.app/api/bot/telegram" https://api.telegram.org/bot<NEW_TOKEN>/setWebhook`
+3. `curl -F "url=https://alertaforestal.org/api/bot/telegram" https://api.telegram.org/bot<NEW_TOKEN>/setWebhook`
 4. Mandar `/start` al bot nuevo → si responde, listo
 5. Revocar el bot viejo en @BotFather (`/mybots` → bot viejo → Revoke)
 

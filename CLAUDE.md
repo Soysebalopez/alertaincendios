@@ -1,8 +1,8 @@
 @AGENTS.md
 
-# CLARA (AlertaIncendios)
+# AlertaForestal
 
-Central de Localizacion y Alerta de Riesgo Ambiental — alerta temprana de incendios forestales en Argentina vía Telegram. Detección dual: GOES-19 (10 min, preliminar) + NASA FIRMS (15 min, confirmado). Gratuito B2C, complementario a Satellites On Fire.
+Alertas tempranas de incendios forestales en Argentina vía Telegram. El bot del servicio se llama **Clara** (antes el proyecto se llamaba C.L.A.R.A.; "Clara" quedó como persona del bot, y el sitio pasó a ser AlertaForestal.org). Detección dual: GOES-19 (10 min, preliminar) + NASA FIRMS (15 min, confirmado). Gratuito B2C, complementario a Satellites On Fire.
 
 ## Stack
 - Next.js 16 + TypeScript + Tailwind CSS v4 + Motion + Phosphor Icons + Leaflet + Recharts
@@ -12,11 +12,11 @@ Central de Localizacion y Alerta de Riesgo Ambiental — alerta temprana de ince
 - Python pipeline: xarray, netCDF4, boto3, pyproj — procesa GOES NetCDF en Vercel
 
 ## Servicios
-- GitHub: https://github.com/Soysebalopez/alertaincendios
+- GitHub: https://github.com/Soysebalopez/alertaincendios (repo conserva el nombre viejo)
 - Linear: CLARA project en Whitebay Products team
-- Deploy: Vercel (https://alertaincendios.vercel.app)
+- Deploy: Vercel — dominio principal https://alertaforestal.org (alias: alertaincendios.vercel.app)
 - Supabase: project ref qmzuwnilehldvobjsbcs (shared with SatAI)
-- Telegram Bot: @AlertasClaraBot
+- Telegram Bot: @alertaforestal_bot (persona del bot: Clara)
 
 ## Design System
 - Font: Outfit (headings + body) + Geist Mono (data/labels)

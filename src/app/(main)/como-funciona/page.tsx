@@ -14,10 +14,11 @@ import { Pill } from "@/components/clara-ui";
 export const metadata: Metadata = {
   title: "Cómo funciona",
   description:
-    "Explicación simple de cómo C.L.A.R.A. detecta incendios forestales en Argentina y te avisa por Telegram.",
+    "Explicación simple de cómo AlertaForestal detecta incendios forestales en Argentina y te avisa por Telegram.",
+  alternates: { canonical: "/como-funciona" },
 };
 
-const TELEGRAM_BOT_URL = "https://t.me/AlertasClaraBot";
+const TELEGRAM_BOT_URL = "https://t.me/alertaforestal_bot";
 
 // WHI-590 — explanations for non-technical readers.
 // Each FAQ has a question and 1-2 short paragraphs in plain language.
@@ -25,17 +26,17 @@ const TELEGRAM_BOT_URL = "https://t.me/AlertasClaraBot";
 const FAQS: { q: string; body: React.ReactNode; icon: React.ReactNode }[] = [
   {
     icon: <GlobeHemisphereWest size={18} weight="duotone" />,
-    q: "¿Qué es C.L.A.R.A.?",
+    q: "¿Qué es AlertaForestal?",
     body: (
       <>
         <p>
-          Un bot de Telegram que <strong>te avisa</strong> cuando hay un foco
-          de incendio cerca tuyo en Argentina. Gratis, sin registro, sin
-          publicidad.
+          Un servicio gratuito de alertas tempranas de incendios forestales en
+          Argentina. Los mensajes te llegan por Telegram a través de{" "}
+          <strong>Clara</strong>, nuestro bot.
         </p>
         <p>
-          El objetivo es que los vecinos de zonas rurales reciban una alerta
-          temprana, antes de que el humo o el fuego llegue a su zona.
+          El objetivo es que los vecinos de zonas rurales y forestales reciban
+          una alerta temprana, antes de que el humo o el fuego llegue a su zona.
         </p>
       </>
     ),
@@ -126,9 +127,9 @@ const FAQS: { q: string; body: React.ReactNode; icon: React.ReactNode }[] = [
     body: (
       <>
         <p>
-          Sí. C.L.A.R.A. es un proyecto independiente, sin publicidad ni venta de
-          datos. La suscripción y las alertas son gratuitas para cualquier
-          vecino que las necesite.
+          Sí. AlertaForestal es un proyecto independiente, sin publicidad ni
+          venta de datos. La suscripción y las alertas son gratuitas para
+          cualquier vecino que las necesite.
         </p>
       </>
     ),
@@ -217,15 +218,15 @@ export default function ComoFuncionaPage() {
               margin: "20px 0 18px",
             }}
           >
-            C.L.A.R.A.:{" "}
+            AlertaForestal:{" "}
             <span className="text-accent">cómo funciona</span>.
           </h1>
           <p
             className="text-muted"
             style={{ fontSize: 18, lineHeight: 1.55, maxWidth: "64ch" }}
           >
-            Una explicación clara de qué hace C.L.A.R.A., cómo detecta los focos
-            y cuándo recibís una alerta.
+            Una explicación simple de qué hacemos, cómo detectamos los focos
+            forestales y cuándo recibís una alerta del bot Clara.
           </p>
         </div>
       </section>
@@ -328,7 +329,7 @@ export default function ComoFuncionaPage() {
               boxShadow: "0 20px 40px -16px var(--accent)",
             }}
           >
-            <TelegramLogo size={18} weight="fill" /> Abrir @AlertasClaraBot{" "}
+            <TelegramLogo size={18} weight="fill" /> Abrir @alertaforestal_bot{" "}
             <ArrowRight size={16} />
           </a>
           <div className="mt-5">

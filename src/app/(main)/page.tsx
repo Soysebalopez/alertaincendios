@@ -32,7 +32,7 @@ import { fetchTLEs } from "@/lib/satellites-server";
 // el SSR y vemos el nuevo conteo al instante.
 export const dynamic = "force-dynamic";
 
-const TELEGRAM_BOT_URL = "https://t.me/AlertasClaraBot";
+const TELEGRAM_BOT_URL = "https://t.me/alertaforestal_bot";
 
 /**
  * Umbral FRP (MW) para que un foco califique como "alta intensidad" en el
@@ -851,11 +851,11 @@ export default async function Home() {
               boxShadow: "0 20px 40px -16px var(--accent)",
             }}
           >
-            <TelegramLogo size={18} weight="fill" /> Abrir @AlertasClaraBot{" "}
+            <TelegramLogo size={18} weight="fill" /> Abrir @alertaforestal_bot{" "}
             <ArrowRight size={16} />
           </a>
           <div className="mt-5 font-mono text-[10px] text-muted tracking-[0.08em]">
-            t.me/AlertasClaraBot
+            t.me/alertaforestal_bot
           </div>
         </div>
       </section>

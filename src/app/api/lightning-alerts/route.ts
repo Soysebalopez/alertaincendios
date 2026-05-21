@@ -53,7 +53,7 @@ export async function GET(request: Request) {
     if (!risk.hasFireRisk) continue;
 
     const msg =
-      `⚡ <b>C.L.A.R.A. — Alerta de tormenta seca</b>\n\n` +
+      `⚡ <b>Clara — Alerta de tormenta seca</b>\n\n` +
       `📍 <b>${sub.city_name}</b>\n` +
       `🌩 Tormenta eléctrica activa\n` +
       `💧 Humedad: ${Math.round(risk.humidity)}%\n` +
@@ -61,7 +61,7 @@ export async function GET(request: Request) {
       `Las tormentas secas son la causa #1 de incendios forestales naturales. ` +
       `Mantenete atento a los próximos minutos.\n\n` +
       `Usa /rayos para activar/desactivar este tipo de alerta.\n\n` +
-      `—\nCentral de Localizacion y Alerta de Riesgo Ambiental (C.L.A.R.A.)\n` +
+      `—\nClara · AlertaForestal.org\n` +
       `<i>Datos: ${risk.source === "openweather" ? "OpenWeather" : "Open-Meteo"}</i>`;
 
     await sendMessage(sub.chat_id, msg);

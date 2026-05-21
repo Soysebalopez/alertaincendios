@@ -14,7 +14,7 @@ import { isCronAuthorized } from "@/lib/cron-auth";
  */
 
 const CELESTRAK_BASE = "https://celestrak.org/NORAD/elements/gp.php";
-const USER_AGENT = "C.L.A.R.A. https://alertaincendios.vercel.app";
+const USER_AGENT = "AlertaForestal https://alertaforestal.org";
 
 export async function GET(request: Request) {
   if (!isCronAuthorized(request)) {

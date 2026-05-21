@@ -9,7 +9,8 @@ import { log } from "@/lib/logger";
 /**
  * POST /api/bot/telegram
  *
- * Telegram webhook for @AlertasClaraBot.
+ * Telegram webhook for @alertaforestal_bot. El bot se presenta como "Clara",
+ * la voz/persona del servicio AlertaForestal.org.
  * Commands: /start, /ciudad <name>, /estado, /cancelar
  * Also accepts shared location (GPS pin).
  */
@@ -115,27 +116,29 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ ok: true });
 }
 
-const FOOTER = "\n—\nCentral de Localizacion y Alerta de Riesgo Ambiental (C.L.A.R.A.)";
+// Footer estándar de mensajes del bot. Clara es la persona/narrador del bot,
+// AlertaForestal.org es el sitio del proyecto.
+const FOOTER = "\n—\nClara · AlertaForestal.org";
 
 const ABOUT_TEXT =
-  "🔥 <b>C.L.A.R.A. — Alertas de incendios forestales gratis</b>\n\n" +
-  "C.L.A.R.A. es un proyecto independiente, gratuito, hecho en Argentina para que " +
-  "los vecinos de zonas afectadas se enteren antes de los incendios y puedan " +
-  "prevenirse.\n\n" +
-  "Usa datos de NASA (FIRMS), NOAA y otros servicios públicos para detectar " +
+  "🔥 <b>Clara — Alertas de incendios forestales gratis</b>\n\n" +
+  "Soy Clara, el bot de <b>AlertaForestal.org</b> — un proyecto independiente, " +
+  "gratuito, hecho en Argentina para que los vecinos de zonas afectadas se " +
+  "enteren antes de los incendios y puedan prevenirse.\n\n" +
+  "Uso datos de NASA (FIRMS), NOAA y otros servicios públicos para detectar " +
   "focos de calor cerca tuyo y avisarte cuando el viento puede traer humo o " +
-  "fuego a tu zona. También alerta por tormentas eléctricas secas — la causa " +
+  "fuego a tu zona. También alerto por tormentas eléctricas secas — la causa " +
   "#1 natural de incendios forestales.\n\n" +
   "Este proyecto existe gracias al trabajo pionero de Satellites On Fire " +
   "(@satellitesonfire), que demostró que se podía detectar incendios mejor " +
   "que la NASA desde Argentina. Si sos una empresa, gobierno, forestal o " +
   "aseguradora, te recomendamos satellitesonfire.com.\n\n" +
-  "C.L.A.R.A. es para vos, vecino de zona de riesgo. Gratis, siempre.\n\n" +
+  "AlertaForestal es para vos, vecino de zona de riesgo. Gratis, siempre.\n\n" +
   "Hecho con cariño en Bahía Blanca por Whitebay." +
   FOOTER;
 
 const HELP_TEXT =
-  "🔥 <b>C.L.A.R.A. — Comandos</b>\n\n" +
+  "🔥 <b>Clara — Comandos</b>\n\n" +
   "📍 Compartí tu ubicación (clip 📎 → Ubicación)\n" +
   "🏙 /ciudad &lt;nombre&gt; — suscribirte por ciudad\n" +
   "📊 /estado — focos activos cerca tuyo\n" +
@@ -147,10 +150,11 @@ const HELP_TEXT =
 async function handleStart(chatId: number) {
   await sendMessage(
     chatId,
-    "🔥 <b>C.L.A.R.A. — Alerta de Incendios</b>\n\n" +
-      "Detectamos focos de calor en toda Argentina con satélites de NASA " +
-      "(FIRMS) y NOAA (GOES-19) y te alertamos por Telegram. También avisamos " +
-      "cuando hay tormenta eléctrica seca cerca tuyo.\n\n" +
+    "🔥 <b>Clara — AlertaForestal</b>\n\n" +
+      "Soy Clara, el bot de AlertaForestal.org. Detectamos focos de calor en " +
+      "toda Argentina con satélites de NASA (FIRMS) y NOAA (GOES-19) y te " +
+      "alertamos por Telegram. También avisamos cuando hay tormenta eléctrica " +
+      "seca cerca tuyo.\n\n" +
       "<b>Para empezar:</b>\n" +
       "📍 Enviá tu ubicación (clip 📎 → Ubicación)\n" +
       "🏙 O escribí /ciudad Bariloche\n\n" +
@@ -284,7 +288,7 @@ async function handleEstado(chatId: number) {
   if (!sub) {
     await sendMessage(
       chatId,
-      "🔥 <b>C.L.A.R.A.</b>\n\nNo tenes suscripcion activa.\nUsa /ciudad o comparti tu ubicacion para suscribirte." +
+      "🔥 <b>Clara — AlertaForestal</b>\n\nNo tenes suscripcion activa.\nUsa /ciudad o comparti tu ubicacion para suscribirte." +
         FOOTER
     );
     return;
@@ -307,7 +311,7 @@ async function handleEstado(chatId: number) {
       : "🕐 Verificando actividad...";
     await sendMessage(
       chatId,
-      `🔥 <b>C.L.A.R.A. — Estado</b>\n\n` +
+      `🔥 <b>Clara — Estado</b>\n\n` +
         `📍 <b>${sub.city_name}</b>\n\n` +
         "✅ No hay focos de calor en un radio de 100 km.\n\n" +
         `${lastCheckLine}\n` +
@@ -330,7 +334,7 @@ async function handleEstado(chatId: number) {
 
   const interpretation = await interpretFires(sub.city_name, fireData, nearby.length);
 
-  let msg = `🔥 <b>C.L.A.R.A. — Estado</b>\n\n`;
+  let msg = `🔥 <b>Clara — Estado</b>\n\n`;
   msg += `📍 <b>${sub.city_name}</b> — ${nearby.length} foco(s) en 100 km\n\n`;
 
   if (interpretation) {
@@ -385,7 +389,7 @@ async function interpretFires(
           {
             role: "system",
             content:
-              "Sos C.L.A.R.A., un sistema de alerta de incendios forestales. Interpreta los datos de focos de calor para un ciudadano argentino. Se breve (2-3 lineas max), claro, y usa un tono informativo pero no alarmista. Menciona si parece quema agricola, flaring industrial o incendio real segun la potencia (FRP). No uses markdown ni emojis. IMPORTANTE — cuando te refieras a vos misma: usa siempre 'C.L.A.R.A.' (o 'Central de Localizacion y Alerta de Riesgo Ambiental'). PROHIBIDO usar pronombres ('ella', 'el') o sinonimos ('el sistema', 'la plataforma', 'el servicio', 'la herramienta', 'el bot', 'la app'). Si la frase queda repetitiva, reescribila con sujeto elidido (ej: 'Detecta...' en vez de 'Ella detecta...').",
+              "Sos Clara, el bot de AlertaForestal.org. Interpretá los datos de focos de calor para un ciudadano argentino. Sé breve (2-3 lineas max), clara, y usá un tono informativo pero no alarmista. Mencioná si parece quema agricola, flaring industrial o incendio real segun la potencia (FRP). No uses markdown ni emojis. IMPORTANTE — cuando te refieras a vos misma: usá siempre 'Clara' o 'AlertaForestal'. PROHIBIDO usar pronombres ('ella', 'el') o sinonimos ('el sistema', 'la plataforma', 'el servicio', 'la herramienta', 'el bot', 'la app'). Si la frase queda repetitiva, reescribila con sujeto elidido (ej: 'Detecta...' en vez de 'Ella detecta...').",
           },
           {
             role: "user",
@@ -412,7 +416,7 @@ async function handleCancelar(chatId: number) {
   await db.from("subscribers").delete().eq("chat_id", chatId);
   await sendMessage(
     chatId,
-    "🔥 <b>C.L.A.R.A. — Suscripcion cancelada</b>\n\n" +
+    "🔥 <b>Clara — Suscripcion cancelada</b>\n\n" +
       "Tu suscripcion fue eliminada. Ya no recibiras alertas.\n\n" +
       "Para volver a suscribirte, envia tu ubicacion o usa /ciudad." +
       FOOTER
@@ -473,7 +477,7 @@ async function handleSoyBombero(chatId: number, code: string) {
       "🚒 <b>Bomberos voluntarios</b>\n\n" +
         "Si tu cuartel tiene un código de invitación, usalo así:\n" +
         "<code>/soybombero TU-CODIGO</code>\n\n" +
-        "Si todavía no tenés código y querés sumar a tu cuartel a C.L.A.R.A., escribinos." +
+        "Si todavía no tenés código y querés sumar a tu cuartel a AlertaForestal, escribinos." +
         FOOTER
     );
     return;

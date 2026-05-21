@@ -1,11 +1,11 @@
-# CLARA — Central de Localizacion y Alerta de Riesgo Ambiental
+# AlertaForestal — Alertas tempranas de incendios forestales en Argentina
 
-Plataforma de alerta temprana de incendios forestales para Argentina. Combina detección satelital de **NASA FIRMS** (~15 min, 375 m) con **NOAA GOES-19** (cada 10 min, 2 km) para avisar por Telegram con tiempo suficiente para actuar. También alerta por tormentas eléctricas secas, la causa #1 natural de incendios.
+Plataforma de alerta temprana de incendios forestales para Argentina. Combina detección satelital de **NASA FIRMS** (~15 min, 375 m) con **NOAA GOES-19** (cada 10 min, 2 km) para avisar por Telegram con tiempo suficiente para actuar. Las alertas las manda **Clara**, el bot del servicio. También alerta por tormentas eléctricas secas, la causa #1 natural de incendios.
 
 **Gratuito y B2C** — para vecinos de zonas de riesgo. Si sos empresa, gobierno o aseguradora, usá [Satellites On Fire](https://www.satellitesonfire.com.ar/).
 
-**Web:** [alertaincendios.vercel.app](https://alertaincendios.vercel.app)
-**Bot:** [t.me/AlertasClaraBot](https://t.me/AlertasClaraBot)
+**Web:** [alertaforestal.org](https://alertaforestal.org)
+**Bot:** [t.me/alertaforestal_bot](https://t.me/alertaforestal_bot)
 
 ## Qué hace
 
@@ -80,7 +80,7 @@ Pg_cron daily ──► /api/goes-dismissals (hourly) ──► "falsa alarma" +
 
 ## Bot de Telegram
 
-[@AlertasClaraBot](https://t.me/AlertasClaraBot) — el menú nativo de Telegram (escribís `/`) muestra todas las opciones.
+[@alertaforestal_bot](https://t.me/alertaforestal_bot) — el menú nativo de Telegram (escribís `/`) muestra todas las opciones.
 
 | Comando | Descripción |
 |---|---|

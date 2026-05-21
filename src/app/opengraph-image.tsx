@@ -1,12 +1,12 @@
 import { ImageResponse } from "next/og";
 
-export const alt = "C.L.A.R.A. — Alertas de incendios forestales en Argentina";
+export const alt = "AlertaForestal — Alertas tempranas de incendios forestales en Argentina";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
 // Auto-generated OG image. Uses Next.js's next/og (Satori under the hood),
 // so the layout is built with a CSS subset — no shadows, no exotic positioning.
-// Matches the C.L.A.R.A. terminal-refined aesthetic from the landing.
+// Matches el terminal-refined aesthetic del landing.
 export default async function Image() {
   return new ImageResponse(
     (
@@ -55,53 +55,44 @@ export default async function Image() {
 
         {/* Top — brand */}
         <div style={{ display: "flex", alignItems: "center", gap: 20, zIndex: 10 }}>
-          <div
-            style={{
-              width: 72,
-              height: 72,
-              background:
-                "linear-gradient(135deg, #e8622c 0%, #c43c0c 100%)",
-              borderRadius: 18,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
+          {/* Pin de mapa con llama — logo oficial AlertaForestal */}
+          <svg
+            width="72"
+            height="72"
+            viewBox="0 0 48 48"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
           >
-            {/* Inline flame SVG to avoid emoji-font dependency */}
-            <svg
-              width="36"
-              height="36"
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M12 2c-1.5 3-4 5-4 8a4 4 0 0 0 1 2.7c-2 .8-3 2.5-3 4.3a5 5 0 0 0 10 0c0-2-1.5-3.5-1.5-5.5 0 0-1 1-2 1 1-2 2-4 0-6.5-.5-.7-.5-3-.5-4z"
-                fill="#fff"
-              />
-            </svg>
-          </div>
+            <path
+              d="M 24 4 C 33 4 40 11 40 20 C 40 30 24 44 24 44 C 24 44 8 30 8 20 C 8 11 15 4 24 4 Z"
+              fill="#e8622c"
+            />
+            <path
+              d="M 24 11 C 26 14 30 17 30 21 A 6 7 0 1 1 18 21 C 18 17 20 16 21 15 C 20 17 21 19 23 19 C 25 19 24 16 24 11 Z"
+              fill="#ffffff"
+            />
+          </svg>
           <div style={{ display: "flex", flexDirection: "column" }}>
             <div
               style={{
-                fontSize: 48,
+                fontSize: 54,
                 fontWeight: 800,
-                letterSpacing: "-0.03em",
+                letterSpacing: "-0.025em",
                 lineHeight: 1,
               }}
             >
-              C.L.A.R.A.
+              AlertaForestal
             </div>
             <div
               style={{
                 color: "#8a8a7e",
-                fontSize: 13,
-                letterSpacing: "0.14em",
+                fontSize: 14,
+                letterSpacing: "0.12em",
                 fontFamily: "monospace",
                 marginTop: 6,
               }}
             >
-              CENTRAL DE LOCALIZACIÓN Y ALERTA DE RIESGO AMBIENTAL
+              ALERTAS TEMPRANAS DE INCENDIOS FORESTALES
             </div>
           </div>
         </div>
@@ -166,7 +157,7 @@ export default async function Image() {
             <span style={{ color: "#e8622c", fontWeight: 700 }}>GRATIS</span>
           </div>
           <div style={{ color: "#d4d4cc", fontWeight: 600 }}>
-            alertaincendios.vercel.app
+            alertaforestal.org
           </div>
         </div>
       </div>

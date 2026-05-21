@@ -2,12 +2,12 @@ export function WebsiteJsonLd() {
   const data = {
     "@context": "https://schema.org",
     "@type": "WebApplication",
-    name: "C.L.A.R.A.",
-    alternateName: "Central de Localizacion y Alerta de Riesgo Ambiental",
+    name: "AlertaForestal",
+    alternateName: "Alertas tempranas de incendios forestales",
     description:
-      "Sistema de monitoreo ambiental ciudadano para Argentina. Focos de calor, calidad del aire y alertas por Telegram.",
+      "Sistema de alerta temprana de incendios forestales en Argentina. Detección satelital y alertas por Telegram con modelo de dispersión de humo.",
     url:
-      process.env.NEXT_PUBLIC_SITE_URL || "https://alertaincendios.vercel.app",
+      process.env.NEXT_PUBLIC_SITE_URL || "https://alertaforestal.org",
     applicationCategory: "UtilitiesApplication",
     operatingSystem: "Web",
     offers: {
@@ -51,7 +51,7 @@ export function CityJsonLd({
     url,
     isPartOf: {
       "@type": "WebApplication",
-      name: "C.L.A.R.A.",
+      name: "AlertaForestal",
     },
     about: {
       "@type": "Place",
