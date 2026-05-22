@@ -105,7 +105,7 @@ Alertas tempranas de incendios forestales en Argentina vía Telegram. El bot del
 - `fires-fetch` (`0,15,30,45 * * * *`) — pg_net GET a FIRMS, stores request_id
 - `fires-process` (`2,17,32,47 * * * *`) — parsea CSV, REEMPLAZA fires_cache
 - `fires-alerts` (`4,19,34,49 * * * *`) — `/api/alerts` (FIRMS + confirmation upgrades)
-- `fires-daily-snapshot` (`55 2 * * *` = 23:55 ART) — snapshot diario
+- `fires-daily-snapshot` (`55 23 * * *` = 20:55 ART) — snapshot diario. Corre al final del día UTC (no ART) porque FIRMS sirve solo "current UTC day" y `fires_cache` se reemplaza en cada fetch — el horario UTC tardío asegura ~24h del día UTC acumuladas. Schedule anterior (`55 2 * * *` = 02:55 UTC) corría con cache casi vacío → 41 días en 0 entre 2026-04-11 y 2026-05-22
 - `goes-sync` (`5,15,25,35,45,55 * * * *`) — `/api/goes-sync` Python pipeline
 - `goes-alerts` (`7,17,27,37,47,57 * * * *`) — `/api/goes-alerts` preliminary → Telegram
 - `goes-dismissals` (`37 * * * *` hourly) — falsa alarma + DELETE preliminary descartadas + huérfanos
