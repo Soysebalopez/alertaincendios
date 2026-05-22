@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Flame } from "@phosphor-icons/react/dist/ssr";
+import { BrandMark } from "./brand-mark";
 
 const COLUMNS = [
   {
@@ -43,15 +43,7 @@ export function Footer() {
         >
           <div>
             <div className="flex items-center gap-2.5 mb-3.5">
-              <div
-                className="w-7 h-7 rounded-lg grid place-items-center"
-                style={{
-                  background:
-                    "linear-gradient(135deg, var(--accent), var(--accent-2))",
-                }}
-              >
-                <Flame size={14} weight="fill" className="text-white" />
-              </div>
+              <BrandMark size={28} />
               <div>
                 <div className="font-bold text-[15px]">AlertaForestal</div>
                 <div className="font-mono text-[9px] text-muted tracking-[0.1em]">
