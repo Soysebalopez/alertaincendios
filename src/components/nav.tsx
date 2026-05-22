@@ -7,9 +7,9 @@ import {
   TelegramLogo,
   List,
   X,
-  Flame,
 } from "@phosphor-icons/react/dist/ssr";
 import { StatusBeacon } from "./status-beacon";
+import { BrandMark } from "./brand-mark";
 
 const TELEGRAM_BOT_URL = "https://t.me/alertaforestal_bot";
 
@@ -58,15 +58,7 @@ export function Nav() {
       <div className="max-w-[1400px] mx-auto px-5 md:px-6 py-2.5 md:py-3.5 flex items-center justify-between gap-5">
         {/* Brand */}
         <Link href="/" className="flex items-center gap-2.5 text-foreground">
-          <div
-            className="w-7 h-7 rounded-lg grid place-items-center shrink-0"
-            style={{
-              background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
-              boxShadow: "0 0 12px var(--accent-soft)",
-            }}
-          >
-            <Flame size={14} weight="fill" className="text-white" />
-          </div>
+          <BrandMark size={28} className="shrink-0" />
           <div className="clara-brand-text leading-tight">
             <div
               className="clara-brand-name text-[14px] md:text-[16px] font-bold"
