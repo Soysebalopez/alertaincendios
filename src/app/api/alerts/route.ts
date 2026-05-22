@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { getSupabase } from "@/lib/supabase";
 import { fetchFires, FirePoint } from "@/lib/firms";
 import { fetchWind, degreesToCardinal } from "@/lib/wind";
@@ -168,6 +169,15 @@ export async function GET(request: Request) {
       }
     }
 
+    // Invalidar el segment cache de Next 16 para / y /mapa: estas páginas
+    // están en ISR (revalidate: 60 y 300). Sin esta llamada, una visita
+    // fresca entre revalidaciones sigue viendo el conteo viejo aunque
+    // fires_cache ya tenga datos nuevos. /api/alerts corre cada 15 min,
+    // así que el lag máximo entre cron y página queda en ~el revalidate
+    // del segment.
+    revalidatePath("/");
+    revalidatePath("/mapa");
+
     return NextResponse.json({
       processed: fires.length,
       subscribers: subscribers.length,
@@ -177,6 +187,7 @@ export async function GET(request: Request) {
       // forestal. Si es mucho más alto que `alerts`, el filtro está cortando
       // ruido como esperamos.
       skippedNonForestCivilian,
+      revalidated: ["/", "/mapa"],
     });
   } catch (error) {
     log.error({

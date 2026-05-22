@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { getSupabase } from "@/lib/supabase";
 import { haversineKm } from "@/lib/geo";
 import { sendMessage } from "@/lib/telegram";
@@ -152,12 +153,19 @@ export async function GET(request: Request) {
       }
     }
 
+    // Invalidar el segment cache de Next 16 para / y /mapa: el hero muestra
+    // preliminaries activos, y sin esta llamada quedaban stale hasta que
+    // venciera el revalidate. Ver comentario en /api/alerts.
+    revalidatePath("/");
+    revalidatePath("/mapa");
+
     return NextResponse.json({
       processed: detections.length,
       subscribers: subscribers.length,
       alerts: alertsSent,
       skippedLowFrpSingleFrame,
       skippedNonForestCivilian,
+      revalidated: ["/", "/mapa"],
     });
   } catch (error) {
     log.error({

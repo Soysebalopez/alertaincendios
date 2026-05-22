@@ -5,9 +5,11 @@ import { Eye } from "@phosphor-icons/react/dist/ssr";
 import { fetchTLEs } from "@/lib/satellites-server";
 
 // WHI-754 — TLEs los necesita el cliente para propagar SGP4 y dibujar
-// ground tracks. Los pasamos como prop server-side. force-dynamic para
-// que cada visita use el último refresh del cron.
-export const dynamic = "force-dynamic";
+// ground tracks. Los pasamos como prop server-side. ISR 5min porque los
+// TLEs solo se refrescan diariamente (01:30 ART) — no hay razón para
+// SSR fresco en cada visita. /api/alerts dispara revalidatePath('/mapa')
+// cuando hay cambios de focos relevantes.
+export const revalidate = 300;
 
 export const metadata: Metadata = {
   title: "Mapa",

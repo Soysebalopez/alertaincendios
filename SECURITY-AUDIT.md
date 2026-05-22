@@ -50,7 +50,7 @@ Validación post-deploy: https://securityheaders.com/?q=alertaforestal.org (espe
 | Service role key solo server | ✅ | `src/lib/supabase.ts` lee `process.env.SUPABASE_SERVICE_ROLE_KEY`, nunca exposed al cliente |
 | Anon key no usado | ✅ | Toda lectura via service role, anon key ni siquiera está en env |
 | `.gitignore` ignora `.env*` | ✅ | Refinado en este PR para también cubrir `scripts/*.env` |
-| Bot tokens no en repo | ✅ | Ni el viejo @AlertaIncendiosBot ni el nuevo @AlertasClaraBot |
+| Bot tokens no en repo | ✅ | Histórico: @AlertaIncendiosBot (rotado), @AlertasClaraBot (deprecated post-rebrand). Actual: @alertaforestal_bot |
 | /api/* endpoints auth | ✅ | Todos chequean `CRON_SECRET` antes de actuar (alerts, goes-sync, goes-alerts, goes-dismissals, lightning-alerts, fires/sync) |
 | Telegram webhook firma | ⚠️ | El webhook `/api/bot/telegram` no valida que el request venga de Telegram. Telegram **no firma** webhooks por default — la mitigación común es agregar un secret token al URL del webhook |
 
