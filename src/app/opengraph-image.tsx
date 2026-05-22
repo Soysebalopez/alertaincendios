@@ -152,7 +152,7 @@ export default async function Image() {
             <span style={{ color: "#3a3a30" }}>·</span>
             <span>NOAA GOES-19</span>
             <span style={{ color: "#3a3a30" }}>·</span>
-            <span>80+ ciudades</span>
+            <span>78 ciudades</span>
             <span style={{ color: "#3a3a30" }}>·</span>
             <span style={{ color: "#e8622c", fontWeight: 700 }}>GRATIS</span>
           </div>

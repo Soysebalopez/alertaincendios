@@ -6,17 +6,17 @@ import { ClockCounterClockwise } from "@phosphor-icons/react/dist/ssr";
 export const metadata: Metadata = {
   title: "Historial de Incendios",
   description:
-    "Actividad historica de focos de calor en Argentina. Datos satelitales NASA FIRMS VIIRS.",
+    "Actividad histórica de focos de calor en Argentina. Datos satelitales NASA FIRMS VIIRS.",
   alternates: { canonical: "/historial" },
   openGraph: {
     title: "Historial de Incendios — AlertaForestal",
     description:
-      "Evolucion diaria de detecciones satelitales en todo el territorio argentino.",
+      "Evolución diaria de detecciones satelitales en todo el territorio argentino.",
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title: "Historial de Incendios — AlertaForestal",
-    description: "Evolucion diaria de detecciones satelitales en Argentina.",
+    description: "Evolución diaria de detecciones satelitales en Argentina.",
   },
 };
 

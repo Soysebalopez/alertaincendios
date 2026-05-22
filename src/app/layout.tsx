@@ -30,7 +30,7 @@ export const metadata: Metadata = {
     template: "%s — AlertaForestal",
   },
   description:
-    "Sistema de alerta temprana de incendios forestales para Argentina. Detección vía NASA FIRMS VIIRS + NOAA GOES-19. Alertas por Telegram con modelo de dispersión de humo.",
+    "Sistema gratuito de alerta temprana de incendios forestales en Argentina. Detección satelital NASA + NOAA. Alertas por Telegram en minutos.",
   // Canonical raíz + hreflang es-AR. Evita duplicados cuando la app responde
   // también en alertaincendios.vercel.app (preview/legacy) y le dice a Google
   // que el target geográfico es Argentina, no es-ES o es-MX. Las páginas hijas
@@ -74,7 +74,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="es"
+      lang="es-AR"
       className={`${outfit.variable} ${geistMono.variable} antialiased`}
     >
       <body className="min-h-[100dvh] flex flex-col">{children}</body>

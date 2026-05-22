@@ -8,8 +8,16 @@ export function WebsiteJsonLd() {
       "Sistema de alerta temprana de incendios forestales en Argentina. Detección satelital y alertas por Telegram con modelo de dispersión de humo.",
     url:
       process.env.NEXT_PUBLIC_SITE_URL || "https://alertaforestal.org",
-    applicationCategory: "UtilitiesApplication",
+    applicationCategory: "BrowserApplication",
     operatingSystem: "Web",
+    inLanguage: "es-AR",
+    audience: {
+      "@type": "Audience",
+      geographicArea: {
+        "@type": "Country",
+        name: "Argentina",
+      },
+    },
     offers: {
       "@type": "Offer",
       price: "0",
@@ -46,8 +54,9 @@ export function CityJsonLd({
   const data = {
     "@context": "https://schema.org",
     "@type": "WebPage",
-    name: `Calidad del aire en ${cityName}, ${provinceName}`,
-    description: `Monitoreo ambiental ciudadano para ${cityName}. Niveles de contaminantes, viento y resumen en lenguaje simple.`,
+    name: `${cityName}, ${provinceName} — Focos forestales y calidad del aire`,
+    description: `Focos forestales cerca de ${cityName}, calidad del aire y monitoreo ambiental en tiempo real. Alertas tempranas por Telegram.`,
+    inLanguage: "es-AR",
     url,
     isPartOf: {
       "@type": "WebApplication",
@@ -75,5 +84,61 @@ export function CityJsonLd({
       type="application/ld+json"
       dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }}
     />
+  );
+}
+
+/**
+ * BreadcrumbList for city pages — habilita el breadcrumb visual en SERP
+ * (Inicio → Calidad del aire → Provincia → Ciudad), +CTR ~5-10% según data
+ * pública de Google. JSON inline como text node es válido en React 19 para
+ * application/ld+json — más seguro que dangerouslySetInnerHTML y suficiente
+ * cuando el contenido viene de props controlados (PROVINCES).
+ */
+export function CityBreadcrumbJsonLd({
+  cityName,
+  provinceName,
+  provinceId,
+  citySlug,
+  siteUrl,
+}: {
+  cityName: string;
+  provinceName: string;
+  provinceId: string;
+  citySlug: string;
+  siteUrl: string;
+}) {
+  const data = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: "Inicio",
+        item: siteUrl,
+      },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: "Calidad del aire",
+        item: `${siteUrl}/calidad-aire`,
+      },
+      {
+        "@type": "ListItem",
+        position: 3,
+        name: provinceName,
+        item: `${siteUrl}/calidad-aire#${provinceId}`,
+      },
+      {
+        "@type": "ListItem",
+        position: 4,
+        name: cityName,
+        item: `${siteUrl}/ciudad/${provinceId}/${citySlug}`,
+      },
+    ],
+  };
+
+  return (
+    <script type="application/ld+json">{JSON.stringify(data)}</script>
   );
 }
