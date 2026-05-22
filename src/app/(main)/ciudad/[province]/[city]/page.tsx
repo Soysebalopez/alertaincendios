@@ -6,7 +6,7 @@ import { PROVINCES } from "@/lib/argentina-cities";
 import { CityDashboard } from "@/components/city/city-dashboard";
 import { CityForestFires } from "@/components/city/city-forest-fires";
 import { CitySatelliteCoverage } from "@/components/city/city-satellite-coverage";
-import { CityJsonLd } from "@/components/jsonld";
+import { CityJsonLd, CityBreadcrumbJsonLd } from "@/components/jsonld";
 import { Pill } from "@/components/clara-ui";
 
 interface PageProps {
@@ -62,7 +62,7 @@ export async function generateMetadata({
       description,
     },
     twitter: {
-      card: "summary",
+      card: "summary_large_image",
       title: `${match.city.name} — AlertaForestal`,
       description,
     },
@@ -91,6 +91,13 @@ export default async function CiudadPage({ params }: PageProps) {
         lat={match.city.lat}
         lng={match.city.lng}
         url={`${siteUrl}/ciudad/${match.province.id}/${city}`}
+      />
+      <CityBreadcrumbJsonLd
+        cityName={match.city.name}
+        provinceName={match.province.name}
+        provinceId={match.province.id}
+        citySlug={city}
+        siteUrl={siteUrl}
       />
 
       {/* Hero */}

@@ -19,7 +19,7 @@ export const metadata: Metadata = {
     description: "Mapa interactivo con focos de calor, calidad del aire y viento en tiempo real.",
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title: "Mapa — AlertaForestal",
     description: "Mapa interactivo de monitoreo ambiental para Argentina.",
   },
