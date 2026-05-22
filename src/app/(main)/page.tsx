@@ -24,13 +24,13 @@ import {
 } from "@/lib/satellites";
 import { fetchTLEs } from "@/lib/satellites-server";
 
-// force-dynamic: cada visita corre SSR fresco (~50ms Supabase + render).
-// Antes era revalidate=60 pero el segment cache de Next 16 ignoraba a
-// router.refresh() del HeroAutoRefresh — la pill aparecía pero el
-// número no actualizaba porque el server servía HTML cacheado. Con
-// force-dynamic no hay segment cache, router.refresh() siempre re-corre
-// el SSR y vemos el nuevo conteo al instante.
-export const dynamic = "force-dynamic";
+// ISR 60s + revalidatePath desde /api/alerts (cron c/15min). Cambio desde
+// force-dynamic para mejorar LCP (cada visita corría SSR fresco ~50ms +
+// render); el costo es que el contador del hero queda con lag de hasta 60s
+// para clientes activos (vs ~1s con force-dynamic + router.refresh).
+// El segment cache de Next 16 ignora router.refresh() del HeroAutoRefresh —
+// por eso la invalidación viene del cron, no del cliente.
+export const revalidate = 60;
 
 const TELEGRAM_BOT_URL = "https://t.me/alertaforestal_bot";
 
