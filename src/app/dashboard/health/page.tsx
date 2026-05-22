@@ -1,5 +1,5 @@
 import { getSupabase } from "@/lib/supabase";
-import { getRecentGoesRuns, getFunnelAggregate } from "../_lib/metrics";
+import { getRecentGoesRuns, getFunnelAggregate, getSnapshotHealth } from "../_lib/metrics";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -33,10 +33,11 @@ const EXPECTED_CADENCE_MIN: Record<string, number> = {
 
 export default async function HealthPage() {
   const db = getSupabase();
-  const [{ data: crons }, recentRuns, funnel7d] = await Promise.all([
+  const [{ data: crons }, recentRuns, funnel7d, snapshot] = await Promise.all([
     db.rpc("clara_cron_health"),
     getRecentGoesRuns(15),
     getFunnelAggregate(7),
+    getSnapshotHealth(),
   ]);
 
   const cronRows = (crons ?? []) as CronRow[];
@@ -66,6 +67,8 @@ export default async function HealthPage() {
           Estado del último ciclo de cada pg_cron job (via clara_cron_health RPC)
         </p>
       </header>
+
+      <SnapshotHealthCard snapshot={snapshot} />
 
       <div
         style={{
@@ -340,5 +343,63 @@ function Arrow({ drop }: { drop: string }) {
       <div>→</div>
       <div style={{ fontSize: 9, color: "var(--accent)" }}>{drop}</div>
     </div>
+  );
+}
+
+/**
+ * Visual alert for the fires-daily-snapshot timing regression.
+ * "danger" cuando el cron inserta 0 mientras fires_cache tiene focos —
+ * exactamente el patrón del bug del 2026-04-11.
+ */
+function SnapshotHealthCard({
+  snapshot,
+}: {
+  snapshot: Awaited<ReturnType<typeof getSnapshotHealth>>;
+}) {
+  const TONE = {
+    ok: { color: "#4ade80", label: "OK" },
+    warning: { color: "#fbbf24", label: "ATENCIÓN" },
+    danger: { color: "#ef4444", label: "ROTO" },
+  } as const;
+  const tone = TONE[snapshot.level];
+
+  return (
+    <section
+      style={{
+        background: "var(--surface)",
+        border: `1px solid ${snapshot.level === "ok" ? "var(--border)" : tone.color + "55"}`,
+        borderLeft: `4px solid ${tone.color}`,
+        borderRadius: 12,
+        padding: "16px 20px",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ fontSize: 14, fontWeight: 600 }}>
+          Snapshot diario <span className="text-muted" style={{ fontSize: 11, fontFamily: "var(--font-mono)" }}>fires_daily_history</span>
+        </div>
+        <span
+          style={{
+            padding: "3px 10px",
+            borderRadius: 999,
+            background: tone.color + "22",
+            color: tone.color,
+            fontSize: 11,
+            fontWeight: 600,
+            fontFamily: "var(--font-mono)",
+            letterSpacing: "0.05em",
+          }}
+        >
+          ● {tone.label}
+        </span>
+      </div>
+      <p style={{ margin: "8px 0 0", fontSize: 13, color: "var(--muted)" }}>
+        {snapshot.message}
+      </p>
+      <div style={{ marginTop: 12, display: "flex", gap: 18, flexWrap: "wrap", fontFamily: "var(--font-mono)", fontSize: 11 }}>
+        <span><span className="text-muted">snapshot:</span> {snapshot.lastCount} focos · {snapshot.lastDate ?? "—"}</span>
+        <span><span className="text-muted">cache vivo:</span> {snapshot.liveFiresCount} focos</span>
+        <span><span className="text-muted">días seguidos en 0:</span> {snapshot.consecutiveZeroDays}</span>
+      </div>
+    </section>
   );
 }

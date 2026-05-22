@@ -276,3 +276,92 @@ export async function getFunnelAggregate(daysBack = 7): Promise<{
 
 // Re-export helper for typed series consumers
 export { fillDays };
+
+/**
+ * Detecta si el cron `fires-daily-snapshot` está stuck insertando count=0
+ * mientras `fires_cache` tiene focos activos. Es defensa contra la regresión
+ * del bug del 2026-04-11 (snapshot corrió 41 días con count=0 porque el
+ * horario UTC coincidía con cache casi vacío).
+ *
+ * Niveles:
+ * - "ok": último snapshot tiene count > 0, o todo (snapshot + cache) está
+ *   en 0 → baja temporada legítima.
+ * - "warning": ≥2 días consecutivos con count=0 al final, pero cache también
+ *   en 0 → posiblemente baja temporada, pero raro.
+ * - "danger": último snapshot count=0 AND cache tiene focos > 0 →
+ *   contradicción interna, snapshot roto.
+ */
+export async function getSnapshotHealth(): Promise<{
+  level: "ok" | "warning" | "danger";
+  lastDate: string | null;
+  lastCount: number;
+  consecutiveZeroDays: number;
+  liveFiresCount: number;
+  message: string;
+}> {
+  const db = getSupabase();
+
+  const [{ data: history }, { data: cache }] = await Promise.all([
+    db
+      .from("fires_daily_history")
+      .select("date, count")
+      .order("date", { ascending: false })
+      .limit(14),
+    db.from("fires_cache").select("count").eq("id", 1).maybeSingle(),
+  ]);
+
+  const liveFiresCount = (cache as { count: number } | null)?.count ?? 0;
+  const rows = (history ?? []) as Array<{ date: string; count: number }>;
+
+  if (rows.length === 0) {
+    return {
+      level: "warning",
+      lastDate: null,
+      lastCount: 0,
+      consecutiveZeroDays: 0,
+      liveFiresCount,
+      message: "Sin filas en fires_daily_history — el cron nunca corrió",
+    };
+  }
+
+  let consecutiveZeroDays = 0;
+  for (const r of rows) {
+    if (r.count === 0) consecutiveZeroDays++;
+    else break;
+  }
+
+  const last = rows[0];
+
+  if (last.count === 0 && liveFiresCount > 0) {
+    return {
+      level: "danger",
+      lastDate: last.date,
+      lastCount: 0,
+      consecutiveZeroDays,
+      liveFiresCount,
+      message:
+        `Snapshot insertó count=0 pero fires_cache tiene ${liveFiresCount} focos. ` +
+        `Probable timing bug del cron (ver scripts/sql/fix-fires-daily-snapshot-schedule.sql)`,
+    };
+  }
+
+  if (consecutiveZeroDays >= 2 && liveFiresCount === 0) {
+    return {
+      level: "warning",
+      lastDate: last.date,
+      lastCount: last.count,
+      consecutiveZeroDays,
+      liveFiresCount,
+      message: `${consecutiveZeroDays} días consecutivos con count=0. Cache también vacío — verificar si es baja temporada real`,
+    };
+  }
+
+  return {
+    level: "ok",
+    lastDate: last.date,
+    lastCount: last.count,
+    consecutiveZeroDays,
+    liveFiresCount,
+    message: `Último snapshot: ${last.count} focos el ${last.date}`,
+  };
+}
