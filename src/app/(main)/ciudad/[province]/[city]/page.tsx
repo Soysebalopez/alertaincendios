@@ -6,7 +6,7 @@ import { PROVINCES } from "@/lib/argentina-cities";
 import { CityDashboard } from "@/components/city/city-dashboard";
 import { CityForestFires } from "@/components/city/city-forest-fires";
 import { CitySatelliteCoverage } from "@/components/city/city-satellite-coverage";
-import { CityJsonLd } from "@/components/jsonld";
+import { CityJsonLd, CityBreadcrumbJsonLd } from "@/components/jsonld";
 import { Pill } from "@/components/clara-ui";
 
 interface PageProps {
@@ -45,7 +45,7 @@ export async function generateMetadata({
 }: PageProps): Promise<Metadata> {
   const { province, city } = await params;
   const match = findCity(province, city);
-  if (!match) return { title: "Ciudad no encontrada — C.L.A.R.A." };
+  if (!match) return { title: "Ciudad no encontrada — AlertaForestal" };
 
   // WHI-759: doble entry SEO. Las páginas ya rankean por "calidad del aire en X";
   // ahora también por "incendios forestales / focos cerca de X". Title se mantiene
@@ -56,19 +56,20 @@ export async function generateMetadata({
   return {
     title,
     description,
+    alternates: { canonical: `/ciudad/${match.province.id}/${city}` },
     openGraph: {
-      title: `${match.city.name} — Focos forestales · C.L.A.R.A.`,
+      title: `${match.city.name} — Focos forestales · AlertaForestal`,
       description,
     },
     twitter: {
-      card: "summary",
-      title: `${match.city.name} — C.L.A.R.A.`,
+      card: "summary_large_image",
+      title: `${match.city.name} — AlertaForestal`,
       description,
     },
   };
 }
 
-const TELEGRAM_BOT_URL = "https://t.me/AlertasClaraBot";
+const TELEGRAM_BOT_URL = "https://t.me/alertaforestal_bot";
 
 export default async function CiudadPage({ params }: PageProps) {
   const { province, city } = await params;
@@ -80,7 +81,7 @@ export default async function CiudadPage({ params }: PageProps) {
   );
 
   const siteUrl =
-    process.env.NEXT_PUBLIC_SITE_URL || "https://alertaincendios.vercel.app";
+    process.env.NEXT_PUBLIC_SITE_URL || "https://alertaforestal.org";
 
   return (
     <>
@@ -90,6 +91,13 @@ export default async function CiudadPage({ params }: PageProps) {
         lat={match.city.lat}
         lng={match.city.lng}
         url={`${siteUrl}/ciudad/${match.province.id}/${city}`}
+      />
+      <CityBreadcrumbJsonLd
+        cityName={match.city.name}
+        provinceName={match.province.name}
+        provinceId={match.province.id}
+        citySlug={city}
+        siteUrl={siteUrl}
       />
 
       {/* Hero */}

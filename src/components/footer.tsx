@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Flame } from "@phosphor-icons/react/dist/ssr";
+import { BrandMark } from "./brand-mark";
 
 const COLUMNS = [
   {
@@ -15,8 +15,8 @@ const COLUMNS = [
   {
     title: "Bot",
     items: [
-      { label: "@AlertasClaraBot", href: "https://t.me/AlertasClaraBot", external: true },
-      { label: "Comandos", href: "https://t.me/AlertasClaraBot", external: true },
+      { label: "@alertaforestal_bot", href: "https://t.me/alertaforestal_bot", external: true },
+      { label: "Comandos", href: "https://t.me/alertaforestal_bot", external: true },
     ],
   },
   {
@@ -43,25 +43,17 @@ export function Footer() {
         >
           <div>
             <div className="flex items-center gap-2.5 mb-3.5">
-              <div
-                className="w-7 h-7 rounded-lg grid place-items-center"
-                style={{
-                  background:
-                    "linear-gradient(135deg, var(--accent), var(--accent-2))",
-                }}
-              >
-                <Flame size={14} weight="fill" className="text-white" />
-              </div>
+              <BrandMark size={28} />
               <div>
-                <div className="font-bold text-[15px]">C.L.A.R.A.</div>
+                <div className="font-bold text-[15px]">AlertaForestal</div>
                 <div className="font-mono text-[9px] text-muted tracking-[0.1em]">
-                  CENTRAL DE LOCALIZACIÓN Y ALERTA DE RIESGO AMBIENTAL
+                  ALERTAS TEMPRANAS DE INCENDIOS FORESTALES
                 </div>
               </div>
             </div>
             <p className="text-[13px] text-muted leading-relaxed max-w-[40ch]">
-              Plataforma abierta de monitoreo ambiental ciudadano para
-              Argentina. Un proyecto de Whitebay.
+              Plataforma abierta de monitoreo y alerta temprana de incendios
+              forestales en Argentina. Un proyecto de Whitebay.
             </p>
           </div>
 

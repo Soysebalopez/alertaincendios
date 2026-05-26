@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { getSupabase } from "@/lib/supabase";
 import { fetchFires, FirePoint } from "@/lib/firms";
 import { fetchWind, degreesToCardinal } from "@/lib/wind";
 import { haversineKm, isUpwind, smokeEtaMinutes } from "@/lib/geo";
 import { sendMessage } from "@/lib/telegram";
 import { forestZoneName } from "@/lib/forest-zones";
+import { isCronAuthorized } from "@/lib/cron-auth";
+import { log } from "@/lib/logger";
 
 /**
  * GET /api/alerts
@@ -16,12 +19,7 @@ import { forestZoneName } from "@/lib/forest-zones";
  * 4. Deduplicates via ai_alerted_fires table
  */
 export async function GET(request: Request) {
-  const secret = new URL(request.url).searchParams.get("secret");
-  const bearerToken = request.headers.get("authorization")?.replace("Bearer ", "");
-  const isAuthorized =
-    secret === process.env.CRON_SECRET || bearerToken === process.env.CRON_SECRET;
-
-  if (!isAuthorized) {
+  if (!isCronAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -66,7 +64,9 @@ export async function GET(request: Request) {
           continue;
         }
 
-        // Check if already alerted
+        // Pre-check de dedup. Es solo un fast-path para evitar hacer el fetch
+        // de viento si ya alertamos — la garantía real anti-duplicado vive en
+        // el INSERT ON CONFLICT más abajo, que serializa con otros cron runs.
         const { data: existing } = await db
           .from("ai_alerted_fires")
           .select("fire_key")
@@ -87,6 +87,38 @@ export async function GET(request: Request) {
         const level = classifyAlert(distKm, upwind.isUpwind);
         if (level === "none") continue;
 
+        // H-08 — INSERT como lock primario. Si otra invocación del cron ganó
+        // la race, el conflict no devuelve row y skipeamos. Esto convierte
+        // ai_alerted_fires en el lock distribuido — antes era SELECT + INSERT
+        // separados con ventana de race.
+        const { data: claimed, error: claimErr } = await db
+          .from("ai_alerted_fires")
+          .insert({
+            fire_key: fireKey,
+            chat_id: sub.chat_id,
+            alerted_at: new Date().toISOString(),
+          })
+          .select("fire_key")
+          .single();
+
+        if (claimErr) {
+          // PostgREST devuelve 23505 (unique_violation) cuando ON CONFLICT
+          // dispara con la PK (fire_key, chat_id). Esa es exactamente la
+          // señal "otro cron run ya está mandando esto" — skip sin error.
+          // Cualquier otro error sí es problema real.
+          if (claimErr.code !== "23505") {
+            log.error({
+              event: "alerts.claim_failed",
+              fireKey,
+              chatId: sub.chat_id,
+              code: claimErr.code,
+              err: claimErr.message,
+            });
+          }
+          continue;
+        }
+        if (!claimed) continue;
+
         // WHI-547 — does this FIRMS fire confirm a recent GOES preliminary
         // alert we already sent to this subscriber?
         const match = await findPendingPreliminary(db, sub.chat_id, fire);
@@ -100,7 +132,30 @@ export async function GET(request: Request) {
             ? await formatConfirmedFromPreliminary(fire, sub, distKm, eta, level, match.preliminary_sent_at, zoneName)
             : await formatAlert(fire, sub, distKm, eta, level, zoneName);
 
-        await sendMessage(sub.chat_id, message);
+        // Si Telegram falla, la row de dedup ya quedó registrada. Loguear con
+        // contexto suficiente (chat_id, fire_key) para reenvío manual desde
+        // /dashboard si fuera necesario. Alternativa rechazada: revertir el
+        // INSERT — abre una ventana de race nueva entre el delete y otro cron.
+        try {
+          await sendMessage(sub.chat_id, message);
+          log.info({
+            event: "alerts.sent",
+            fireKey,
+            chatId: sub.chat_id,
+            role: isFireman ? "fireman" : "civilian",
+            distKm: Math.round(distKm),
+            level,
+            isConfirmation: match != null,
+          });
+        } catch (sendErr) {
+          log.error({
+            event: "alerts.send_failed",
+            fireKey,
+            chatId: sub.chat_id,
+            err: sendErr instanceof Error ? sendErr.message : String(sendErr),
+          });
+          continue;
+        }
 
         if (match) {
           await db
@@ -110,16 +165,18 @@ export async function GET(request: Request) {
           confirmations++;
         }
 
-        // Record to avoid duplicate alerts on the FIRMS side too
-        await db.from("ai_alerted_fires").insert({
-          fire_key: fireKey,
-          chat_id: sub.chat_id,
-          alerted_at: new Date().toISOString(),
-        });
-
         alertsSent++;
       }
     }
+
+    // Invalidar el segment cache de Next 16 para / y /mapa: estas páginas
+    // están en ISR (revalidate: 60 y 300). Sin esta llamada, una visita
+    // fresca entre revalidaciones sigue viendo el conteo viejo aunque
+    // fires_cache ya tenga datos nuevos. /api/alerts corre cada 15 min,
+    // así que el lag máximo entre cron y página queda en ~el revalidate
+    // del segment.
+    revalidatePath("/");
+    revalidatePath("/mapa");
 
     return NextResponse.json({
       processed: fires.length,
@@ -130,9 +187,13 @@ export async function GET(request: Request) {
       // forestal. Si es mucho más alto que `alerts`, el filtro está cortando
       // ruido como esperamos.
       skippedNonForestCivilian,
+      revalidated: ["/", "/mapa"],
     });
   } catch (error) {
-    console.error("Alerts cron error:", error);
+    log.error({
+      event: "alerts.cron_failed",
+      err: error instanceof Error ? error.message : String(error),
+    });
     return NextResponse.json({ error: "Alert processing failed" }, { status: 500 });
   }
 }
@@ -236,7 +297,7 @@ async function formatAlert(
   }
 
   msg += `\n📌 <a href="${gMapsUrl}">Ver en Google Maps</a>`;
-  msg += `\n\n—\nCentral de Localizacion y Alerta de Riesgo Ambiental (C.L.A.R.A.)`;
+  msg += `\n\n—\nClara · AlertaForestal.org`;
   msg += `\n<i>Datos: NASA FIRMS VIIRS · Open-Meteo</i>`;
 
   return msg;
@@ -286,7 +347,7 @@ async function interpretFire(
           {
             role: "system",
             content:
-              "Sos C.L.A.R.A., un sistema de alerta de incendios. Interpreta este foco de calor en 2-3 oraciones breves para un ciudadano argentino. Considera la potencia (FRP), distancia, y si el viento lo afecta. Si el FRP es bajo (<5 MW) en zona petrolera de Neuquen/Mendoza, menciona que puede ser flaring. Si es alto, se directo sobre el riesgo. No uses markdown ni emojis. IMPORTANTE — cuando te refieras a vos misma: usa siempre 'C.L.A.R.A.' (o 'Central de Localizacion y Alerta de Riesgo Ambiental'). PROHIBIDO usar pronombres ('ella', 'el') o sinonimos ('el sistema', 'la plataforma', 'el servicio', 'la herramienta', 'el bot', 'la app'). Si la frase queda repetitiva, reescribila con sujeto elidido (ej: 'Detecta...' en vez de 'Ella detecta...').",
+              "Sos Clara, el bot de AlertaForestal.org. Interpretá este foco de calor en 2-3 oraciones breves para un ciudadano argentino. Considerá la potencia (FRP), distancia, y si el viento lo afecta. Si el FRP es bajo (<5 MW) en zona petrolera de Neuquen/Mendoza, mencioná que puede ser flaring. Si es alto, sé directa sobre el riesgo. No uses markdown ni emojis. IMPORTANTE — cuando te refieras a vos misma: usá siempre 'Clara' o 'AlertaForestal'. PROHIBIDO usar pronombres ('ella', 'el') o sinonimos ('el sistema', 'la plataforma', 'el servicio', 'la herramienta', 'el bot', 'la app'). Si la frase queda repetitiva, reescribila con sujeto elidido (ej: 'Detecta...' en vez de 'Ella detecta...').",
           },
           {
             role: "user",
@@ -375,7 +436,7 @@ function formatFiremanAlert(
   msg += `🌲 Zona: ${zoneName ?? "fuera de zona forestal"}\n`;
   msg += `📌 <a href="${gMapsUrl}">Maps</a>\n\n`;
   msg += `<i>Mensaje operativo — sin interpretación AI, datos crudos.</i>`;
-  msg += `\n—\nC.L.A.R.A. · Coordinación interna${cuartelName ? ` · ${cuartelName}` : ""}`;
+  msg += `\n—\nClara · AlertaForestal.org · Coordinación interna${cuartelName ? ` · ${cuartelName}` : ""}`;
   return msg;
 }
 
@@ -420,7 +481,7 @@ async function formatConfirmedFromPreliminary(
         : `No hay riesgo inmediato pero seguimos monitoreando.`) +
     `</i>\n`;
   msg += `\n📌 <a href="${gMapsUrl}">Ver en Google Maps</a>`;
-  msg += `\n\n—\nC.L.A.R.A. · Cobertura GOES-19 + NASA FIRMS`;
+  msg += `\n\n—\nClara · AlertaForestal.org · GOES-19 + NASA FIRMS`;
 
   return msg;
 }

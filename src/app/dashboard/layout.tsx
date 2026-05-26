@@ -12,6 +12,7 @@ const NAV = [
   { href: "/dashboard", label: "Overview" },
   { href: "/dashboard/alerts", label: "Alertas" },
   { href: "/dashboard/health", label: "Pipelines" },
+  { href: "/dashboard/superadmin", label: "Superadmin" },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -41,7 +42,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <Flame size={14} weight="fill" color="#fff" />
             </div>
             <div>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>C.L.A.R.A.</div>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>AlertaForestal</div>
               <div className="font-mono text-[9px] text-muted tracking-wider uppercase">
                 Dashboard interno
               </div>

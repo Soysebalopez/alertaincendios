@@ -6,15 +6,16 @@ import { Drop } from "@phosphor-icons/react/dist/ssr";
 export const metadata: Metadata = {
   title: "Calidad del Aire",
   description:
-    "Monitoreo de calidad del aire por provincia y ciudad en Argentina. Datos CAMS / Sentinel-5P via Open-Meteo.",
+    "Monitoreo de calidad del aire por provincia y ciudad en Argentina. Datos CAMS / Sentinel-5P vía Open-Meteo.",
+  alternates: { canonical: "/calidad-aire" },
   openGraph: {
-    title: "Calidad del Aire — C.L.A.R.A.",
+    title: "Calidad del Aire — AlertaForestal",
     description:
-      "NO₂, SO₂, O₃, PM2.5 y mas en las principales ciudades argentinas. Umbrales OMS.",
+      "NO₂, SO₂, O₃, PM2.5 y más en las principales ciudades argentinas. Umbrales OMS.",
   },
   twitter: {
-    card: "summary",
-    title: "Calidad del Aire — C.L.A.R.A.",
+    card: "summary_large_image",
+    title: "Calidad del Aire — AlertaForestal",
     description:
       "Monitoreo de calidad del aire por provincia y ciudad en Argentina.",
   },

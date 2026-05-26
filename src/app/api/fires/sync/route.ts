@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { syncFiresFromFirms } from "@/lib/firms";
+import { isCronAuthorized } from "@/lib/cron-auth";
 
 /**
  * GET /api/fires/sync?secret=...
@@ -11,8 +12,7 @@ import { syncFiresFromFirms } from "@/lib/firms";
  *   curl "https://yoursite.vercel.app/api/fires/sync?secret=YOUR_CRON_SECRET"
  */
 export async function GET(request: Request) {
-  const secret = new URL(request.url).searchParams.get("secret");
-  if (secret !== process.env.CRON_SECRET) {
+  if (!isCronAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

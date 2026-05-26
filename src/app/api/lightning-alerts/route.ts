@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { fetchLightningRisk } from "@/lib/lightning";
 import { sendMessage } from "@/lib/telegram";
+import { isCronAuthorized } from "@/lib/cron-auth";
 
 /**
  * GET /api/lightning-alerts
@@ -13,12 +14,7 @@ import { sendMessage } from "@/lib/telegram";
  * Solo alerta si hay tormenta + condiciones secas (humedad < 60%, lluvia < 0.5 mm).
  */
 export async function GET(request: Request) {
-  const secret = new URL(request.url).searchParams.get("secret");
-  const bearerToken = request.headers.get("authorization")?.replace("Bearer ", "");
-  const isAuthorized =
-    secret === process.env.CRON_SECRET || bearerToken === process.env.CRON_SECRET;
-
-  if (!isAuthorized) {
+  if (!isCronAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -57,7 +53,7 @@ export async function GET(request: Request) {
     if (!risk.hasFireRisk) continue;
 
     const msg =
-      `⚡ <b>C.L.A.R.A. — Alerta de tormenta seca</b>\n\n` +
+      `⚡ <b>Clara — Alerta de tormenta seca</b>\n\n` +
       `📍 <b>${sub.city_name}</b>\n` +
       `🌩 Tormenta eléctrica activa\n` +
       `💧 Humedad: ${Math.round(risk.humidity)}%\n` +
@@ -65,7 +61,7 @@ export async function GET(request: Request) {
       `Las tormentas secas son la causa #1 de incendios forestales naturales. ` +
       `Mantenete atento a los próximos minutos.\n\n` +
       `Usa /rayos para activar/desactivar este tipo de alerta.\n\n` +
-      `—\nCentral de Localizacion y Alerta de Riesgo Ambiental (C.L.A.R.A.)\n` +
+      `—\nClara · AlertaForestal.org\n` +
       `<i>Datos: ${risk.source === "openweather" ? "OpenWeather" : "Open-Meteo"}</i>`;
 
     await sendMessage(sub.chat_id, msg);

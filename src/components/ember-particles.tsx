@@ -26,7 +26,8 @@ function EmberParticlesInner() {
             bottom: "-10px",
             width: e.size,
             height: e.size,
-            animation: `ember-float ${e.duration} ease-out ${e.delay} infinite`,
+            boxShadow: "0 0 6px var(--accent)",
+            animation: `ember-rise ${e.duration} ease-out ${e.delay} infinite`,
           }}
         />
       ))}

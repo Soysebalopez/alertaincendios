@@ -40,7 +40,7 @@
 - `Referrer-Policy: strict-origin-when-cross-origin` — limita leak de URL
 - `Permissions-Policy` — drop camera/microphone, mantener geolocation (lo usamos)
 
-Validación post-deploy: https://securityheaders.com/?q=alertaincendios.vercel.app (esperás A+ o A).
+Validación post-deploy: https://securityheaders.com/?q=alertaforestal.org (esperás A+ o A).
 
 ### 🟢 OK — cosas que están bien
 
@@ -50,7 +50,7 @@ Validación post-deploy: https://securityheaders.com/?q=alertaincendios.vercel.a
 | Service role key solo server | ✅ | `src/lib/supabase.ts` lee `process.env.SUPABASE_SERVICE_ROLE_KEY`, nunca exposed al cliente |
 | Anon key no usado | ✅ | Toda lectura via service role, anon key ni siquiera está en env |
 | `.gitignore` ignora `.env*` | ✅ | Refinado en este PR para también cubrir `scripts/*.env` |
-| Bot tokens no en repo | ✅ | Ni el viejo @AlertaIncendiosBot ni el nuevo @AlertasClaraBot |
+| Bot tokens no en repo | ✅ | Histórico: @AlertaIncendiosBot (rotado), @AlertasClaraBot (deprecated post-rebrand). Actual: @alertaforestal_bot |
 | /api/* endpoints auth | ✅ | Todos chequean `CRON_SECRET` antes de actuar (alerts, goes-sync, goes-alerts, goes-dismissals, lightning-alerts, fires/sync) |
 | Telegram webhook firma | ⚠️ | El webhook `/api/bot/telegram` no valida que el request venga de Telegram. Telegram **no firma** webhooks por default — la mitigación común es agregar un secret token al URL del webhook |
 
@@ -62,7 +62,7 @@ Hoy `/api/bot/telegram` acepta cualquier POST. Si alguien adivina el endpoint y 
 Telegram permite agregar un secret token al setWebhook que viene en el header `X-Telegram-Bot-Api-Secret-Token` de cada request.
 
 ```bash
-curl -F "url=https://alertaincendios.vercel.app/api/bot/telegram" \
+curl -F "url=https://alertaforestal.org/api/bot/telegram" \
      -F "secret_token=$(openssl rand -hex 32)" \
      "https://api.telegram.org/bot<TOKEN>/setWebhook"
 ```
@@ -118,13 +118,13 @@ c. Actualizar los 4 pg_cron jobs en Supabase (cada uno tiene el viejo embedded):
 
    -- Re-crear con el secret nuevo (NO commitear este SQL con el valor)
    SELECT cron.schedule('fires-alerts', '4,19,34,49 * * * *',
-     $$SELECT net.http_get('https://alertaincendios.vercel.app/api/alerts?secret=<NEW>', timeout_milliseconds := 60000)$$);
+     $$SELECT net.http_get('https://alertaforestal.org/api/alerts?secret=<NEW>', timeout_milliseconds := 60000)$$);
    SELECT cron.schedule('goes-sync', '5,15,25,35,45,55 * * * *',
-     $$SELECT net.http_get('https://alertaincendios.vercel.app/api/goes-sync?secret=<NEW>', timeout_milliseconds := 60000)$$);
+     $$SELECT net.http_get('https://alertaforestal.org/api/goes-sync?secret=<NEW>', timeout_milliseconds := 60000)$$);
    SELECT cron.schedule('goes-alerts', '7,17,27,37,47,57 * * * *',
-     $$SELECT net.http_get('https://alertaincendios.vercel.app/api/goes-alerts?secret=<NEW>', timeout_milliseconds := 60000)$$);
+     $$SELECT net.http_get('https://alertaforestal.org/api/goes-alerts?secret=<NEW>', timeout_milliseconds := 60000)$$);
    SELECT cron.schedule('goes-dismissals', '0 12 * * *',
-     $$SELECT net.http_get('https://alertaincendios.vercel.app/api/goes-dismissals?secret=<NEW>', timeout_milliseconds := 60000)$$);
+     $$SELECT net.http_get('https://alertaforestal.org/api/goes-dismissals?secret=<NEW>', timeout_milliseconds := 60000)$$);
    ```
 
 d. Actualizar crontab local (residencial):

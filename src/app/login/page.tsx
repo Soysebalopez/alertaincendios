@@ -42,7 +42,7 @@ export default async function LoginPage({
               margin: 0,
             }}
           >
-            C.L.A.R.A. — Dashboard interno
+            AlertaForestal — Dashboard interno
           </h1>
           <p
             className="text-muted"

@@ -7,11 +7,11 @@ import {
   TelegramLogo,
   List,
   X,
-  Flame,
 } from "@phosphor-icons/react/dist/ssr";
 import { StatusBeacon } from "./status-beacon";
+import { BrandMark } from "./brand-mark";
 
-const TELEGRAM_BOT_URL = "https://t.me/AlertasClaraBot";
+const TELEGRAM_BOT_URL = "https://t.me/alertaforestal_bot";
 
 const NAV_LINKS = [
   { href: "/", label: "Inicio" },
@@ -58,27 +58,19 @@ export function Nav() {
       <div className="max-w-[1400px] mx-auto px-5 md:px-6 py-2.5 md:py-3.5 flex items-center justify-between gap-5">
         {/* Brand */}
         <Link href="/" className="flex items-center gap-2.5 text-foreground">
-          <div
-            className="w-7 h-7 rounded-lg grid place-items-center shrink-0"
-            style={{
-              background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
-              boxShadow: "0 0 12px var(--accent-soft)",
-            }}
-          >
-            <Flame size={14} weight="fill" className="text-white" />
-          </div>
+          <BrandMark size={28} className="shrink-0" />
           <div className="clara-brand-text leading-tight">
             <div
-              className="clara-brand-name text-[10px] md:text-[11px] font-bold uppercase"
-              style={{ letterSpacing: "0.02em", lineHeight: 1.15 }}
+              className="clara-brand-name text-[14px] md:text-[16px] font-bold"
+              style={{ letterSpacing: "-0.01em", lineHeight: 1.1 }}
             >
-              Central de Localización y Alerta de Riesgo Ambiental
+              AlertaForestal
             </div>
             <div
-              className="font-mono text-[10px] text-accent tracking-[0.12em] mt-0.5"
-              style={{ fontWeight: 600 }}
+              className="font-mono text-[10px] text-muted tracking-[0.08em] mt-0.5"
+              style={{ fontWeight: 500 }}
             >
-              (C.L.A.R.A.)
+              alertas tempranas de incendios
             </div>
           </div>
         </Link>

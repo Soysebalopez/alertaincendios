@@ -6,6 +6,12 @@ import {
   POLLUTANT_VARS,
   type AirLevel,
 } from "@/lib/air-quality";
+import {
+  checkRateLimit,
+  clientIp,
+  isInternalCall,
+  rateLimitHeaders,
+} from "@/lib/ratelimit";
 
 /**
  * GET /api/air-quality?lat=-34.6&lng=-58.38
@@ -15,6 +21,10 @@ import {
 
 const AIR_QUALITY_BASE =
   "https://air-quality-api.open-meteo.com/v1/air-quality";
+
+// H-10 — 60 req/min/IP. Cubre el grid de 12 ciudades del hero (12 batches
+// de 10) + navegación normal a /calidad-aire (un click puede disparar 78).
+const RATE_LIMIT_PER_MIN = 120;
 
 function round(n: number): number {
   if (n == null || isNaN(n)) return 0;
@@ -30,6 +40,21 @@ export async function GET(request: NextRequest) {
       { error: "lat and lng are required" },
       { status: 400 },
     );
+  }
+
+  if (!isInternalCall(request)) {
+    const rl = await checkRateLimit({
+      key: clientIp(request),
+      limit: RATE_LIMIT_PER_MIN,
+      windowSec: 60,
+      namespace: "air-quality",
+    });
+    if (!rl.ok) {
+      return NextResponse.json(
+        { error: "rate_limited" },
+        { status: 429, headers: rateLimitHeaders(rl, RATE_LIMIT_PER_MIN) },
+      );
+    }
   }
 
   try {

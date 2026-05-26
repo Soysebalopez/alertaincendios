@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { sendMessage } from "@/lib/telegram";
+import { isCronAuthorized } from "@/lib/cron-auth";
 
 /**
  * GET /api/goes-dismissals
@@ -17,12 +18,7 @@ const DISMISSAL_AFTER_HOURS = 4;
 const DISMISSAL_MAX_AGE_DAYS = 7;
 
 export async function GET(request: Request) {
-  const secret = new URL(request.url).searchParams.get("secret");
-  const bearerToken = request.headers.get("authorization")?.replace("Bearer ", "");
-  const isAuthorized =
-    secret === process.env.CRON_SECRET || bearerToken === process.env.CRON_SECRET;
-
-  if (!isAuthorized) {
+  if (!isCronAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -66,7 +62,7 @@ export async function GET(request: Request) {
         `Probablemente fue ruido térmico (reflejo solar, calentamiento de superficie, ` +
         `o una detección que el satélite no volvió a captar).\n\n` +
         `<i>Seguimos monitoreando. Si vuelve a aparecer, te aviso.</i>` +
-        `\n—\nC.L.A.R.A. · Cobertura GOES-19 + NASA FIRMS`;
+        `\n—\nClara · AlertaForestal.org · GOES-19 + NASA FIRMS`;
 
       try {
         await sendMessage(row.chat_id, message);

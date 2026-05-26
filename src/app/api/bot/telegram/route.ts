@@ -4,11 +4,13 @@ import { sendMessage } from "@/lib/telegram";
 import { geocodeCity } from "@/lib/geocode";
 import { fetchFires } from "@/lib/firms";
 import { haversineKm } from "@/lib/geo";
+import { log } from "@/lib/logger";
 
 /**
  * POST /api/bot/telegram
  *
- * Telegram webhook for @AlertasClaraBot.
+ * Telegram webhook for @alertaforestal_bot. El bot se presenta como "Clara",
+ * la voz/persona del servicio AlertaForestal.org.
  * Commands: /start, /ciudad <name>, /estado, /cancelar
  * Also accepts shared location (GPS pin).
  */
@@ -26,6 +28,35 @@ export async function POST(request: NextRequest) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) {
     return NextResponse.json({ ok: false, error: "Bot not configured" });
+  }
+
+  // WHI-XXX — verificación de origen Telegram.
+  //
+  // Telegram firma cada call al webhook con el header
+  // `X-Telegram-Bot-API-Secret-Token` (cuyo valor se setea al registrar el
+  // webhook con `setWebhook?secret_token=...`). Sin esta verificación,
+  // cualquiera con el chat_id de una víctima podía hacer un POST manual y
+  // ejecutar comandos en su nombre (e.g. `/soybombero <code>`, `/cancelar`).
+  //
+  // Comportamiento si la env var no está seteada: WARN y dejar pasar. Esto es
+  // un fallback de transición — una vez seteada en Vercel y re-registrado el
+  // webhook con el mismo secret_token, todas las requests del cliente real
+  // van a matchear y las request spoofeadas van a fallar con 401.
+  const expected = process.env.TELEGRAM_WEBHOOK_SECRET;
+  if (expected) {
+    const received = request.headers.get("x-telegram-bot-api-secret-token");
+    if (received !== expected) {
+      // Importante no devolver detalles del header recibido — sería un hint
+      // útil para un atacante que está iterando para encontrar la forma de
+      // pasar el check.
+      return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+    }
+  } else {
+    // Log explícito en cada call hasta que se configure. El warn vive en
+    // Vercel logs; sirve como recordatorio operativo.
+    console.warn(
+      "[telegram] TELEGRAM_WEBHOOK_SECRET no configurado — webhook acepta requests sin verificar origen. Setealo en Vercel y re-registrá el webhook con setWebhook?secret_token=..."
+    );
   }
 
   const update: TelegramUpdate = await request.json();
@@ -73,34 +104,41 @@ export async function POST(request: NextRequest) {
       );
     }
   } catch (err) {
-    console.error("Bot error:", err);
+    log.error({
+      event: "bot.command_failed",
+      chatId,
+      command: text || (location ? "<location>" : "<unknown>"),
+      err: err instanceof Error ? err.message : String(err),
+    });
     await sendMessage(chatId, "Error interno. Intenta de nuevo en unos minutos.");
   }
 
   return NextResponse.json({ ok: true });
 }
 
-const FOOTER = "\n—\nCentral de Localizacion y Alerta de Riesgo Ambiental (C.L.A.R.A.)";
+// Footer estándar de mensajes del bot. Clara es la persona/narrador del bot,
+// AlertaForestal.org es el sitio del proyecto.
+const FOOTER = "\n—\nClara · AlertaForestal.org";
 
 const ABOUT_TEXT =
-  "🔥 <b>C.L.A.R.A. — Alertas de incendios forestales gratis</b>\n\n" +
-  "C.L.A.R.A. es un proyecto independiente, gratuito, hecho en Argentina para que " +
-  "los vecinos de zonas afectadas se enteren antes de los incendios y puedan " +
-  "prevenirse.\n\n" +
-  "Usa datos de NASA (FIRMS), NOAA y otros servicios públicos para detectar " +
+  "🔥 <b>Clara — Alertas de incendios forestales gratis</b>\n\n" +
+  "Soy Clara, el bot de <b>AlertaForestal.org</b> — un proyecto independiente, " +
+  "gratuito, hecho en Argentina para que los vecinos de zonas afectadas se " +
+  "enteren antes de los incendios y puedan prevenirse.\n\n" +
+  "Uso datos de NASA (FIRMS), NOAA y otros servicios públicos para detectar " +
   "focos de calor cerca tuyo y avisarte cuando el viento puede traer humo o " +
-  "fuego a tu zona. También alerta por tormentas eléctricas secas — la causa " +
+  "fuego a tu zona. También alerto por tormentas eléctricas secas — la causa " +
   "#1 natural de incendios forestales.\n\n" +
   "Este proyecto existe gracias al trabajo pionero de Satellites On Fire " +
   "(@satellitesonfire), que demostró que se podía detectar incendios mejor " +
   "que la NASA desde Argentina. Si sos una empresa, gobierno, forestal o " +
   "aseguradora, te recomendamos satellitesonfire.com.\n\n" +
-  "C.L.A.R.A. es para vos, vecino de zona de riesgo. Gratis, siempre.\n\n" +
+  "AlertaForestal es para vos, vecino de zona de riesgo. Gratis, siempre.\n\n" +
   "Hecho con cariño en Bahía Blanca por Whitebay." +
   FOOTER;
 
 const HELP_TEXT =
-  "🔥 <b>C.L.A.R.A. — Comandos</b>\n\n" +
+  "🔥 <b>Clara — Comandos</b>\n\n" +
   "📍 Compartí tu ubicación (clip 📎 → Ubicación)\n" +
   "🏙 /ciudad &lt;nombre&gt; — suscribirte por ciudad\n" +
   "📊 /estado — focos activos cerca tuyo\n" +
@@ -112,10 +150,11 @@ const HELP_TEXT =
 async function handleStart(chatId: number) {
   await sendMessage(
     chatId,
-    "🔥 <b>C.L.A.R.A. — Alerta de Incendios</b>\n\n" +
-      "Detectamos focos de calor en toda Argentina con satélites de NASA " +
-      "(FIRMS) y NOAA (GOES-19) y te alertamos por Telegram. También avisamos " +
-      "cuando hay tormenta eléctrica seca cerca tuyo.\n\n" +
+    "🔥 <b>Clara — AlertaForestal</b>\n\n" +
+      "Soy Clara, el bot de AlertaForestal.org. Detectamos focos de calor en " +
+      "toda Argentina con satélites de NASA (FIRMS) y NOAA (GOES-19) y te " +
+      "alertamos por Telegram. También avisamos cuando hay tormenta eléctrica " +
+      "seca cerca tuyo.\n\n" +
       "<b>Para empezar:</b>\n" +
       "📍 Enviá tu ubicación (clip 📎 → Ubicación)\n" +
       "🏙 O escribí /ciudad Bariloche\n\n" +
@@ -249,7 +288,7 @@ async function handleEstado(chatId: number) {
   if (!sub) {
     await sendMessage(
       chatId,
-      "🔥 <b>C.L.A.R.A.</b>\n\nNo tenes suscripcion activa.\nUsa /ciudad o comparti tu ubicacion para suscribirte." +
+      "🔥 <b>Clara — AlertaForestal</b>\n\nNo tenes suscripcion activa.\nUsa /ciudad o comparti tu ubicacion para suscribirte." +
         FOOTER
     );
     return;
@@ -272,7 +311,7 @@ async function handleEstado(chatId: number) {
       : "🕐 Verificando actividad...";
     await sendMessage(
       chatId,
-      `🔥 <b>C.L.A.R.A. — Estado</b>\n\n` +
+      `🔥 <b>Clara — Estado</b>\n\n` +
         `📍 <b>${sub.city_name}</b>\n\n` +
         "✅ No hay focos de calor en un radio de 100 km.\n\n" +
         `${lastCheckLine}\n` +
@@ -295,7 +334,7 @@ async function handleEstado(chatId: number) {
 
   const interpretation = await interpretFires(sub.city_name, fireData, nearby.length);
 
-  let msg = `🔥 <b>C.L.A.R.A. — Estado</b>\n\n`;
+  let msg = `🔥 <b>Clara — Estado</b>\n\n`;
   msg += `📍 <b>${sub.city_name}</b> — ${nearby.length} foco(s) en 100 km\n\n`;
 
   if (interpretation) {
@@ -350,7 +389,7 @@ async function interpretFires(
           {
             role: "system",
             content:
-              "Sos C.L.A.R.A., un sistema de alerta de incendios forestales. Interpreta los datos de focos de calor para un ciudadano argentino. Se breve (2-3 lineas max), claro, y usa un tono informativo pero no alarmista. Menciona si parece quema agricola, flaring industrial o incendio real segun la potencia (FRP). No uses markdown ni emojis. IMPORTANTE — cuando te refieras a vos misma: usa siempre 'C.L.A.R.A.' (o 'Central de Localizacion y Alerta de Riesgo Ambiental'). PROHIBIDO usar pronombres ('ella', 'el') o sinonimos ('el sistema', 'la plataforma', 'el servicio', 'la herramienta', 'el bot', 'la app'). Si la frase queda repetitiva, reescribila con sujeto elidido (ej: 'Detecta...' en vez de 'Ella detecta...').",
+              "Sos Clara, el bot de AlertaForestal.org. Interpretá los datos de focos de calor para un ciudadano argentino. Sé breve (2-3 lineas max), clara, y usá un tono informativo pero no alarmista. Mencioná si parece quema agricola, flaring industrial o incendio real segun la potencia (FRP). No uses markdown ni emojis. IMPORTANTE — cuando te refieras a vos misma: usá siempre 'Clara' o 'AlertaForestal'. PROHIBIDO usar pronombres ('ella', 'el') o sinonimos ('el sistema', 'la plataforma', 'el servicio', 'la herramienta', 'el bot', 'la app'). Si la frase queda repetitiva, reescribila con sujeto elidido (ej: 'Detecta...' en vez de 'Ella detecta...').",
           },
           {
             role: "user",
@@ -377,7 +416,7 @@ async function handleCancelar(chatId: number) {
   await db.from("subscribers").delete().eq("chat_id", chatId);
   await sendMessage(
     chatId,
-    "🔥 <b>C.L.A.R.A. — Suscripcion cancelada</b>\n\n" +
+    "🔥 <b>Clara — Suscripcion cancelada</b>\n\n" +
       "Tu suscripcion fue eliminada. Ya no recibiras alertas.\n\n" +
       "Para volver a suscribirte, envia tu ubicacion o usa /ciudad." +
       FOOTER
@@ -427,8 +466,10 @@ async function logBotCommand(chatId: number, command: string, args?: string) {
 }
 
 // WHI-588 Sprint 1 — /soybombero <code> elevates a subscriber to role 'fireman'.
-// The code is validated against the fireman_codes table (codes distributed by
-// the project owner to fire brigades, one or many per cuartel).
+// El consumo del código va por la RPC `consume_fireman_code` (ver migration
+// scripts/sql/whi-fireman-codes-hardening.sql) que encapsula atómicamente:
+// validación, registro en fireman_code_usage, incremento de used_count y
+// promoción del subscriber. Sin esto había TOCTTOU + reuse por mismo chat_id.
 async function handleSoyBombero(chatId: number, code: string) {
   if (!code) {
     await sendMessage(
@@ -436,7 +477,7 @@ async function handleSoyBombero(chatId: number, code: string) {
       "🚒 <b>Bomberos voluntarios</b>\n\n" +
         "Si tu cuartel tiene un código de invitación, usalo así:\n" +
         "<code>/soybombero TU-CODIGO</code>\n\n" +
-        "Si todavía no tenés código y querés sumar a tu cuartel a C.L.A.R.A., escribinos." +
+        "Si todavía no tenés código y querés sumar a tu cuartel a AlertaForestal, escribinos." +
         FOOTER
     );
     return;
@@ -444,7 +485,8 @@ async function handleSoyBombero(chatId: number, code: string) {
 
   const db = getSupabase();
 
-  // Verify subscriber exists
+  // Subscriber tiene que existir antes — la RPC promueve un row existente
+  // (no lo crea desde cero, así no perdemos lat/lng/city_name).
   const { data: sub } = await db
     .from("subscribers")
     .select("chat_id, role")
@@ -462,23 +504,40 @@ async function handleSoyBombero(chatId: number, code: string) {
     return;
   }
 
-  // Lookup the code
-  const { data: codeRow } = await db
-    .from("fireman_codes")
-    .select("code, cuartel_name, used_count, max_uses")
-    .eq("code", code)
-    .maybeSingle();
+  type ConsumeResult = { status: string; cuartel_name: string | null };
+  const { data: rpcRows, error: rpcErr } = await db.rpc("consume_fireman_code", {
+    p_chat_id: chatId,
+    p_code: code,
+  });
 
-  if (!codeRow) {
+  if (rpcErr) {
+    log.error({
+      event: "bot.consume_fireman_code_rpc_failed",
+      chatId,
+      code: rpcErr.code,
+      err: rpcErr.message,
+    });
     await sendMessage(
       chatId,
-      "❌ Código inválido. Pedile a tu cuartel el código correcto." +
+      "❌ Error interno al validar el código. Probá de nuevo en unos minutos." +
         FOOTER
     );
     return;
   }
 
-  if (codeRow.max_uses != null && codeRow.used_count >= codeRow.max_uses) {
+  // La RPC devuelve un SETOF (una row). Manejamos los 4 outcomes posibles.
+  const result = Array.isArray(rpcRows) ? (rpcRows[0] as ConsumeResult) : (rpcRows as ConsumeResult | null);
+  const status = result?.status ?? "unknown";
+  const cuartel = result?.cuartel_name;
+
+  if (status === "not_found") {
+    await sendMessage(
+      chatId,
+      "❌ Código inválido. Pedile a tu cuartel el código correcto." + FOOTER
+    );
+    return;
+  }
+  if (status === "exhausted") {
     await sendMessage(
       chatId,
       "❌ Este código ya alcanzó su límite de usos. Pedile uno nuevo a tu cuartel." +
@@ -486,21 +545,38 @@ async function handleSoyBombero(chatId: number, code: string) {
     );
     return;
   }
+  if (status === "already_used") {
+    await sendMessage(
+      chatId,
+      `ℹ️ Ya estás registrado como bombero${cuartel ? ` de ${cuartel}` : ""}. ` +
+        "Si querés cancelar, usá <code>/cancelar</code>." +
+        FOOTER
+    );
+    return;
+  }
+  if (status !== "ok" || !cuartel) {
+    log.error({
+      event: "bot.consume_fireman_code_unexpected",
+      chatId,
+      status,
+    });
+    await sendMessage(
+      chatId,
+      "❌ Error interno al validar el código. Probá de nuevo en unos minutos." +
+        FOOTER
+    );
+    return;
+  }
 
-  // Elevate
-  await db
-    .from("subscribers")
-    .update({ role: "fireman", cuartel_name: codeRow.cuartel_name })
-    .eq("chat_id", chatId);
-
-  await db
-    .from("fireman_codes")
-    .update({ used_count: (codeRow.used_count ?? 0) + 1 })
-    .eq("code", codeRow.code);
+  log.info({
+    event: "bot.fireman_promoted",
+    chatId,
+    cuartel,
+  });
 
   await sendMessage(
     chatId,
-    `✅ <b>Listo, bombero de ${codeRow.cuartel_name}</b>\n\n` +
+    `✅ <b>Listo, bombero de ${cuartel}</b>\n\n` +
       "Desde ahora vas a recibir <b>mensajes operativos</b> cuando se detecte un " +
       "foco confirmado en tu zona. Más conciso, con info para coordinar respuesta.\n\n" +
       "Si querés volver a alertas civiles, escribí <code>/cancelar</code> y " +
