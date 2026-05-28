@@ -42,11 +42,6 @@ const TELEGRAM_BOT_URL = "https://t.me/alertaforestal_bot";
  * número grande de portada.
  */
 const HERO_FRP_THRESHOLD_MW = 20;
-// Ventana del contador "Preliminares activos" — alineada con DISMISSAL_AFTER_HOURS
-// en /api/goes-dismissals. Sin esta ventana, el count acumula preliminaries ya
-// confirmadas por FIRMS (sobreviven hasta goes-prune a los 7 días) y crece
-// monotónicamente. Ver WHI-750.
-const PRELIMINARY_ACTIVE_WINDOW_HOURS = 4;
 
 interface FireCounts {
   /** WHI-757: wildfires con FRP ≥ HERO_FRP_THRESHOLD_MW en zona forestal — número grande del hero. */
@@ -59,8 +54,6 @@ interface FireCounts {
   nonForestWild: number;
   /** Detecciones reclasificadas como flaring/offshore/volcano. */
   industrial: number;
-  /** Preliminares GOES pendientes de confirmación FIRMS. */
-  preliminary: number;
   /**
    * Snapshot crudo de focos pasado al mini-mapa del hero como prop. Garantiza
    * que counter y puntos visualizados vienen del MISMO fetchFires() — antes
@@ -85,32 +78,16 @@ async function getSatelliteData(): Promise<{
 
 async function getFireCounts(): Promise<FireCounts> {
   const empty: FireCounts = {
-    high: 0, moderate: 0, low: 0, nonForestWild: 0, industrial: 0, preliminary: 0, fires: [],
+    high: 0, moderate: 0, low: 0, nonForestWild: 0, industrial: 0, fires: [],
   };
   try {
     const { fetchFires } = await import("@/lib/firms");
-    const { createClient } = await import("@supabase/supabase-js");
 
     // fetchFires() ya aplica polígono ARG + classifyFireType + tag forestZone
     // (WHI-757). El número grande del hero refleja únicamente focos en zona
     // forestal — la misión del producto es prevención de incendios forestales,
     // no monitoreo térmico general.
-    const firesPromise = fetchFires();
-
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const prelimCutoff = new Date(
-      Date.now() - PRELIMINARY_ACTIVE_WINDOW_HOURS * 60 * 60 * 1000
-    ).toISOString();
-    const prelimPromise = url && key
-      ? createClient(url, key)
-          .from("goes_preliminary")
-          .select("id", { count: "exact", head: true })
-          .eq("high_confidence", true)
-          .gte("detected_at", prelimCutoff)
-      : Promise.resolve({ count: 0 });
-
-    const [fires, prelimRes] = await Promise.all([firesPromise, prelimPromise]);
+    const fires = await fetchFires();
 
     let high = 0, moderate = 0, low = 0, nonForestWild = 0, industrial = 0;
     for (const f of fires) {
@@ -127,7 +104,6 @@ async function getFireCounts(): Promise<FireCounts> {
       low,
       nonForestWild,
       industrial,
-      preliminary: prelimRes.count ?? 0,
       // Pasamos el snapshot al mini-mapa para garantizar consistencia con el counter.
       fires,
     };
@@ -137,74 +113,69 @@ async function getFireCounts(): Promise<FireCounts> {
 }
 
 const DATA_SOURCES = [
-  {
-    name: "NASA FIRMS",
-    sub: "VIIRS · Focos confirmados 375m",
-    org: "NASA",
-    color: "#4b8bd4",
-    icon: "nasa",
-  },
-  {
-    name: "NOAA GOES-19",
-    sub: "ABI-L2-FDCF · Detección preliminar cada 10 min",
-    org: "NOAA",
-    color: "#3a9bdc",
-    icon: "noaa",
-  },
-  {
-    name: "Copernicus CAMS",
-    sub: "Atmospheric Monitoring Service",
-    org: "ESA",
-    color: "#7fb3c7",
-    icon: "esa",
-  },
-  {
-    name: "Sentinel-5P",
-    sub: "NO₂ / SO₂ / O₃ troposférico",
-    org: "ESA Copernicus",
-    color: "#6aa8d4",
-    icon: "sentinel",
-  },
-  {
-    name: "Open-Meteo",
-    sub: "Viento · Temperatura · Humedad",
-    org: "Open-Source",
-    color: "#ff6b35",
-    icon: "openmeteo",
-  },
-  {
-    name: "Telegram Bot API",
-    sub: "Distribución de alertas",
-    org: "Telegram",
-    color: "#5eb1e8",
-    icon: "telegram",
-  },
+  { name: "NASA FIRMS", org: "NASA", color: "#4b8bd4", icon: "nasa" },
+  { name: "NOAA GOES-19", org: "NOAA", color: "#3a9bdc", icon: "noaa" },
+  { name: "Copernicus", org: "ESA", color: "#7fb3c7", icon: "esa" },
+  { name: "Sentinel-5P", org: "ESA Copernicus", color: "#6aa8d4", icon: "sentinel" },
+  { name: "Open-Meteo", org: "Open-Source", color: "#ff6b35", icon: "openmeteo" },
+  { name: "Telegram", org: "Telegram", color: "#5eb1e8", icon: "telegram" },
 ] as const;
 
 const STEPS = [
   {
     n: "01",
     icon: <MapPin size={16} weight="duotone" />,
-    title: "Compartí tu ubicación",
-    body: "Abrí el bot de Telegram y mandá tu GPS o escribí tu ciudad. Calculamos la distancia a cada foco detectado.",
+    title: "Nos decís dónde vivís",
+    body: "Abrí el bot de Telegram y mandá tu ubicación o escribí el nombre de tu ciudad. Tarda 30 segundos.",
   },
   {
     n: "02",
     icon: <GlobeHemisphereWest size={16} weight="duotone" />,
-    title: "Escaneamos con satélites",
-    body: "GOES-19 (NOAA) escanea Argentina cada 10 minutos para detección preliminar. NASA FIRMS confirma cada 15 minutos con VIIRS a 375 metros.",
+    title: "Los satélites escanean Argentina",
+    body: "Dos satélites de la NASA y la agencia meteorológica de Estados Unidos recorren el país constantemente buscando puntos de calor anómalos.",
   },
   {
     n: "03",
     icon: <Wind size={16} weight="duotone" />,
-    title: "Modelo de dispersión",
-    body: "Cruzamos el foco con datos de viento en tiempo real. Sabemos si el humo va hacia tu zona y en cuánto tiempo.",
+    title: "Calculamos si el humo va hacia vos",
+    body: "Cruzamos la ubicación del incendio con la dirección del viento para saber si te puede afectar y cuándo.",
   },
   {
     n: "04",
     icon: <Bell size={16} weight="duotone" />,
-    title: "Te avisamos",
-    body: "Si un foco está a menos de 100 km y el viento empuja el humo hacia vos, alerta instantánea con distancia, dirección y ETA.",
+    title: "Te mandamos un mensaje",
+    body: "Si hay riesgo, te llega una alerta al Telegram con a cuántos kilómetros está el foco y cuánto tiempo tarda el humo en llegar a tu zona.",
+  },
+] as const;
+
+// Roadmap mostrado en la sección "En camino". Solo features ya prometidas
+// públicamente — no roadmap interno. El emoji va como string, lo renderea
+// el card en var(--font-sans) para mantener consistencia con el resto.
+const UPCOMING = [
+  {
+    emoji: "🔔",
+    title: "Alertas por WhatsApp",
+    body: "Para los que no usan Telegram.",
+  },
+  {
+    emoji: "⚡",
+    title: "Alerta de tormenta seca",
+    body: "Rayos sin lluvia = riesgo de incendio. Te avisamos cuando hay actividad eléctrica cerca tuyo sin precipitación.",
+  },
+  {
+    emoji: "💨",
+    title: "Ver hacia dónde se mueve el humo",
+    body: "En el mapa vas a poder ver el área que puede verse afectada según la dirección del viento, no solo el punto donde está el incendio.",
+  },
+  {
+    emoji: "🌑",
+    title: "Zonas afectadas por incendios recientes",
+    body: "Después de un incendio, vas a poder ver qué áreas quedaron afectadas — útil para productores, vecinos y periodistas.",
+  },
+  {
+    emoji: "📡",
+    title: "Más fuentes de datos, mayor precisión",
+    body: "Estamos incorporando nuevas herramientas de detección para confirmar los focos con mayor precisión y reducir las falsas alarmas.",
   },
 ] as const;
 
@@ -221,7 +192,6 @@ export default async function Home() {
     low,
     nonForestWild,
     industrial: industrialCount,
-    preliminary: preliminaryCount,
     fires: heroFires,
   } = fireCounts;
   // WHI-757: el hero refleja todos los focos forestales activos (no solo los
@@ -230,12 +200,6 @@ export default async function Home() {
   // señal más honesta de presencia/ausencia de actividad forestal.
   const forestTotal = high + moderate + low;
   const hasAnyForestActivity = forestTotal > 0;
-  // Breakdown por intensidad como sub-line. Solo aparece si hay desglose
-  // (más de un bucket con actividad).
-  const intensityBuckets: string[] = [];
-  if (high > 0) intensityBuckets.push(`${high} ${high === 1 ? "alta" : "altas"}`);
-  if (moderate > 0) intensityBuckets.push(`${moderate} ${moderate === 1 ? "moderada" : "moderadas"}`);
-  if (low > 0) intensityBuckets.push(`${low} ${low === 1 ? "baja" : "bajas"}`);
   // "Fuera de zona forestal" agrupa wildfires no forestales + industrial
   // (flaring, offshore, volcánico). Lo presentamos como secundario para no
   // confundir al usuario con quemas agrícolas planificadas.
@@ -248,25 +212,14 @@ export default async function Home() {
     minute: "2-digit",
   });
 
-  const metrics = [
-    { label: "Provincias monitoreadas", value: "24", sub: "cobertura nacional" },
-    { label: "Ciudades activas", value: "78", sub: "sensores OMS" },
-    {
-      label: "Alta intensidad 24h",
-      value: high > 0 ? high.toLocaleString("es-AR") : "—",
-      sub:
-        high > 0
-          ? `FRP ≥ ${HERO_FRP_THRESHOLD_MW} MW · VIIRS 375m`
-          : moderate + low > 0
-            ? `${moderate + low} foco${moderate + low === 1 ? "" : "s"} de menor intensidad`
-            : "VIIRS 375m",
-      tone: "accent" as const,
-    },
-    {
-      label: "Preliminares activos",
-      value: preliminaryCount > 0 ? preliminaryCount.toLocaleString("es-AR") : "—",
-      sub: preliminaryCount > 0 ? "GOES-19 · pendientes NASA" : "GOES-19 · sin actividad",
-    },
+  // Strip de garantías del servicio — texto plano, sin números técnicos.
+  // El número grande del hero ya muestra el dato vivo (focos activos).
+  // headline: línea grande/foreground · sub: línea chica/muted.
+  const metrics: { headline: string; sub: string }[] = [
+    { headline: "Actualización", sub: "cada 15 min" },
+    { headline: "Todo el país", sub: "24 provincias" },
+    { headline: "78 ciudades", sub: "monitoreadas" },
+    { headline: "Siempre gratis", sub: "sin publicidad" },
   ];
 
   return (
@@ -294,7 +247,7 @@ export default async function Home() {
               <div className="flex items-center gap-2.5 mb-7 flex-wrap">
                 <Pill tone="accent">
                   <Beacon color="var(--accent)" />
-                  Argentina · últimas 24h
+                  Argentina · últimas 24hs
                 </Pill>
                 <span className="font-mono text-[10px] text-muted tracking-[0.1em]">
                   {timestamp} ART
@@ -345,10 +298,22 @@ export default async function Home() {
                         letterSpacing: "-0.02em",
                       }}
                     >
-                      {forestTotal === 1 ? "foco forestal activo" : "focos forestales activos"}
+                      {forestTotal === 1
+                        ? "foco activo ahora mismo"
+                        : "focos activos ahora mismo"}
+                      <br />
+                      <span
+                        style={{
+                          fontSize: "0.7em",
+                          color:
+                            "color-mix(in oklab, var(--foreground) 55%, transparent)",
+                        }}
+                      >
+                        en toda Argentina
+                      </span>
                     </span>
                   </h1>
-                  {(intensityBuckets.length > 0 || nonForestTotal > 0) && (
+                  {nonForestTotal > 0 && (
                     <p
                       className="font-mono mt-4 m-0"
                       style={{
@@ -357,10 +322,7 @@ export default async function Home() {
                         letterSpacing: "0.02em",
                       }}
                     >
-                      {intensityBuckets.length > 0 && intensityBuckets.join(" · ")}
-                      {intensityBuckets.length > 0 && nonForestTotal > 0 && " · "}
-                      {nonForestTotal > 0 &&
-                        `+ ${nonForestTotal} fuera de zona forestal`}
+                      + {nonForestTotal} fuera de zona forestal
                     </p>
                   )}
                 </div>
@@ -409,17 +371,25 @@ export default async function Home() {
                 className="mt-8"
                 style={{
                   maxWidth: "48ch",
-                  fontSize: 16,
+                  fontSize: 17,
                   lineHeight: 1.55,
                   color:
-                    "color-mix(in oklab, var(--foreground) 70%, transparent)",
+                    "color-mix(in oklab, var(--foreground) 78%, transparent)",
                 }}
               >
-                Detectamos focos de calor en tiempo real en toda Argentina con
-                satélites de NASA (FIRMS) y NOAA (GOES-19). Si hay uno cerca
-                tuyo y el viento empuja
-                el humo hacia tu zona, recibís una alerta por Telegram con
-                distancia, dirección y ETA.
+                Si hay un incendio cerca de donde vivís y el viento va hacia tu
+                lado, te avisamos por Telegram antes de que llegue el humo.
+              </p>
+              <p
+                className="mt-3 font-mono"
+                style={{
+                  fontSize: 12,
+                  letterSpacing: "0.08em",
+                  color: "var(--muted)",
+                  textTransform: "uppercase",
+                }}
+              >
+                Gratis · Sin registro · En minutos
               </p>
             </StaggerReveal>
 
@@ -461,31 +431,6 @@ export default async function Home() {
               </div>
             </StaggerReveal>
 
-            {/* Data strip */}
-            <StaggerReveal delay={0.65}>
-              <div
-                className="clara-data-strip grid mt-14 pt-6 border-t border-border"
-                style={{ gridTemplateColumns: "repeat(4, 1fr)", gap: 24 }}
-              >
-                {[
-                  ["Sensor", "VIIRS 375m"],
-                  ["Cadencia", "15 min"],
-                  ["Cobertura", "3.761.274 km²"],
-                  ["Ciudades", "78 / 24 prov."],
-                ].map(([k, v]) => (
-                  <div key={k}>
-                    <div className="font-mono text-[9px] text-muted tracking-[0.15em] uppercase mb-1">
-                      {k}
-                    </div>
-                    <div
-                      className="font-mono text-[13px] text-foreground font-medium"
-                    >
-                      {v}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </StaggerReveal>
           </div>
 
           {/* Right: map */}
@@ -505,7 +450,7 @@ export default async function Home() {
             >
               <GlobeHemisphereWest size={12} className="text-accent" />
               <span className="font-mono text-[10px] text-muted tracking-[0.08em]">
-                NASA FIRMS VIIRS · NRT
+                NASA FIRMS · en tiempo real
               </span>
             </div>
           </div>
@@ -520,31 +465,35 @@ export default async function Home() {
         >
           {metrics.map((m, i) => (
             <div
-              key={m.label}
+              key={m.headline}
               className="relative"
               style={{
-                padding: "28px 32px",
+                padding: "32px 32px",
                 borderRight:
                   i < metrics.length - 1 ? "1px solid var(--border)" : "none",
               }}
             >
-              <div className="font-mono text-[10px] text-muted tracking-[0.12em] uppercase mb-2.5">
-                {m.label}
-              </div>
               <div
                 style={{
                   fontFamily: "var(--font-sans)",
-                  fontSize: 42,
-                  fontWeight: 800,
-                  letterSpacing: "-0.03em",
-                  color:
-                    m.tone === "accent" ? "var(--accent)" : "var(--foreground)",
-                  lineHeight: 1,
+                  fontSize: 24,
+                  fontWeight: 700,
+                  letterSpacing: "-0.02em",
+                  lineHeight: 1.1,
+                  color: "var(--foreground)",
                 }}
               >
-                {m.value}
+                {m.headline}
               </div>
-              <div className="font-mono text-[10px] text-muted mt-2">
+              <div
+                className="text-muted mt-2"
+                style={{
+                  fontFamily: "var(--font-sans)",
+                  fontSize: 14,
+                  fontWeight: 400,
+                  letterSpacing: "-0.005em",
+                }}
+              >
                 {m.sub}
               </div>
             </div>
@@ -574,17 +523,16 @@ export default async function Home() {
                   margin: "20px 0 16px",
                 }}
               >
-                Del satélite al{" "}
-                <span className="text-accent">bolsillo</span>
-                <br /> en 15 minutos.
+                Cómo te avisamos{" "}
+                <span className="text-accent">antes</span>
+                <br /> de que llegue el humo.
               </h2>
               <p
                 className="text-muted"
                 style={{ fontSize: 15, lineHeight: 1.6, maxWidth: "42ch" }}
               >
                 Cuatro pasos automáticos que se ejecutan sin intervención
-                humana. El proceso entero corre en Postgres con pg_cron +
-                pg_net.
+                humana. Vos solo configurás una vez y te olvidás.
               </p>
             </div>
             <div
@@ -644,16 +592,22 @@ export default async function Home() {
                   lineHeight: 1.05,
                 }}
               >
-                Datos abiertos de{" "}
-                <span className="text-accent">agencias espaciales</span>
-                <br />y servicios climáticos globales.
+                ¿De dónde vienen{" "}
+                <span className="text-accent">los datos</span>?
               </h2>
               <p
                 className="text-muted"
-                style={{ fontSize: 14, margin: 0, maxWidth: "60ch" }}
+                style={{ fontSize: 15, margin: 0, maxWidth: "62ch", lineHeight: 1.55 }}
               >
-                Todo el sistema se construye sobre datos públicos verificables.
-                Ninguna fuente propietaria, ninguna caja negra.
+                Usamos información oficial y pública de las principales
+                agencias espaciales y meteorológicas del mundo — la misma que
+                usan los bomberos y organismos de emergencia.
+              </p>
+              <p
+                className="text-muted mt-3"
+                style={{ fontSize: 13, margin: "12px 0 0", maxWidth: "62ch" }}
+              >
+                Todo abierto. Todo verificable. Sin cajas negras.
               </p>
             </div>
           </div>
@@ -703,11 +657,8 @@ export default async function Home() {
                   <DataSourceLogo name={s.icon} color={s.color} />
                 </div>
                 <div>
-                  <div className="font-semibold text-[14px] text-foreground">
+                  <div className="font-semibold text-[15px] text-foreground">
                     {s.name}
-                  </div>
-                  <div className="font-mono text-[10px] text-muted mt-1 tracking-wide">
-                    {s.sub}
                   </div>
                 </div>
                 <div
@@ -779,9 +730,12 @@ export default async function Home() {
                   fontWeight: 800,
                   letterSpacing: "-0.03em",
                   margin: "14px 0 0",
+                  lineHeight: 1.05,
                 }}
               >
-                Calidad del aire por ciudad
+                El aire en tu ciudad,
+                <br />
+                <span className="text-accent">ahora mismo</span>.
               </h2>
             </div>
             <Link
@@ -792,6 +746,109 @@ export default async function Home() {
             </Link>
           </div>
           <LiveCityGrid count={12} />
+        </div>
+      </section>
+
+      {/* ─── EN CAMINO (Roadmap público) ─── */}
+      <section className="border-b border-border">
+        <div
+          className="clara-section-padded max-w-[1400px] mx-auto"
+          style={{ padding: "72px 32px" }}
+        >
+          <div
+            className="clara-two-col grid"
+            style={{ gridTemplateColumns: "1fr 2fr", gap: 64 }}
+          >
+            <div>
+              <Pill>
+                <span aria-hidden style={{ fontSize: 10 }}>◐</span> Próximamente
+              </Pill>
+              <h2
+                style={{
+                  fontFamily: "var(--font-sans)",
+                  fontSize: 44,
+                  fontWeight: 800,
+                  letterSpacing: "-0.03em",
+                  lineHeight: 1.05,
+                  margin: "20px 0 16px",
+                }}
+              >
+                En <span className="text-accent">camino</span>.
+              </h2>
+              <p
+                className="text-muted"
+                style={{ fontSize: 15, lineHeight: 1.6, maxWidth: "42ch" }}
+              >
+                Seguimos trabajando para que AlertaForestal sea más útil para
+                vos.
+              </p>
+            </div>
+            <div
+              className="clara-steps grid"
+              style={{ gridTemplateColumns: "1fr 1fr", gap: 16 }}
+            >
+              {UPCOMING.map((u) => (
+                <article
+                  key={u.title}
+                  style={{
+                    position: "relative",
+                    padding: "22px 22px",
+                    borderRadius: 14,
+                    background: "var(--surface-2)",
+                    border: "1px solid var(--border)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 12,
+                  }}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <span
+                      className="grid place-items-center"
+                      style={{
+                        width: 38,
+                        height: 38,
+                        borderRadius: 10,
+                        background: "var(--accent-soft)",
+                        border: "1px solid color-mix(in oklab, var(--accent) 25%, transparent)",
+                        fontSize: 20,
+                        lineHeight: 1,
+                      }}
+                      aria-hidden
+                    >
+                      {u.emoji}
+                    </span>
+                    <span
+                      className="font-mono"
+                      style={{
+                        fontSize: 9,
+                        letterSpacing: "0.15em",
+                        textTransform: "uppercase",
+                        color: "var(--accent)",
+                        padding: "3px 8px",
+                        borderRadius: 999,
+                        background: "var(--accent-soft)",
+                        border: "1px solid color-mix(in oklab, var(--accent) 20%, transparent)",
+                      }}
+                    >
+                      Próximamente
+                    </span>
+                  </div>
+                  <div
+                    className="font-semibold text-[15px] text-foreground"
+                    style={{ letterSpacing: "-0.01em" }}
+                  >
+                    {u.title}
+                  </div>
+                  <div
+                    className="text-muted"
+                    style={{ fontSize: 13.5, lineHeight: 1.55 }}
+                  >
+                    {u.body}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
         </div>
       </section>
 
@@ -821,21 +878,33 @@ export default async function Home() {
               margin: "24px 0 20px",
             }}
           >
-            Recibí la alerta{" "}
-            <span className="text-accent">antes</span>
-            <br /> de que llegue el humo.
+            Activá la alerta para{" "}
+            <span className="text-accent">tu ciudad</span>.
           </h2>
           <p
             className="mx-auto text-muted"
             style={{
-              fontSize: 16,
+              fontSize: 17,
               lineHeight: 1.6,
               maxWidth: "52ch",
+              margin: "0 auto 12px",
+            }}
+          >
+            No hace falta crear una cuenta ni descargar nada. Solo abrís el
+            bot, mandás tu ciudad, y listo. Si hay un incendio cerca, te
+            avisamos.
+          </p>
+          <p
+            className="mx-auto font-mono"
+            style={{
+              fontSize: 12,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: "var(--accent)",
               margin: "0 auto 36px",
             }}
           >
-            Gratis. Sin registro. Sin publicidad. Un bot de Telegram mantenido
-            por una comunidad de desarrolladores argentinos.
+            Gratis para siempre
           </p>
           <a
             href={TELEGRAM_BOT_URL}
