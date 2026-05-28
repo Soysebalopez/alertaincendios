@@ -108,6 +108,79 @@ export function AirDashboard() {
         </div>
       </section>
 
+      {/* Leyenda de niveles — copy refresh: explica los filtros de arriba
+          en lenguaje de vecino, sin siglas técnicas (μg/m³, PM, NO₂). */}
+      <section
+        className="clara-section-padded border-b border-border"
+        style={{ padding: "24px 32px", background: "var(--surface)" }}
+      >
+        <div className="max-w-[1400px] mx-auto">
+          <div
+            className="font-mono text-[10px] text-muted tracking-[0.12em] uppercase mb-3"
+          >
+            ¿Qué significa cada nivel?
+          </div>
+          <div
+            className="grid"
+            style={{
+              gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+              gap: 12,
+            }}
+          >
+            {[
+              {
+                color: "var(--good)",
+                emoji: "🟢",
+                label: "Bueno",
+                body: "El aire está limpio. No hay restricciones.",
+              },
+              {
+                color: "var(--warn)",
+                emoji: "🟡",
+                label: "Moderado",
+                body: "Puede afectar a personas sensibles (asmáticos, adultos mayores, niños pequeños).",
+              },
+              {
+                color: "var(--bad)",
+                emoji: "🔴",
+                label: "Malo",
+                body: "Se recomienda evitar actividad física al aire libre y mantener las ventanas cerradas.",
+              },
+            ].map((lv) => (
+              <div
+                key={lv.label}
+                className="flex items-start gap-2.5"
+                style={{
+                  padding: "12px 14px",
+                  borderRadius: 10,
+                  background: "var(--background)",
+                  border: "1px solid var(--border)",
+                  borderLeft: `3px solid ${lv.color}`,
+                }}
+              >
+                <span aria-hidden style={{ fontSize: 14, lineHeight: 1.4 }}>
+                  {lv.emoji}
+                </span>
+                <div>
+                  <div
+                    className="font-semibold text-[13px] text-foreground"
+                    style={{ marginBottom: 2 }}
+                  >
+                    {lv.label}
+                  </div>
+                  <div
+                    className="text-muted"
+                    style={{ fontSize: 12.5, lineHeight: 1.5 }}
+                  >
+                    {lv.body}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Cards grid */}
       <section
         className="clara-section-padded"

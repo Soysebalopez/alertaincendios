@@ -26,11 +26,11 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "AlertaForestal — Alertas tempranas de incendios forestales en Argentina",
+    default: "AlertaForestal — Alertas de incendios forestales en Argentina",
     template: "%s — AlertaForestal",
   },
   description:
-    "Sistema gratuito de alerta temprana de incendios forestales en Argentina. Detección satelital NASA + NOAA. Alertas por Telegram en minutos.",
+    "Recibí alertas gratis por Telegram si hay un incendio cerca de donde vivís. Cobertura en todo el país, actualización cada 15 minutos.",
   // Canonical raíz + hreflang es-AR. Evita duplicados cuando la app responde
   // también en alertaincendios.vercel.app (preview/legacy) y le dice a Google
   // que el target geográfico es Argentina, no es-ES o es-MX. Las páginas hijas
@@ -56,14 +56,14 @@ export const metadata: Metadata = {
     siteName: "AlertaForestal",
     title: "AlertaForestal — Alertas de incendios forestales en Argentina",
     description:
-      "Monitoreo y alerta temprana de focos forestales. Datos abiertos de NASA, NOAA y Copernicus. Alertas por Telegram para toda Argentina.",
+      "Si hay un incendio cerca de donde vivís y el viento va hacia tu lado, te avisamos por Telegram antes de que llegue el humo.",
     url: SITE_URL,
   },
   twitter: {
     card: "summary_large_image",
     title: "AlertaForestal — Alertas de incendios forestales en Argentina",
     description:
-      "Detección temprana de focos forestales. Alertas por Telegram con distancia, dirección y ETA.",
+      "Alertas gratis por Telegram si hay un incendio cerca tuyo. Actualización cada 15 minutos. Todo Argentina.",
   },
 };
 

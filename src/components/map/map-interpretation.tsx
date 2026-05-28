@@ -164,15 +164,14 @@ export function MapInterpretation() {
               margin: 0,
             }}
           >
-            Qué está pasando ahora en el mapa
+            Qué está pasando ahora mismo
           </h2>
           <p
             className="text-muted mt-2"
             style={{ fontSize: 14, maxWidth: "62ch" }}
           >
-            Interpretación automática de las tres capas — focos, calidad del
-            aire y viento — generada a partir de los datos visibles en este
-            momento.
+            Un resumen automático de los incendios activos, cómo está el aire
+            y hacia dónde sopla el viento en este momento.
           </p>
         </div>
 
@@ -183,7 +182,7 @@ export function MapInterpretation() {
           <InterpCard
             icon={<Fire size={18} weight="duotone" />}
             color="#e8622c"
-            title="Focos activos"
+            title="Incendios"
             body={firesText}
             loading={loading}
             cta={{ label: "Ver historial", href: "/historial" }}
@@ -209,8 +208,7 @@ export function MapInterpretation() {
           className="font-mono text-muted mt-6"
           style={{ fontSize: 11, letterSpacing: "0.02em" }}
         >
-          Fuente: NASA FIRMS · Open-Meteo CAMS · Open-Meteo Forecast. La lectura
-          se actualiza al recargar la página.
+          Datos: NASA, NOAA y Open-Meteo · Se actualiza cada 15 minutos
         </p>
       </div>
     </section>

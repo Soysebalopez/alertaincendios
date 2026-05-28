@@ -12,18 +12,20 @@ import { fetchTLEs } from "@/lib/satellites-server";
 export const revalidate = 300;
 
 export const metadata: Metadata = {
-  title: "Mapa",
+  title: "Mapa de incendios",
   description:
-    "Mapa interactivo de Argentina con focos de calor, calidad del aire y datos de viento en tiempo real.",
+    "Mapa en tiempo real con incendios activos, calidad del aire y dirección del viento en toda Argentina.",
   alternates: { canonical: "/mapa" },
   openGraph: {
-    title: "Mapa — AlertaForestal",
-    description: "Mapa interactivo con focos de calor, calidad del aire y viento en tiempo real.",
+    title: "Mapa de incendios — AlertaForestal",
+    description:
+      "Mirá en el mapa si hay incendios activos cerca de donde vivís, cómo está el aire y hacia dónde sopla el viento ahora mismo.",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Mapa — AlertaForestal",
-    description: "Mapa interactivo de monitoreo ambiental para Argentina.",
+    title: "Mapa de incendios — AlertaForestal",
+    description:
+      "Mirá en el mapa si hay incendios activos cerca de donde vivís, cómo está el aire y hacia dónde sopla el viento ahora mismo.",
   },
 };
 
@@ -42,7 +44,7 @@ export default async function MapaPage() {
         <div className="absolute top-4 left-4 flex items-center gap-2 bg-background/80 backdrop-blur-sm border border-border rounded-lg px-3 py-2 z-[1000]">
           <Eye size={14} className="text-accent" />
           <span className="font-mono text-[11px] text-muted">
-            NASA FIRMS + CAMS + Open-Meteo
+            Datos en tiempo real · NASA · NOAA · Open-Meteo
           </span>
         </div>
       </div>

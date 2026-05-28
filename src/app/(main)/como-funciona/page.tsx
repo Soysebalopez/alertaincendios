@@ -14,7 +14,7 @@ import { Pill } from "@/components/clara-ui";
 export const metadata: Metadata = {
   title: "Cómo funciona",
   description:
-    "Explicación simple de cómo AlertaForestal detecta incendios forestales en Argentina y te avisa por Telegram.",
+    "Explicación simple de cómo AlertaForestal detecta incendios y te avisa por Telegram antes de que llegue el humo.",
   alternates: { canonical: "/como-funciona" },
 };
 
@@ -52,12 +52,13 @@ const FAQS: { q: string; body: React.ReactNode; icon: React.ReactNode }[] = [
         </p>
         <ul style={{ paddingLeft: 18, marginTop: 6, lineHeight: 1.7 }}>
           <li>
-            <strong>GOES-19</strong> (de la NOAA, Estados Unidos): mira
-            Argentina cada 10 minutos. Detecta rápido, pero con menos precisión.
+            <strong>Satélite GOES-19</strong> (NOAA, Estados Unidos): vigila
+            Argentina cada 10 minutos. Detecta rápido, aunque a veces con
+            menos precisión.
           </li>
           <li>
-            <strong>FIRMS</strong> (de la NASA): pasa cada 3-6 horas pero ve
-            mejor. Confirma si el foco es real.
+            <strong>Satélite NASA FIRMS</strong>: pasa con menos frecuencia
+            pero con mayor resolución. Confirma si el foco es real.
           </li>
         </ul>
         <p>
@@ -85,7 +86,8 @@ const FAQS: { q: string; body: React.ReactNode; icon: React.ReactNode }[] = [
           </li>
           <li>
             Si hay <strong>tormenta eléctrica sin lluvia</strong> cerca tuyo
-            (los rayos son la causa #1 natural de incendios forestales).
+            (los rayos sobre campo seco son la principal causa natural de
+            incendios en Argentina).
           </li>
         </ul>
         <p>
@@ -98,7 +100,7 @@ const FAQS: { q: string; body: React.ReactNode; icon: React.ReactNode }[] = [
   },
   {
     icon: <Lightning size={18} weight="duotone" />,
-    q: "¿Qué es una alerta «preliminar» y una «confirmada»?",
+    q: "¿Qué diferencia hay entre una alerta preliminar y una confirmada?",
     body: (
       <>
         <p>Es cómo nombramos las alertas según qué tan seguros estamos:</p>
@@ -183,10 +185,10 @@ const FAQS: { q: string; body: React.ReactNode; icon: React.ReactNode }[] = [
     body: (
       <>
         <p>
-          Los satélites detectan <strong>calor anómalo</strong>, no fuego
-          directo. Cosas como una chimenea industrial, el sol reflejado en un
-          techo metálico, o una zona agrícola en quema controlada pueden
-          activar una alerta sin que haya un incendio peligroso.
+          Los satélites <strong>miden temperatura</strong>, no ven fuego
+          directamente. Cosas como una chimenea industrial, el sol reflejado
+          en un techo metálico, o una zona agrícola en quema controlada
+          pueden activar una alerta sin que haya un incendio peligroso.
         </p>
         <p>
           Tenemos filtros para descartar la mayoría de esos casos (excluimos
@@ -218,8 +220,8 @@ export default function ComoFuncionaPage() {
               margin: "20px 0 18px",
             }}
           >
-            AlertaForestal:{" "}
-            <span className="text-accent">cómo funciona</span>.
+            Cómo funciona{" "}
+            <span className="text-accent">AlertaForestal</span>.
           </h1>
           <p
             className="text-muted"
@@ -307,13 +309,13 @@ export default function ComoFuncionaPage() {
               margin: "0 0 14px",
             }}
           >
-            ¿Listo para suscribirte?
+            ¿Querés recibir alertas?
           </h2>
           <p
             className="text-muted mx-auto"
             style={{ fontSize: 16, maxWidth: "48ch", margin: "0 auto 28px" }}
           >
-            Toma 30 segundos. Compartís tu ubicación y ya estás cubierto.
+            Son 30 segundos. Compartís tu ubicación y ya estás cubierto.
           </p>
           <a
             href={TELEGRAM_BOT_URL}
