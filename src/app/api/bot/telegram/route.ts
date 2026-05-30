@@ -67,8 +67,12 @@ export async function POST(request: NextRequest) {
   const location = update.message?.location;
 
   try {
-    if (text === "/start") {
-      await logBotCommand(chatId, "/start");
+    if (text === "/start" || text.startsWith("/start ")) {
+      // Deep link t.me/alertaforestal_bot?start=<payload> → "/start <payload>".
+      // El payload queda en bot_commands_log; upsertSubscriber lo resuelve a
+      // `source` cuando el usuario se suscribe (first-write-wins).
+      const startArg = text.startsWith("/start ") ? text.slice(7).trim() : "";
+      await logBotCommand(chatId, "/start", startArg || undefined);
       await handleStart(chatId);
     } else if (text === "/help") {
       await logBotCommand(chatId, "/help");
@@ -92,6 +96,9 @@ export async function POST(request: NextRequest) {
     } else if (text === "/cancelar") {
       await logBotCommand(chatId, "/cancelar");
       await handleCancelar(chatId);
+    } else if (text === "/dejarcuartel") {
+      await logBotCommand(chatId, "/dejarcuartel");
+      await handleDejarCuartel(chatId);
     } else if (text.startsWith("/soybombero")) {
       const arg = text.replace("/soybombero", "").trim();
       await logBotCommand(chatId, "/soybombero", arg ? "<code>" : "");
@@ -143,6 +150,8 @@ const HELP_TEXT =
   "🏙 /ciudad &lt;nombre&gt; — suscribirte por ciudad\n" +
   "📊 /estado — focos activos cerca tuyo\n" +
   "⚡ /rayos — activar/desactivar alerta de tormentas secas\n" +
+  "🚒 /soybombero &lt;código&gt; — modo bombero (para cuarteles)\n" +
+  "🚪 /dejarcuartel — volver a alertas de vecino (bomberos)\n" +
   "ℹ️ /about — sobre el proyecto\n" +
   "❌ /cancelar — eliminar suscripción" +
   FOOTER;
@@ -423,6 +432,40 @@ async function handleCancelar(chatId: number) {
   );
 }
 
+// P1-1 — salir del rol fireman sin perder la suscripción (vuelve a civilian,
+// conserva lat/lng/city_name). Antes la única salida era /cancelar, que borraba
+// todo. Un bombero que rota de cuartel no debería seguir recibiendo alertas
+// operativas ni perder su suscripción de vecino.
+async function handleDejarCuartel(chatId: number) {
+  const db = getSupabase();
+  const { data: sub } = await db
+    .from("subscribers")
+    .select("role")
+    .eq("chat_id", chatId)
+    .maybeSingle();
+
+  if (!sub || sub.role !== "fireman") {
+    await sendMessage(
+      chatId,
+      "ℹ️ No estás registrado como bombero. Si querés cancelar tu suscripción, usá <code>/cancelar</code>." +
+        FOOTER
+    );
+    return;
+  }
+
+  await db
+    .from("subscribers")
+    .update({ role: "civilian", cuartel_name: null })
+    .eq("chat_id", chatId);
+
+  await sendMessage(
+    chatId,
+    "✅ <b>Listo</b>. Volviste a alertas de vecino — seguís suscripto en tu zona y no perdés tu ubicación. " +
+      "Ya no vas a recibir los mensajes operativos de cuartel." +
+      FOOTER
+  );
+}
+
 // WHI-585 — relative minutes since the last fires_cache write (FIRMS sync).
 // Used in /estado to confirm system liveness when there are no fires.
 async function fetchLastFiresCheck(): Promise<number | null> {
@@ -439,18 +482,59 @@ async function fetchLastFiresCheck(): Promise<number | null> {
   }
 }
 
+// P1-4 — origen del alta (attribution). El deep link `/start <payload>` se guarda
+// en bot_commands_log; acá lo resolvemos a `source` la primera vez que el usuario
+// se suscribe. Convención del payload: `cuartel-<slug>` (ej. cuartel-bomberos-ushuaia)
+// o `src-<slug>` (campañas: QR, radio, etc.). Cualquier otra cosa → organic (null).
+function parseStartSource(payload: string): string | null {
+  const p = payload.trim().toLowerCase().slice(0, 64);
+  const m = /^(cuartel|src)-([a-z0-9-]{1,48})$/.exec(p);
+  if (!m) return null;
+  return (m[1] === "cuartel" ? "cuartel:" : "campaign:") + m[2];
+}
+
+async function resolveSource(chatId: number): Promise<string | null> {
+  try {
+    const { data } = await getSupabase()
+      .from("bot_commands_log")
+      .select("args")
+      .eq("chat_id", chatId)
+      .eq("command", "/start")
+      .not("args", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    return data?.args ? parseStartSource(data.args) : null;
+  } catch {
+    return null;
+  }
+}
+
 async function upsertSubscriber(
   chatId: number,
   lat: number,
   lng: number,
   cityName: string
 ) {
-  await getSupabase()
+  const db = getSupabase();
+  // First-write-wins: solo seteamos source si el sub es nuevo o no tenía origen,
+  // para no pisar la atribución original en re-suscripciones.
+  const { data: existing } = await db
     .from("subscribers")
-    .upsert(
-      { chat_id: chatId, lat, lng, city_name: cityName },
-      { onConflict: "chat_id" }
-    );
+    .select("source")
+    .eq("chat_id", chatId)
+    .maybeSingle();
+  const row: Record<string, unknown> = {
+    chat_id: chatId,
+    lat,
+    lng,
+    city_name: cityName,
+  };
+  if (!existing || existing.source == null) {
+    const src = await resolveSource(chatId);
+    if (src) row.source = src;
+  }
+  await db.from("subscribers").upsert(row, { onConflict: "chat_id" });
 }
 
 // WHI-587 — append-only command log for dashboard engagement chart.
@@ -475,9 +559,9 @@ async function handleSoyBombero(chatId: number, code: string) {
     await sendMessage(
       chatId,
       "🚒 <b>Bomberos voluntarios</b>\n\n" +
-        "Si tu cuartel tiene un código de invitación, usalo así:\n" +
+        "Si tu cuartel ya está en AlertaForestal, pedíle el código de invitación al jefe de cuartel y usalo así:\n" +
         "<code>/soybombero TU-CODIGO</code>\n\n" +
-        "Si todavía no tenés código y querés sumar a tu cuartel a AlertaForestal, escribinos." +
+        "¿Tu cuartel todavía no se sumó? Mirá <b>alertaforestal.org/cuarteles</b>." +
         FOOTER
     );
     return;
@@ -549,7 +633,8 @@ async function handleSoyBombero(chatId: number, code: string) {
     await sendMessage(
       chatId,
       `ℹ️ Ya estás registrado como bombero${cuartel ? ` de ${cuartel}` : ""}. ` +
-        "Si querés cancelar, usá <code>/cancelar</code>." +
+        "Si querés volver a alertas de vecino, usá <code>/dejarcuartel</code> (seguís suscripto). " +
+        "Para borrar todo, <code>/cancelar</code>." +
         FOOTER
     );
     return;
@@ -579,8 +664,8 @@ async function handleSoyBombero(chatId: number, code: string) {
     `✅ <b>Listo, bombero de ${cuartel}</b>\n\n` +
       "Desde ahora vas a recibir <b>mensajes operativos</b> cuando se detecte un " +
       "foco confirmado en tu zona. Más conciso, con info para coordinar respuesta.\n\n" +
-      "Si querés volver a alertas civiles, escribí <code>/cancelar</code> y " +
-      "suscribite de nuevo." +
+      "Si querés volver a alertas de vecino, usá <code>/dejarcuartel</code> " +
+      "(seguís suscripto, sin perder tu ubicación)." +
       FOOTER
   );
 }

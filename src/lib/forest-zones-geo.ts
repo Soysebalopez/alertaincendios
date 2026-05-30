@@ -8,6 +8,7 @@ import selvaMisionera from "./forest-polygons/selva-misionera.json";
 import espinalMesopotamico from "./forest-polygons/espinal-mesopotamico.json";
 import sierrasCordoba from "./forest-polygons/sierras-cordoba.json";
 import chacoNorte from "./forest-polygons/chaco-norte.json";
+import tierraDelFuego from "./forest-polygons/tierra-del-fuego.json";
 
 /**
  * Polígonos forestales argentinos derivados de MapBiomas Colección 2 (2024),
@@ -38,6 +39,7 @@ const POLYGONS: Record<string, MultiPolygon> = {
   "espinal-mesopotamico": espinalMesopotamico as MultiPolygon,
   "sierras-cordoba": sierrasCordoba as MultiPolygon,
   "chaco-norte": chacoNorte as MultiPolygon,
+  "tierra-del-fuego": tierraDelFuego as MultiPolygon,
 };
 
 // Bounding boxes pre-computados por zona para fast-reject. Si el punto cae

@@ -22,8 +22,23 @@ const ARGENTINA_VERTICES: Array<[number, number]> = [
   [-68.0, -25.0], [-67.0, -22.0],
 ];
 
-export function isInArgentina(lat: number, lng: number): boolean {
-  const poly = ARGENTINA_VERTICES;
+// Isla Grande de Tierra del Fuego — porción argentina. Ring SEPARADO: la isla
+// está desconectada del continente por el Estrecho de Magallanes; meterla en el
+// ring continental requeriría un conector sobre el agua que incluiría territorio
+// chileno. Borde oeste = meridiano -68.61 (límite Argentina-Chile en la isla);
+// al norte/este/sur, el Atlántico y el canal Beagle. Captura Ushuaia, Río Grande
+// y Tolhuin. DEBE quedar IDÉNTICO al de api/goes-sync.py.
+const TIERRA_DEL_FUEGO_VERTICES: Array<[number, number]> = [
+  [-68.61, -52.6], [-66.0, -52.7], [-64.5, -54.3],
+  [-65.0, -55.05], [-68.0, -55.0], [-68.61, -54.9],
+  [-68.61, -52.6],
+];
+
+function pointInRing(
+  lat: number,
+  lng: number,
+  poly: Array<[number, number]>
+): boolean {
   const n = poly.length;
   let inside = false;
   for (let i = 0, j = n - 1; i < n; j = i++) {
@@ -35,4 +50,11 @@ export function isInArgentina(lat: number, lng: number): boolean {
     if (intersects) inside = !inside;
   }
   return inside;
+}
+
+export function isInArgentina(lat: number, lng: number): boolean {
+  return (
+    pointInRing(lat, lng, ARGENTINA_VERTICES) ||
+    pointInRing(lat, lng, TIERRA_DEL_FUEGO_VERTICES)
+  );
 }

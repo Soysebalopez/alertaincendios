@@ -24,6 +24,7 @@ export const FOREST_ZONES: readonly ForestZone[] = [
   { id: "espinal-mesopotamico", name: "Espinal Mesopotámico" },
   { id: "sierras-cordoba", name: "Sierras de Córdoba" },
   { id: "chaco-norte", name: "Bosque Chaqueño Norte" },
+  { id: "tierra-del-fuego", name: "Bosque Fueguino" },
 ] as const;
 
 /**

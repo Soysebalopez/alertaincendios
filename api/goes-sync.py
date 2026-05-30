@@ -63,6 +63,15 @@ ARGENTINA_VERTICES = [
     (-68.0, -25.0), (-67.0, -22.0),
 ]
 
+# Isla Grande de Tierra del Fuego — porción argentina (ring separado; DEBE quedar
+# IDÉNTICO al de src/lib/argentina-polygon.ts). Borde oeste = meridiano -68.61
+# (límite con Chile en la isla). Captura Ushuaia, Río Grande, Tolhuin.
+TIERRA_DEL_FUEGO_VERTICES = [
+    (-68.61, -52.6), (-66.0, -52.7), (-64.5, -54.3),
+    (-65.0, -55.05), (-68.0, -55.0), (-68.61, -54.9),
+    (-68.61, -52.6),
+]
+
 URBAN_ZONES = [
     # (name, min_lat, max_lat, min_lng, max_lng)
     ("AMBA",          -35.10, -34.30, -58.95, -57.85),
@@ -223,7 +232,10 @@ def extract_filtered_detections(nc_path: str) -> tuple[list[dict], str, dict]:
     for i, (lat, lng) in enumerate(zip(lats, lons)):
         flat = float(lat)
         flng = float(lng)
-        if not point_in_polygon(flng, flat, ARGENTINA_VERTICES):
+        if not (
+            point_in_polygon(flng, flat, ARGENTINA_VERTICES)
+            or point_in_polygon(flng, flat, TIERRA_DEL_FUEGO_VERTICES)
+        ):
             continue
         after_polygon += 1
         if in_any_urban(flat, flng):

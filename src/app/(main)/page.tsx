@@ -714,6 +714,42 @@ export default async function Home() {
         </div>
       </section>
 
+      {/* ─── CUARTELES CTA CARD (P1-2) ─── */}
+      <section className="border-b border-border">
+        <div
+          className="clara-section-padded max-w-[1400px] mx-auto"
+          style={{ padding: "56px 32px" }}
+        >
+          <Link
+            href="/cuarteles"
+            className="group relative flex items-center justify-between rounded-xl transition-all"
+            style={{
+              padding: "28px 28px",
+              background: "var(--surface-2)",
+              border: "1px solid var(--border)",
+            }}
+          >
+            <div>
+              <Pill tone="accent">Bomberos voluntarios</Pill>
+              <div
+                className="mt-3 mb-1 font-semibold text-foreground"
+                style={{ fontSize: 20 }}
+              >
+                ¿Sos bombero? Tu cuartel tiene un canal operativo
+              </div>
+              <div className="text-muted text-[13px]">
+                Alertas crudas con coordenadas, viento y FRP — sin interpretación,
+                para coordinar la respuesta
+              </div>
+            </div>
+            <ArrowUpRight
+              size={22}
+              className="text-accent transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 shrink-0 ml-4"
+            />
+          </Link>
+        </div>
+      </section>
+
       {/* ─── LIVE CITIES (WHI-589 — moved after Evolución de focos) ─── */}
       <section className="border-b border-border" style={{ background: "var(--surface)" }}>
         <div

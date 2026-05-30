@@ -135,6 +135,7 @@ Todo el scheduling corre en Postgres con `pg_cron` + `pg_net`. El secret se lee 
 | `goes-alerts` | `:07,:17,:27,:37,:47,:57` | Preliminary GOES → Telegram |
 | `goes-dismissals` | `:37 hourly` | Falsa alarma + DELETE preliminaries descartadas + huérfanos |
 | `goes-prune` | `3:30 UTC daily` | Cleanup defensivo (>7 días sin alerted) |
+| `lightning-alerts` | `:11,:26,:41,:56` | Tormenta seca → Telegram (rate-limit 30 min/sub) |
 
 ## Variables de entorno
 
