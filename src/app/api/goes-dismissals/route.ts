@@ -43,14 +43,14 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "db_read_failed" }, { status: 500 });
     }
 
-    if (!pending || pending.length === 0) {
-      return NextResponse.json({ pending: 0, sent: 0, reason: "no_dismissals_due" });
-    }
-
+    // P1-3 fix: NO cortar acá cuando no hay dismissals pendientes. La purga de
+    // huérfanos (más abajo) tiene que correr SIEMPRE, también con goes_alerted
+    // vacía (temporada baja). El early-return previo dejaba las preliminares
+    // huérfanas sin limpiar hasta goes-prune (7 días) → ~571 acumuladas.
     let sent = 0;
     const goesIdsToDelete = new Set<number>();
 
-    for (const row of pending) {
+    for (const row of pending ?? []) {
       const sentMinutesAgo = Math.max(
         0,
         Math.round((now - Date.parse(row.preliminary_sent_at)) / 60000)
@@ -111,7 +111,7 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.json({
-      pending: pending.length,
+      pending: pending?.length ?? 0,
       sent,
       purgedDismissed,
       purgedOrphans,

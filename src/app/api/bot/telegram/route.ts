@@ -92,6 +92,9 @@ export async function POST(request: NextRequest) {
     } else if (text === "/cancelar") {
       await logBotCommand(chatId, "/cancelar");
       await handleCancelar(chatId);
+    } else if (text === "/dejarcuartel") {
+      await logBotCommand(chatId, "/dejarcuartel");
+      await handleDejarCuartel(chatId);
     } else if (text.startsWith("/soybombero")) {
       const arg = text.replace("/soybombero", "").trim();
       await logBotCommand(chatId, "/soybombero", arg ? "<code>" : "");
@@ -143,6 +146,7 @@ const HELP_TEXT =
   "🏙 /ciudad &lt;nombre&gt; — suscribirte por ciudad\n" +
   "📊 /estado — focos activos cerca tuyo\n" +
   "⚡ /rayos — activar/desactivar alerta de tormentas secas\n" +
+  "🚒 /soybombero &lt;código&gt; — modo bombero (para cuarteles)\n" +
   "ℹ️ /about — sobre el proyecto\n" +
   "❌ /cancelar — eliminar suscripción" +
   FOOTER;
@@ -423,6 +427,40 @@ async function handleCancelar(chatId: number) {
   );
 }
 
+// P1-1 — salir del rol fireman sin perder la suscripción (vuelve a civilian,
+// conserva lat/lng/city_name). Antes la única salida era /cancelar, que borraba
+// todo. Un bombero que rota de cuartel no debería seguir recibiendo alertas
+// operativas ni perder su suscripción de vecino.
+async function handleDejarCuartel(chatId: number) {
+  const db = getSupabase();
+  const { data: sub } = await db
+    .from("subscribers")
+    .select("role")
+    .eq("chat_id", chatId)
+    .maybeSingle();
+
+  if (!sub || sub.role !== "fireman") {
+    await sendMessage(
+      chatId,
+      "ℹ️ No estás registrado como bombero. Si querés cancelar tu suscripción, usá <code>/cancelar</code>." +
+        FOOTER
+    );
+    return;
+  }
+
+  await db
+    .from("subscribers")
+    .update({ role: "civilian", cuartel_name: null })
+    .eq("chat_id", chatId);
+
+  await sendMessage(
+    chatId,
+    "✅ <b>Listo</b>. Volviste a alertas de vecino — seguís suscripto en tu zona y no perdés tu ubicación. " +
+      "Ya no vas a recibir los mensajes operativos de cuartel." +
+      FOOTER
+  );
+}
+
 // WHI-585 — relative minutes since the last fires_cache write (FIRMS sync).
 // Used in /estado to confirm system liveness when there are no fires.
 async function fetchLastFiresCheck(): Promise<number | null> {
@@ -475,9 +513,9 @@ async function handleSoyBombero(chatId: number, code: string) {
     await sendMessage(
       chatId,
       "🚒 <b>Bomberos voluntarios</b>\n\n" +
-        "Si tu cuartel tiene un código de invitación, usalo así:\n" +
+        "Si tu cuartel ya está en AlertaForestal, pedíle el código de invitación al jefe de cuartel y usalo así:\n" +
         "<code>/soybombero TU-CODIGO</code>\n\n" +
-        "Si todavía no tenés código y querés sumar a tu cuartel a AlertaForestal, escribinos." +
+        "¿Tu cuartel todavía no se sumó? Entrá a alertaforestal.org y conocé el canal operativo para cuarteles." +
         FOOTER
     );
     return;
