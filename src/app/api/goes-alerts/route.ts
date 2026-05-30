@@ -5,6 +5,7 @@ import { haversineKm } from "@/lib/geo";
 import { sendMessage } from "@/lib/telegram";
 import { findForestZone } from "@/lib/forest-zones-geo";
 import { isCronAuthorized } from "@/lib/cron-auth";
+import { pingHealthcheck } from "@/lib/healthcheck";
 import { log } from "@/lib/logger";
 
 /**
@@ -50,6 +51,7 @@ export async function GET(request: Request) {
     }
 
     if (!detections || detections.length === 0) {
+      await pingHealthcheck();
       return NextResponse.json({ processed: 0, alerts: 0, reason: "no_recent_detections" });
     }
 
@@ -58,6 +60,7 @@ export async function GET(request: Request) {
       .select("chat_id, lat, lng, city_name, role, cuartel_name");
 
     if (!subscribers || subscribers.length === 0) {
+      await pingHealthcheck();
       return NextResponse.json({ processed: detections.length, alerts: 0, reason: "no_subscribers" });
     }
 
@@ -159,6 +162,7 @@ export async function GET(request: Request) {
     revalidatePath("/");
     revalidatePath("/mapa");
 
+    await pingHealthcheck();
     return NextResponse.json({
       processed: detections.length,
       subscribers: subscribers.length,

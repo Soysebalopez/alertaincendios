@@ -170,6 +170,7 @@ async function handleStart(chatId: number) {
       "<b>Comandos disponibles:</b>\n" +
       "📊 /estado — focos activos en 100 km a tu alrededor\n" +
       "⚡ /rayos — activar/desactivar alertas de tormenta seca\n" +
+      "🚒 /soybombero — ¿sos bombero? activá el modo cuartel\n" +
       "ℹ️ /about — sobre el proyecto\n" +
       "❓ /help — esta lista de comandos\n" +
       "❌ /cancelar — eliminar tu suscripción" +
