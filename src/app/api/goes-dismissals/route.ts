@@ -90,24 +90,31 @@ export async function GET(request: Request) {
     // WHI-584 follow-up — also purge "orphan" preliminaries: rows older than
     // dismissalWindow without any goes_alerted ever (no subscriber was within
     // 100km, so the prelim never alerted anyone — keeping it is just clutter).
+    // Purga iterativa: PostgREST limita cada SELECT a max-rows (~1000). Sin
+    // iterar, un backlog >1000 (temporada alta) se truncaría EN SILENCIO y
+    // quedaría sin limpiar hasta goes-prune (7d). Iteramos hasta vaciar.
     const orphanCutoff = new Date(now - DISMISSAL_AFTER_HOURS * 60 * 60 * 1000).toISOString();
-    const { data: orphans } = await db
-      .from("goes_preliminary")
-      .select("id, goes_alerted(id)")
-      .lt("detected_at", orphanCutoff);
     let purgedOrphans = 0;
-    if (orphans && orphans.length > 0) {
+    for (let iter = 0; iter < 12; iter++) {
+      const { data: orphans } = await db
+        .from("goes_preliminary")
+        .select("id, goes_alerted(id)")
+        .lt("detected_at", orphanCutoff)
+        .limit(1000);
+      if (!orphans || orphans.length === 0) break;
       const orphanIds = orphans
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .filter((r: any) => !r.goes_alerted || r.goes_alerted.length === 0)
         .map((r: { id: number }) => r.id);
-      if (orphanIds.length > 0) {
-        const { count } = await db
-          .from("goes_preliminary")
-          .delete({ count: "exact" })
-          .in("id", orphanIds);
-        purgedOrphans = count ?? orphanIds.length;
-      }
+      // Si esta tanda no trajo huérfanos, las filas restantes ya alertaron:
+      // no hay más que borrar por esta vía. Corta para no loopear infinito.
+      if (orphanIds.length === 0) break;
+      const { count } = await db
+        .from("goes_preliminary")
+        .delete({ count: "exact" })
+        .in("id", orphanIds);
+      purgedOrphans += count ?? orphanIds.length;
+      if (orphans.length < 1000) break;
     }
 
     return NextResponse.json({

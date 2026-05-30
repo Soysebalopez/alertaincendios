@@ -147,6 +147,7 @@ const HELP_TEXT =
   "📊 /estado — focos activos cerca tuyo\n" +
   "⚡ /rayos — activar/desactivar alerta de tormentas secas\n" +
   "🚒 /soybombero &lt;código&gt; — modo bombero (para cuarteles)\n" +
+  "🚪 /dejarcuartel — volver a alertas de vecino (bomberos)\n" +
   "ℹ️ /about — sobre el proyecto\n" +
   "❌ /cancelar — eliminar suscripción" +
   FOOTER;
@@ -515,7 +516,7 @@ async function handleSoyBombero(chatId: number, code: string) {
       "🚒 <b>Bomberos voluntarios</b>\n\n" +
         "Si tu cuartel ya está en AlertaForestal, pedíle el código de invitación al jefe de cuartel y usalo así:\n" +
         "<code>/soybombero TU-CODIGO</code>\n\n" +
-        "¿Tu cuartel todavía no se sumó? Entrá a alertaforestal.org y conocé el canal operativo para cuarteles." +
+        "¿Tu cuartel todavía no se sumó? Mirá <b>alertaforestal.org/cuarteles</b>." +
         FOOTER
     );
     return;
@@ -587,7 +588,8 @@ async function handleSoyBombero(chatId: number, code: string) {
     await sendMessage(
       chatId,
       `ℹ️ Ya estás registrado como bombero${cuartel ? ` de ${cuartel}` : ""}. ` +
-        "Si querés cancelar, usá <code>/cancelar</code>." +
+        "Si querés volver a alertas de vecino, usá <code>/dejarcuartel</code> (seguís suscripto). " +
+        "Para borrar todo, <code>/cancelar</code>." +
         FOOTER
     );
     return;
@@ -617,8 +619,8 @@ async function handleSoyBombero(chatId: number, code: string) {
     `✅ <b>Listo, bombero de ${cuartel}</b>\n\n` +
       "Desde ahora vas a recibir <b>mensajes operativos</b> cuando se detecte un " +
       "foco confirmado en tu zona. Más conciso, con info para coordinar respuesta.\n\n" +
-      "Si querés volver a alertas civiles, escribí <code>/cancelar</code> y " +
-      "suscribite de nuevo." +
+      "Si querés volver a alertas de vecino, usá <code>/dejarcuartel</code> " +
+      "(seguís suscripto, sin perder tu ubicación)." +
       FOOTER
   );
 }
