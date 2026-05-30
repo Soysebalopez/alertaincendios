@@ -21,9 +21,9 @@ Producto técnicamente terminado, **1 usuario real (el owner), 0 bomberos**. Fas
 ## TODO
 
 ### 🔴 P0 — Bloqueadores (habilitan el piloto)
-- [ ] **P0-1 · Extender `ARGENTINA_VERTICES` para incluir la isla de TdF** — `src/lib/argentina-polygon.ts:13` **+** `api/goes-sync.py:54` (deben quedar IDÉNTICOS). Vértices cuidadosos: meridiano -68.6 (límite Chile norte) y canal Beagle (sur) para no contar focos chilenos. 🟡 toca prod (redeploy).
-- [ ] **P0-2 · Regenerar `andino-patagonico.json` sin recorte en -68** — extender `-projwin` al este (~-65) y re-correr pipeline gdal/mapshaper (CLAUDE.md). 🟡 toca prod.
-- [ ] **P0-3 · Verificación read-only post-fix TdF** — foco sintético (TESTING.md) o real: aparece en `/api/fires`, tagea `forestZone`, y `/ciudad/tierra-del-fuego/{ushuaia,rio-grande,tolhuin}` deja de decir "Sin actividad". Depende de P0-1+P0-2.
+- [x] **P0-1 · Extender el polígono Argentina para incluir la isla de TdF** — *2026-05-30, en branch; pendiente merge+deploy.* Ring SEPARADO `TIERRA_DEL_FUEGO_VERTICES` (borde oeste = meridiano -68.61) + `isInArgentina` ahora hace OR de los dos rings. `src/lib/argentina-polygon.ts` **+** `api/goes-sync.py` (idénticos, verificado). Geometría verificada con test: Ushuaia/Río Grande/Tolhuin entran; Porvenir/Punta Arenas/Navarino (Chile) NO entran al ring nuevo; BA/Bariloche/Río Gallegos siguen OK. (Pre-existente fuera de scope: el ring continental viejo ya incluía Porvenir/Pta Arenas del estrecho.)
+- [ ] **P0-2 · Regenerar `andino-patagonico.json` sin recorte en -68** — extender `-projwin` al este (~-65) y re-correr pipeline gdal/mapshaper (CLAUDE.md). gdal+mapshaper disponibles localmente. 🟡 toca prod. **Companion de P0-1**: sin esto, un foco forestal fueguino se detecta (P0-1) pero no tagea `forestZone` → civiles no lo reciben (firemen sí reciben todo). Para el piloto bombero, P0-1 ya desbloquea; P0-2 cierra la cobertura civil.
+- [ ] **P0-3 · Verificación post-deploy TdF** — geometría ya verificada por test unitario. Falta post-deploy: foco sintético (TESTING.md) o real aparece en `/api/fires`, tagea `forestZone` (requiere P0-2), y `/ciudad/tierra-del-fuego/{ushuaia,rio-grande,tolhuin}` deja de decir "Sin actividad".
 - [x] **P0-4 · Revocar EXECUTE de RPCs sensibles a anon** — *2026-05-30, aplicado a prod (migración `revoke_anon_execute_sensitive_rpcs`).* `clara_cron_secret` + `consume_fireman_code` de anon/authenticated; `clara_cron_health` + `whitebay_daily_metrics` de PUBLIC/anon (dashboard conserva authenticated). Crons corren como postgres (no afectados).
 
 ### 🟠 P1 — Distribución (el corazón) + higiene
@@ -50,4 +50,5 @@ Producto técnicamente terminado, **1 usuario real (el owner), 0 bomberos**. Fas
 - **2026-05-30** — Workflow de investigación (7 agentes) → hallazgo bloqueador TdF + plan.
   - ✅ **P0-4 seguridad** aplicado a prod (migración `revoke_anon_execute_sensitive_rpcs`; verificado anon=false, dashboard intacto). SQL en `scripts/sql/p0-4-revoke-anon-rpcs.sql`.
   - ✅ **P1-1 quick-wins bot** + ✅ **P1-3 fix 571** en branch `feat/tdf-p0-p1-quickwins` (typecheck OK; pendiente PR → merge → deploy del owner).
-  - ⏭️ Próximo: PR de estos cambios; luego P0-1/P0-2 (polígonos TdF — el bloqueador), P1-6 (cron lightning), P1-4 (deep link + source), P1-2 (web /cuarteles).
+  - ✅ **P0-1 polígono TdF** (TS + Python) en branch, geometría verificada con test (`node`). Pendiente merge+deploy.
+  - ⏭️ Próximo: **P0-2** (regenerar polígono forestal — companion de P0-1), **P1-6** (cron lightning), **P1-4** (deep link + source), **P1-2** (web /cuarteles).
