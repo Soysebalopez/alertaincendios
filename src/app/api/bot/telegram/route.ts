@@ -67,8 +67,12 @@ export async function POST(request: NextRequest) {
   const location = update.message?.location;
 
   try {
-    if (text === "/start") {
-      await logBotCommand(chatId, "/start");
+    if (text === "/start" || text.startsWith("/start ")) {
+      // Deep link t.me/alertaforestal_bot?start=<payload> → "/start <payload>".
+      // El payload queda en bot_commands_log; upsertSubscriber lo resuelve a
+      // `source` cuando el usuario se suscribe (first-write-wins).
+      const startArg = text.startsWith("/start ") ? text.slice(7).trim() : "";
+      await logBotCommand(chatId, "/start", startArg || undefined);
       await handleStart(chatId);
     } else if (text === "/help") {
       await logBotCommand(chatId, "/help");
@@ -478,18 +482,59 @@ async function fetchLastFiresCheck(): Promise<number | null> {
   }
 }
 
+// P1-4 — origen del alta (attribution). El deep link `/start <payload>` se guarda
+// en bot_commands_log; acá lo resolvemos a `source` la primera vez que el usuario
+// se suscribe. Convención del payload: `cuartel-<slug>` (ej. cuartel-bomberos-ushuaia)
+// o `src-<slug>` (campañas: QR, radio, etc.). Cualquier otra cosa → organic (null).
+function parseStartSource(payload: string): string | null {
+  const p = payload.trim().toLowerCase().slice(0, 64);
+  const m = /^(cuartel|src)-([a-z0-9-]{1,48})$/.exec(p);
+  if (!m) return null;
+  return (m[1] === "cuartel" ? "cuartel:" : "campaign:") + m[2];
+}
+
+async function resolveSource(chatId: number): Promise<string | null> {
+  try {
+    const { data } = await getSupabase()
+      .from("bot_commands_log")
+      .select("args")
+      .eq("chat_id", chatId)
+      .eq("command", "/start")
+      .not("args", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    return data?.args ? parseStartSource(data.args) : null;
+  } catch {
+    return null;
+  }
+}
+
 async function upsertSubscriber(
   chatId: number,
   lat: number,
   lng: number,
   cityName: string
 ) {
-  await getSupabase()
+  const db = getSupabase();
+  // First-write-wins: solo seteamos source si el sub es nuevo o no tenía origen,
+  // para no pisar la atribución original en re-suscripciones.
+  const { data: existing } = await db
     .from("subscribers")
-    .upsert(
-      { chat_id: chatId, lat, lng, city_name: cityName },
-      { onConflict: "chat_id" }
-    );
+    .select("source")
+    .eq("chat_id", chatId)
+    .maybeSingle();
+  const row: Record<string, unknown> = {
+    chat_id: chatId,
+    lat,
+    lng,
+    city_name: cityName,
+  };
+  if (!existing || existing.source == null) {
+    const src = await resolveSource(chatId);
+    if (src) row.source = src;
+  }
+  await db.from("subscribers").upsert(row, { onConflict: "chat_id" });
 }
 
 // WHI-587 — append-only command log for dashboard engagement chart.
