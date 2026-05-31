@@ -625,10 +625,13 @@ export default async function Home() {
                 margin: "0 0 28px",
               }}
             >
-              No el aviso pensado para vecinos: la detección{" "}
-              <strong className="text-foreground">cruda</strong> —coordenadas,
-              viento y potencia del foco— apenas el satélite la ve, firmada por
-              tu cuartel. Para ganar los minutos que importan en el despacho.
+              Apenas un satélite ve un foco cerca de tu zona, a tu cuartel le
+              llega un mensaje al celular con{" "}
+              <strong className="text-foreground">
+                dónde es, a cuántos kilómetros está y para dónde va el viento
+              </strong>
+              . Los datos justos para organizar la salida — muchas veces antes
+              del primer llamado.
             </p>
             <ul
               style={{
@@ -642,19 +645,19 @@ export default async function Home() {
               {[
                 {
                   icon: <MapPin size={15} weight="duotone" />,
-                  t: "Coordenadas exactas + link a Google Maps",
+                  t: "Dónde es: ubicación exacta + link a Google Maps",
                 },
                 {
                   icon: <Wind size={15} weight="duotone" />,
-                  t: "Viento y potencia del foco (FRP)",
+                  t: "Para dónde va: viento y fuerza del foco",
                 },
                 {
                   icon: <Fire size={15} weight="duotone" />,
-                  t: "Todos los focos detectados, sin filtro forestal",
+                  t: "Todos los focos de tu zona, no solo los forestales",
                 },
                 {
                   icon: <Broadcast size={15} weight="duotone" />,
-                  t: "Datos crudos, sin interpretación de IA",
+                  t: "Te llega al instante, sin filtros ni vueltas",
                 },
               ].map((r) => (
                 <li key={r.t} className="flex items-center gap-3">
