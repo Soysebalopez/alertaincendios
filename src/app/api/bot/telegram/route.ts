@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { sendMessage } from "@/lib/telegram";
+import { sendMessage, answerCallbackQuery } from "@/lib/telegram";
+import { parseFeedbackCallback } from "@/lib/feedback-keyboard";
 import { geocodeCity } from "@/lib/geocode";
 import { fetchFires } from "@/lib/firms";
 import { haversineKm } from "@/lib/geo";
@@ -21,6 +22,12 @@ interface TelegramUpdate {
     text?: string;
     location?: { latitude: number; longitude: number };
     from?: { first_name: string };
+  };
+  callback_query?: {
+    id: string;
+    from: { id: number };
+    message?: { message_id: number; chat: { id: number } };
+    data?: string;
   };
 }
 
@@ -60,6 +67,14 @@ export async function POST(request: NextRequest) {
   }
 
   const update: TelegramUpdate = await request.json();
+
+  // Voto de feedback comunitario (botón inline). Se maneja ANTES que message y
+  // SIEMPRE devuelve {ok:true} — un fallo nunca debe hacer reintentar el webhook.
+  if (update.callback_query) {
+    await handleVote(update.callback_query);
+    return NextResponse.json({ ok: true });
+  }
+
   const chatId = update.message?.chat.id;
   if (!chatId) return NextResponse.json({ ok: true });
 
@@ -155,6 +170,103 @@ const HELP_TEXT =
   "ℹ️ /about — sobre el proyecto\n" +
   "❌ /cancelar — eliminar suscripción" +
   FOOTER;
+
+// Feedback comunitario — un tap de botón = un voto (append-only en `feedback`).
+// SENSOR DE UN SOLO SENTIDO (asimetría ética, FEEDBACK_COMUNITARIO_SPEC.md §5):
+// esta función SOLO inserta en `feedback`; jamás lee ni escribe el estado de una
+// alerta (ai_alerted_fires / goes_alerted / goes_preliminary). Todo envuelto para
+// responder answerCallbackQuery siempre y nunca romper el webhook.
+async function handleVote(cb: {
+  id: string;
+  from: { id: number };
+  message?: { message_id: number; chat: { id: number } };
+  data?: string;
+}) {
+  try {
+    const parsed = parseFeedbackCallback(cb.data);
+    if (!parsed) {
+      await answerCallbackQuery(cb.id);
+      return;
+    }
+    const chatId = cb.from.id; // firmado por Telegram = subscribers.chat_id
+    const db = getSupabase();
+
+    // Solo cuentan votos de suscriptores reales.
+    const { data: sub } = await db
+      .from("subscribers")
+      .select("lat, lng")
+      .eq("chat_id", chatId)
+      .maybeSingle();
+    if (!sub) {
+      await answerCallbackQuery(
+        cb.id,
+        "Suscribite primero compartiendo tu ubicación 📍"
+      );
+      return;
+    }
+
+    // Reconstruir el snapshot del foco (§6.2). FIRMS: lat/lng embebidos en el
+    // fire_key. GOES: leer goes_preliminary (puede haberse borrado → queda null).
+    let fireLat: number | null = null;
+    let fireLng: number | null = null;
+    let frp: number | null = null;
+    if (parsed.source === "firms") {
+      const m = /^(-?\d+\.\d+)_(-?\d+\.\d+)_/.exec(parsed.alertId.slice(2));
+      if (m) {
+        fireLat = parseFloat(m[1]);
+        fireLng = parseFloat(m[2]);
+      }
+    } else {
+      const goesId = Number(parsed.alertId.slice(2));
+      if (Number.isFinite(goesId)) {
+        const { data: prelim } = await db
+          .from("goes_preliminary")
+          .select("lat, lng, frp_mw")
+          .eq("id", goesId)
+          .maybeSingle();
+        if (prelim) {
+          fireLat = prelim.lat;
+          fireLng = prelim.lng;
+          frp = prelim.frp_mw ?? null;
+        }
+      }
+    }
+
+    const distanceKm =
+      fireLat != null && fireLng != null && sub.lat != null && sub.lng != null
+        ? haversineKm(sub.lat, sub.lng, fireLat, fireLng)
+        : null;
+    const localHour = (new Date().getUTCHours() + 24 - 3) % 24; // Argentina UTC-3
+
+    await db.from("feedback").insert({
+      alert_id: parsed.alertId,
+      alert_source: parsed.source,
+      chat_id: chatId,
+      response: parsed.response,
+      distance_km: distanceKm,
+      fire_lat: fireLat,
+      fire_lng: fireLng,
+      sub_lat: sub.lat,
+      sub_lng: sub.lng,
+      frp,
+      local_hour: localHour,
+    });
+
+    await logBotCommand(chatId, `vote:${parsed.response}`, parsed.alertId);
+    // Toast que no desalienta NINGÚN voto (incluido "no veo nada").
+    await answerCallbackQuery(cb.id, "¡Gracias! Tu observación nos ayuda 🙏");
+  } catch (e) {
+    log.error({
+      event: "bot.vote_failed",
+      err: e instanceof Error ? e.message : String(e),
+    });
+    try {
+      await answerCallbackQuery(cb.id);
+    } catch {
+      // best-effort
+    }
+  }
+}
 
 async function handleStart(chatId: number) {
   await sendMessage(

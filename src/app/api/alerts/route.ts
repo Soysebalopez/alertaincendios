@@ -5,6 +5,7 @@ import { fetchFires, FirePoint } from "@/lib/firms";
 import { fetchWind, degreesToCardinal } from "@/lib/wind";
 import { haversineKm, isUpwind, smokeEtaMinutes } from "@/lib/geo";
 import { sendMessage } from "@/lib/telegram";
+import { buildFeedbackKeyboard } from "@/lib/feedback-keyboard";
 import { forestZoneName } from "@/lib/forest-zones";
 import { isCronAuthorized } from "@/lib/cron-auth";
 import { log } from "@/lib/logger";
@@ -137,7 +138,15 @@ export async function GET(request: Request) {
         // /dashboard si fuera necesario. Alternativa rechazada: revertir el
         // INSERT — abre una ventana de race nueva entre el delete y otro cron.
         try {
-          await sendMessage(sub.chat_id, message);
+          // Feedback comunitario: teclado de validación solo a civilian (el
+          // fireman valida despachando, no votando). alert_id = "f:"+fireKey.
+          await sendMessage(
+            sub.chat_id,
+            message,
+            isFireman
+              ? undefined
+              : { reply_markup: buildFeedbackKeyboard("f:" + fireKey) }
+          );
           log.info({
             event: "alerts.sent",
             fireKey,

@@ -43,3 +43,26 @@ export async function setMyCommands(commands: BotCommand[]): Promise<boolean> {
   );
   return res.ok;
 }
+
+/**
+ * Responde un callback_query (saca el spinner del botón). `text` muestra un toast
+ * efímero (showAlert=true → popup modal). Best-effort, mismo patrón que sendMessage.
+ */
+export async function answerCallbackQuery(
+  callbackQueryId: string,
+  text?: string,
+  showAlert = false
+): Promise<void> {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) return;
+
+  await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      callback_query_id: callbackQueryId,
+      ...(text ? { text } : {}),
+      show_alert: showAlert,
+    }),
+  });
+}
