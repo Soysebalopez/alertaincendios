@@ -7,6 +7,8 @@ import {
   Bell,
   Shield,
   ArrowUpRight,
+  Fire,
+  Broadcast,
 } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
 import { FireCounter } from "@/components/fire-counter";
@@ -571,6 +573,197 @@ export default async function Home() {
         </div>
       </section>
 
+      {/* ─── BOMBEROS — canal operativo (sección dedicada) ─── */}
+      <section
+        className="border-b border-border relative overflow-hidden"
+        style={{ background: "var(--surface-2)" }}
+      >
+        {/* grilla de coordenadas táctica (motivo del sitio, tinte acento) */}
+        <div
+          aria-hidden
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            backgroundImage:
+              "linear-gradient(var(--accent-soft) 1px, transparent 1px), linear-gradient(90deg, var(--accent-soft) 1px, transparent 1px)",
+            backgroundSize: "48px 48px",
+            maskImage:
+              "radial-gradient(ellipse at 72% 45%, black, transparent 72%)",
+            WebkitMaskImage:
+              "radial-gradient(ellipse at 72% 45%, black, transparent 72%)",
+            opacity: 0.6,
+          }}
+        />
+        <div
+          className="relative max-w-[1400px] mx-auto grid grid-cols-1 lg:grid-cols-[1.1fr_1fr] gap-12 lg:gap-16 items-center clara-section-padded"
+          style={{ padding: "88px 32px" }}
+        >
+          {/* Pitch */}
+          <div>
+            <Pill tone="accent">
+              <Fire size={11} weight="fill" /> Bomberos voluntarios
+            </Pill>
+            <h2
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "clamp(34px, 4.6vw, 52px)",
+                fontWeight: 800,
+                letterSpacing: "-0.035em",
+                lineHeight: 1.04,
+                margin: "20px 0 16px",
+              }}
+            >
+              El canal operativo
+              <br />
+              de <span className="text-accent">tu cuartel</span>.
+            </h2>
+            <p
+              className="text-muted"
+              style={{
+                fontSize: 17,
+                lineHeight: 1.55,
+                maxWidth: "46ch",
+                margin: "0 0 28px",
+              }}
+            >
+              No el aviso pensado para vecinos: la detección{" "}
+              <strong className="text-foreground">cruda</strong> —coordenadas,
+              viento y potencia del foco— apenas el satélite la ve, firmada por
+              tu cuartel. Para ganar los minutos que importan en el despacho.
+            </p>
+            <ul
+              style={{
+                listStyle: "none",
+                margin: "0 0 32px",
+                padding: 0,
+                display: "grid",
+                gap: 12,
+              }}
+            >
+              {[
+                {
+                  icon: <MapPin size={15} weight="duotone" />,
+                  t: "Coordenadas exactas + link a Google Maps",
+                },
+                {
+                  icon: <Wind size={15} weight="duotone" />,
+                  t: "Viento y potencia del foco (FRP)",
+                },
+                {
+                  icon: <Fire size={15} weight="duotone" />,
+                  t: "Todos los focos detectados, sin filtro forestal",
+                },
+                {
+                  icon: <Broadcast size={15} weight="duotone" />,
+                  t: "Datos crudos, sin interpretación de IA",
+                },
+              ].map((r) => (
+                <li key={r.t} className="flex items-center gap-3">
+                  <span
+                    className="grid place-items-center text-accent shrink-0"
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 7,
+                      background: "var(--accent-soft)",
+                    }}
+                  >
+                    {r.icon}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 15,
+                      color:
+                        "color-mix(in oklab, var(--foreground) 88%, transparent)",
+                    }}
+                  >
+                    {r.t}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <Link
+              href="/cuarteles"
+              className="group inline-flex items-center gap-3 text-white font-semibold transition-transform active:scale-[0.98]"
+              style={{
+                padding: "15px 24px",
+                borderRadius: 13,
+                background: "var(--accent)",
+                fontSize: 16,
+                textDecoration: "none",
+                boxShadow: "0 18px 38px -16px var(--accent)",
+              }}
+            >
+              Sumá a tu cuartel{" "}
+              <ArrowRight
+                size={17}
+                className="transition-transform group-hover:translate-x-0.5"
+              />
+            </Link>
+          </div>
+
+          {/* Mockup del mensaje operativo real — mostrar, no contar */}
+          <div
+            style={{
+              background: "var(--background)",
+              border: "1px solid var(--border)",
+              borderLeft: "3px solid var(--accent)",
+              borderRadius: 14,
+              padding: "22px",
+              boxShadow: "0 30px 70px -34px rgba(0,0,0,0.7)",
+            }}
+          >
+            <div className="flex items-center gap-2" style={{ marginBottom: 14 }}>
+              <span style={{ fontSize: 16 }}>🚨</span>
+              <span
+                className="text-foreground font-semibold"
+                style={{ fontSize: 14, fontFamily: "var(--font-sans)" }}
+              >
+                Foco a 4 km — coordinación
+              </span>
+            </div>
+            <div
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 12.5,
+                lineHeight: 1.7,
+                color:
+                  "color-mix(in oklab, var(--foreground) 84%, transparent)",
+                display: "grid",
+                gap: 6,
+              }}
+            >
+              <div>
+                <span className="text-muted">lat</span> -54.802&nbsp;&nbsp;&nbsp;
+                <span className="text-muted">lng</span> -68.301
+              </div>
+              <div>
+                <span className="text-muted">FRP</span> 32 MW&nbsp;&nbsp;·&nbsp;&nbsp;
+                <span className="text-muted">confianza</span> alta
+              </div>
+              <div>
+                <span className="text-muted">viento</span> NO 18 km/h → hacia el
+                casco
+              </div>
+              <div className="text-accent" style={{ wordBreak: "break-all" }}>
+                maps.google.com/?q=-54.802,-68.301
+              </div>
+            </div>
+            <div
+              className="text-muted"
+              style={{
+                borderTop: "1px solid var(--border)",
+                marginTop: 14,
+                paddingTop: 12,
+                fontFamily: "var(--font-mono)",
+                fontSize: 11.5,
+              }}
+            >
+              🚒 Bomberos Voluntarios de Ushuaia · vía Clara
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ─── DATA SOURCES ─── */}
       <section className="border-b border-border" style={{ background: "var(--surface)" }}>
         <div
@@ -704,42 +897,6 @@ export default async function Home() {
               </div>
               <div className="text-muted text-[13px]">
                 Agregación diaria desde NASA FIRMS · Backfill histórico
-              </div>
-            </div>
-            <ArrowUpRight
-              size={22}
-              className="text-accent transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 shrink-0 ml-4"
-            />
-          </Link>
-        </div>
-      </section>
-
-      {/* ─── CUARTELES CTA CARD (P1-2) ─── */}
-      <section className="border-b border-border">
-        <div
-          className="clara-section-padded max-w-[1400px] mx-auto"
-          style={{ padding: "56px 32px" }}
-        >
-          <Link
-            href="/cuarteles"
-            className="group relative flex items-center justify-between rounded-xl transition-all"
-            style={{
-              padding: "28px 28px",
-              background: "var(--surface-2)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            <div>
-              <Pill tone="accent">Bomberos voluntarios</Pill>
-              <div
-                className="mt-3 mb-1 font-semibold text-foreground"
-                style={{ fontSize: 20 }}
-              >
-                ¿Sos bombero? Tu cuartel tiene un canal operativo
-              </div>
-              <div className="text-muted text-[13px]">
-                Alertas crudas con coordenadas, viento y FRP — sin interpretación,
-                para coordinar la respuesta
               </div>
             </div>
             <ArrowUpRight
