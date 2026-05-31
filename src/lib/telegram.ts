@@ -29,7 +29,11 @@ export type BotCommand = { command: string; description: string };
  * Este menú NO se deriva del webhook: hay que pushearlo explícitamente con
  * setMyCommands. Se invoca desde /api/bot/sync-commands.
  */
-export async function setMyCommands(commands: BotCommand[]): Promise<boolean> {
+export async function setMyCommands(
+  commands: BotCommand[],
+  scope?: { type: string },
+  languageCode?: string
+): Promise<boolean> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) return false;
 
@@ -38,7 +42,11 @@ export async function setMyCommands(commands: BotCommand[]): Promise<boolean> {
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ commands }),
+      body: JSON.stringify({
+        commands,
+        ...(scope ? { scope } : {}),
+        ...(languageCode ? { language_code: languageCode } : {}),
+      }),
     }
   );
   return res.ok;
