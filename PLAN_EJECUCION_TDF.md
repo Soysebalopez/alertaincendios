@@ -59,5 +59,9 @@ Producto técnicamente terminado, **1 usuario real (el owner), 0 bomberos**. Fas
   - ✅ **P1-4 instrumentación source** — columna en prod + parser de deep link en branch. Links de outreach listos.
   - ✅ **PR #48 MERGEADO + desplegado a prod** (commit 9c95a94). alertaforestal.org sirve el deploy nuevo; /cuarteles 200. Cobertura TdF LIVE.
   - ✅ **Kit de outreach TdF** en `~/Documents/whitebay/Proyectos/AlertaForestal/Outreach-TdF.md`.
-  - 🔧 **Branch `feat/bot-menu-and-deadmanswitch`**: fix del menú nativo del bot (setMyCommands via /api/bot/sync-commands) + bomberos en /start + dead-man's-switch (ping a HEALTHCHECK_PING_URL en goes-alerts). Pendiente: mergear + disparar sync-commands.
-  - ⏭️ Próximo: mergear esa branch → disparar sync-commands → P0-3 (foco real) → outreach P1-5 (acción owner). Pendiente menor: clara_cron_health con net._http_response; métrica dashboard; .env.example.
+  - ✅ **PR #49 MERGEADO + deploy** (commit 8b21227): menú nativo del bot (setMyCommands via `/api/bot/sync-commands` — disparado vía Supabase, `200 {ok:true,count:8}`) + `/soybombero` en `/start` + dead-man's-switch (ping a `HEALTHCHECK_PING_URL` en goes-alerts).
+- **2026-05-31** — **🌲 MOAT: captura de feedback comunitario** — branch `feat/feedback-comunitario` (spec completo en `FEEDBACK_COMUNITARIO_SPEC.md`).
+  - ✅ Tabla `feedback` (append-only, RLS on, sin policies) aplicada a prod (`create_feedback_table`).
+  - ✅ Teclado inline de 5 botones (`src/lib/feedback-keyboard.ts`) en alertas FIRMS + GOES **solo civilian**; `answerCallbackQuery` en `telegram.ts`; `handleVote` en el webhook (**sensor de un solo sentido**: solo INSERT en `feedback`, jamás toca el estado de una alerta — asimetría ética blindada); snapshot reconstruido (distancia/lat-lng/frp/hora local UTC-3); tests del parser + budget 64B. typecheck OK.
+  - ⏭️ Pendiente: mergear PR → verificación E2E con foco sintético (TESTING.md). **LATER** (con volumen): ponderación por reglas + cuadrante-3 (reportar humo sin alerta previa) + ML.
+  - ⏭️ Resto del piloto: outreach **P1-5** (acción owner). Pendiente menor: `clara_cron_health` con `net._http_response`; métrica dashboard; `.env.example`.

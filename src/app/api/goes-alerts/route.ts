@@ -6,6 +6,7 @@ import { sendMessage } from "@/lib/telegram";
 import { findForestZone } from "@/lib/forest-zones-geo";
 import { isCronAuthorized } from "@/lib/cron-auth";
 import { pingHealthcheck } from "@/lib/healthcheck";
+import { buildFeedbackKeyboard } from "@/lib/feedback-keyboard";
 import { log } from "@/lib/logger";
 
 /**
@@ -132,7 +133,15 @@ export async function GET(request: Request) {
           ? formatFiremanPreliminary(det, sub.city_name, distKm, cuartel, zone?.name ?? null)
           : formatPreliminary(det, sub.city_name, distKm, zone?.name ?? null);
         try {
-          await sendMessage(sub.chat_id, message);
+          // Feedback comunitario: teclado de validación solo a civilian.
+          // alert_id = "g:"+det.id (det.id = goes_preliminary.id).
+          await sendMessage(
+            sub.chat_id,
+            message,
+            isFireman
+              ? undefined
+              : { reply_markup: buildFeedbackKeyboard("g:" + det.id) }
+          );
           log.info({
             event: "goes_alerts.sent",
             goesId: det.id,
