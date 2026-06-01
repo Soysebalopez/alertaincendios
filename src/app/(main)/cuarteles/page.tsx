@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
-  ArrowRight,
   TelegramLogo,
   Broadcast,
   MapPinLine,
@@ -9,6 +8,7 @@ import {
   Fire,
 } from "@phosphor-icons/react/dist/ssr";
 import { Pill } from "@/components/clara-ui";
+import { CuartelRequestForm } from "@/components/cuarteles/cuartel-request-form";
 
 export const metadata: Metadata = {
   title: "Bomberos voluntarios",
@@ -249,14 +249,17 @@ export default function CuartelesPage() {
 
           <p className="text-muted" style={{ fontSize: 14, lineHeight: 1.6, marginTop: 24 }}>
             ¿Sos jefe de cuartel y tu cuartel todavía no está? Estamos sumando
-            cuarteles de a uno en esta etapa. Escribinos por el bot y coordinamos
-            el alta de tu cuartel.
+            cuarteles de a uno en esta etapa. Pedí el alta con el formulario de
+            acá abajo y coordinamos.
           </p>
         </div>
       </section>
 
-      {/* CTA */}
-      <section className="border-b border-border relative overflow-hidden">
+      {/* CTA — form de alta de cuartel */}
+      <section
+        id="sumar-cuartel"
+        className="border-b border-border relative overflow-hidden"
+      >
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
@@ -284,25 +287,27 @@ export default function CuartelesPage() {
             className="text-muted mx-auto"
             style={{ fontSize: 16, maxWidth: "48ch", margin: "0 auto 28px" }}
           >
-            Suscribite al bot y validá tu rol con el código de tu cuartel.
+            Dejanos los datos de tu cuartel y te contactamos para darlo de alta y
+            generar el código de tu dotación.
           </p>
-          <a
-            href={TELEGRAM_BOT_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-3 text-white font-semibold transition-transform active:scale-[0.98]"
-            style={{
-              padding: "16px 26px",
-              borderRadius: 14,
-              background: "var(--accent)",
-              fontSize: 16,
-              textDecoration: "none",
-              boxShadow: "0 20px 40px -16px var(--accent)",
-            }}
+
+          <CuartelRequestForm />
+
+          <p
+            className="text-muted mx-auto"
+            style={{ fontSize: 14, maxWidth: "48ch", margin: "28px auto 0" }}
           >
-            <TelegramLogo size={18} weight="fill" /> Abrir @alertaforestal_bot{" "}
-            <ArrowRight size={16} />
-          </a>
+            ¿Tu cuartel ya tiene código?{" "}
+            <a
+              href={TELEGRAM_BOT_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-accent inline-flex items-center gap-1.5"
+            >
+              <TelegramLogo size={15} weight="fill" /> Activá el modo bombero desde
+              el bot
+            </a>
+          </p>
           <div className="mt-5">
             <Link
               href="/"
