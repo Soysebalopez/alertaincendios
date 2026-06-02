@@ -35,6 +35,7 @@ Alertas tempranas de incendios forestales en Argentina vía Telegram. El bot del
 - Ciudad: `/ciudad/[province]/[city]` — SSG 78 páginas, dashboard completo por ciudad
 - Historial: `/historial` — Recharts evolución de focos
 - Cómo funciona: `/como-funciona` — FAQ ciudadano (8 preguntas, sin jerga)
+- Cuarteles: `/cuarteles` — landing para bomberos voluntarios (comparativa vecino/bombero, cómo activar el rol con código) + **form de alta de cuartel** que envía la solicitud por email vía Resend (`<CuartelRequestForm>` → `/api/cuarteles/request`). Opción A del onboarding fireman: contacto manual, sin auto-emisión de códigos todavía
 - Dashboard: `/dashboard`, `/dashboard/alerts`, `/dashboard/health` — métricas internas, gated por Supabase Auth allowlist (soysebalopez@gmail.com)
 - Login: `/login` — entry point del dashboard
 
@@ -52,6 +53,7 @@ Alertas tempranas de incendios forestales en Argentina vía Telegram. El bot del
 - `/api/summary?lat=X&lng=Y&city=Name` — Groq summary
 - `/api/history?lat=X&lng=Y&pollutant=NO2&days=7` — historial por contaminante
 - `/api/simulate` — POST, dispersión gaussiana (Pasquill-Gifford)
+- `/api/cuarteles/request` — POST, recibe el form de alta de cuartel y manda email al owner vía **Resend** (lazy init, `from: onboarding@resend.dev`, reply-to al email del cuartel). Honeypot anti-spam + rate-limit 5/min/IP. Requiere `RESEND_API_KEY` en env (Production); sin la key devuelve `email_unavailable`
 - `/api/bot/telegram` — webhook Telegram
 
 ### API Routes — Cron (auth CRON_SECRET)
