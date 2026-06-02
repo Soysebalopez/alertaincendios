@@ -1,8 +1,17 @@
 # Fireman Onboarding — Plan & Context
 
-**Status:** ⏸️ PAUSED · 2026-05-22 — postergado a un update futuro a pedido del owner.
+**Status:** 🟡 OPCIÓN A IMPLEMENTADA · 2026-06-02 — form de contacto live; el flujo completo (auto-emisión de códigos, Opción C) sigue pendiente/pausado.
 **Owner:** soysebalopez@gmail.com
-**Última revisión:** 2026-05-22
+**Última revisión:** 2026-06-02
+
+> **Update 2026-06-02 — Opción A live.** Se implementó el form de alta de cuartel en `/cuarteles`
+> que envía la solicitud por email al owner vía **Resend** (`/api/cuarteles/request` +
+> `<CuartelRequestForm>`). Reemplaza el dead-end "Escribinos por el bot" (el bot solo procesa
+> comandos). `RESEND_API_KEY` configurada en Production; verificado end-to-end (mail llega a Gmail).
+> Remitente `onboarding@resend.dev` (dominio Resend sin verificar todavía). PR #54. Spec en
+> `docs/superpowers/specs/2026-06-01-cuarteles-form-design.md`. El owner sigue emitiendo códigos a
+> mano por SQL — las Opciones B/C (tablas `cuarteles`/`cuartel_requests`, auto-emisión, dashboard
+> de requests) quedan pendientes.
 
 ---
 
