@@ -21,9 +21,9 @@ Alertas tempranas de incendios forestales en Argentina vía Telegram. El bot del
 ## Design System
 - Font: Outfit (headings + body) + Geist Mono (data/labels)
 - Palette: near-black (#0a0a08), warm beige foreground (#d4d4cc), burnt orange accent (#e8622c)
-- Surfaces: #131311, #1a1a17 — borders: #252520 — muted: #8a8a7e
-- Coordinate grid overlay (60px, accent tint)
-- Ember particles (CSS, float up), scanline effect
+- Surfaces: #121210, #1a1a17 — borders: #252520 — muted: #8a8a7e
+- Coordinate grid overlay (60px, masked radial fade) + soft SVG grain overlay (`.grain`, fractalNoise, mix-blend overlay)
+- Ember particles (CSS, float up), thermal-pulse / beacon-ping live indicators
 - Nav text uses color-mix(in oklab, foreground 80%, transparent)
 
 ## Architecture
@@ -36,7 +36,7 @@ Alertas tempranas de incendios forestales en Argentina vía Telegram. El bot del
 - Historial: `/historial` — Recharts evolución de focos
 - Cómo funciona: `/como-funciona` — FAQ ciudadano (8 preguntas, sin jerga)
 - Cuarteles: `/cuarteles` — landing para bomberos voluntarios (comparativa vecino/bombero, cómo activar el rol con código) + **form de alta de cuartel** que envía la solicitud por email vía Resend (`<CuartelRequestForm>` → `/api/cuarteles/request`). Opción A del onboarding fireman: contacto manual, sin auto-emisión de códigos todavía
-- Dashboard: `/dashboard`, `/dashboard/alerts`, `/dashboard/health` — métricas internas, gated por Supabase Auth allowlist (soysebalopez@gmail.com)
+- Dashboard: `/dashboard`, `/dashboard/alerts`, `/dashboard/health`, `/dashboard/superadmin` — métricas internas (`superadmin` agrega breakdown de subscribers, top cuarteles, funnel GOES, latencias, forest split), gated por Supabase Auth allowlist (soysebalopez@gmail.com)
 - Login: `/login` — entry point del dashboard
 
 ### Route Groups
@@ -55,11 +55,13 @@ Alertas tempranas de incendios forestales en Argentina vía Telegram. El bot del
 - `/api/simulate` — POST, dispersión gaussiana (Pasquill-Gifford)
 - `/api/cuarteles/request` — POST, recibe el form de alta de cuartel y manda email al owner vía **Resend** (lazy init, `from: onboarding@resend.dev`, reply-to al email del cuartel). Honeypot anti-spam + rate-limit 5/min/IP. Requiere `RESEND_API_KEY` en env (Production); sin la key devuelve `email_unavailable`
 - `/api/bot/telegram` — webhook Telegram
+- `/api/bot/sync-commands` — registra el menú nativo del bot (lo que Telegram muestra al tocar "/") vía `setMyCommands`. NO se deriva del webhook; re-ejecutar con `?secret=<CRON_SECRET>` cada vez que cambia la lista de comandos
 
-### API Routes — Cron (auth CRON_SECRET)
+### API Routes — Cron
+Autorización vía `isCronAuthorized()` en `src/lib/cron-auth.ts`: acepta el secret por `?secret=` (pg_cron + pg_net) o `Authorization: Bearer`, compara con `process.env.CRON_SECRET` con `timingSafeEqual`, fail-closed si la env no está seteada. (pg_cron lo lee de la DB vía `clara_cron_secret()` — ver Config.)
 - `/api/fires/sync` — manual FIRMS sync (IP residencial)
-- `/api/alerts` — FIRMS → Telegram, con confirmation upgrade si matchea preliminary GOES (<5km, <2h). **Filtro forestal (WHI-758)**: civilian solo alertas en zona forestal, fireman ve todo.
-- `/api/goes-sync` — **Python**, descarga GOES-19 ABI-L2-FDCF, filtros, inserta en goes_preliminary, guarda stats en goes_sync_runs
+- `/api/alerts` — FIRMS → Telegram, con confirmation upgrade si matchea preliminary GOES (<5km, <2h). Aplica el filtro forestal (ver Key Patterns).
+- `/api/goes-sync` — **Python** (`api/goes-sync.py`), descarga GOES-19 ABI-L2-FDCF, filtros, inserta en goes_preliminary, guarda stats en goes_sync_runs
 - `/api/goes-alerts` — preliminary → Telegram + tracking en goes_alerted. Mismo filtro forestal que `/api/alerts`.
 - `/api/goes-dismissals` — falsa alarma + DELETE preliminary descartadas + huérfanos
 - `/api/lightning-alerts` — tormenta seca (OpenWeather + Open-Meteo fallback)
@@ -107,7 +109,7 @@ Alertas tempranas de incendios forestales en Argentina vía Telegram. El bot del
 - `fires-fetch` (`0,15,30,45 * * * *`) — pg_net GET a FIRMS, stores request_id
 - `fires-process` (`2,17,32,47 * * * *`) — parsea CSV, REEMPLAZA fires_cache
 - `fires-alerts` (`4,19,34,49 * * * *`) — `/api/alerts` (FIRMS + confirmation upgrades)
-- `fires-daily-snapshot` (`55 23 * * *` = 20:55 ART) — snapshot diario. Corre al final del día UTC (no ART) porque FIRMS sirve solo "current UTC day" y `fires_cache` se reemplaza en cada fetch — el horario UTC tardío asegura ~24h del día UTC acumuladas. Schedule anterior (`55 2 * * *` = 02:55 UTC) corría con cache casi vacío → 41 días en 0 entre 2026-04-11 y 2026-05-22
+- `fires-daily-snapshot` (`55 23 * * *` = 20:55 ART) — snapshot diario. DEBE correr al final del día UTC (no ART): FIRMS sirve solo "current UTC day" y `fires_cache` se reemplaza en cada fetch, así que el horario UTC tardío es lo único que garantiza ~24h del día UTC acumuladas. Correrlo temprano en UTC produce snapshots en 0 (cache casi vacío)
 - `goes-sync` (`5,15,25,35,45,55 * * * *`) — `/api/goes-sync` Python pipeline
 - `goes-alerts` (`7,17,27,37,47,57 * * * *`) — `/api/goes-alerts` preliminary → Telegram
 - `goes-dismissals` (`37 * * * *` hourly) — falsa alarma + DELETE preliminary descartadas + huérfanos
@@ -133,7 +135,7 @@ Alertas tempranas de incendios forestales en Argentina vía Telegram. El bot del
 - Dispersión: Gaussian plume (Pasquill-Gifford) en `src/lib/dispersion.ts`
 - Fire history backfill: `scripts/backfill-fires.sh` con MAP_KEY desde `scripts/backfill.env` (gitignored)
 - Leaflet maps con dynamic import + ssr:false
-- Dual-channel alerts: civilian (con AI interpretation) vs fireman (operativo, sin AI, firmado por cuartel) — determinado por `subscribers.role`
+- **Filtro forestal por rol (canónico)**: `subscribers.role` determina (a) qué focos llegan — civilian solo recibe alertas en zona forestal, fireman recibe todo — y (b) el tono del mensaje: civilian con AI interpretation, fireman operativo sin AI firmado por cuartel. Aplica en `/api/alerts` y `/api/goes-alerts`. El mismo filtro (sin rol) gobierna landing/mapa/`/ciudad` (ver Forest classification > Aplicado en).
 - Doble confirmación: preliminary GOES → confirmation upgrade FIRMS si <5km/<2h → dismissal automático tras 4h
 - Preliminaries descartadas se BORRAN de goes_preliminary (cascade goes_alerted) — el landing metric "Preliminares activos" refleja solo lo pendiente
 
@@ -142,16 +144,16 @@ Alertas tempranas de incendios forestales en Argentina vía Telegram. El bot del
 **Pivote conceptual del producto**: CLARA pasó de "monitor de detecciones térmicas con filtros de exclusión" a "monitor de focos en zona forestal con opcional ver todo". El landing, mapa, /ciudad y bot Telegram aplican el mismo filtro.
 
 ### Datos
-- **Fuente**: MapBiomas Argentina Colección 2 (2024), clase 3 "Formación Forestal". 6 polígonos pre-procesados a JSON:
-  - `andino-patagonico`, `yungas`, `selva-misionera`, `espinal-mesopotamico`, `sierras-cordoba`, `chaco-norte` en `src/lib/forest-polygons/*.json`
+- **Fuente**: MapBiomas Argentina Colección 2 (2024), clase 3 "Formación Forestal". 7 polígonos pre-procesados a JSON:
+  - `andino-patagonico`, `yungas`, `selva-misionera`, `espinal-mesopotamico`, `sierras-cordoba`, `chaco-norte`, `tierra-del-fuego` en `src/lib/forest-polygons/*.json`
 - **Pipeline reproducible** (en local, no en CI):
   - Download `argentina_coverage_2024.tif` de `storage.googleapis.com/mapbiomas-public/initiatives/argentina/collection-2/coverage/`
   - Por zona: `gdal_translate -projwin` → `gdal_calc "A==3"` → `gdalwarp -tr 0.005` (downsample a ~500m) → `gdal_polygonize` → `mapshaper -filter-islands min-area=20km2 -dissolve -simplify dp 2% keep-shapes -clean` → precision 3 decimales
-  - **Total: 167 KB** combinados, server-only.
+  - **Total: ~205 KB** combinados, server-only.
 
 ### Arquitectura del lib
-- `src/lib/forest-zones.ts` — **client-safe**, metadata only (id + name + `forestZoneName()`). 35 líneas.
-- `src/lib/forest-zones-geo.ts` — **server-only** (`import "server-only"`). Carga los 6 JSON polígonos + expone `findForestZone()` con buffer WUI 5km y fast-reject por bbox pre-computado.
+- `src/lib/forest-zones.ts` — **client-safe**, metadata only (id + name + `forestZoneName()`). 37 líneas.
+- `src/lib/forest-zones-geo.ts` — **server-only** (`import "server-only"`). Carga los 7 JSON polígonos + expone `findForestZone()` con buffer WUI 5km y fast-reject por bbox pre-computado.
 - IDs de zona estables — los tags `forestZone` en `fires_cache` no necesitan migración entre versiones.
 
 ### Buffer WUI 5km
@@ -163,7 +165,7 @@ Alertas tempranas de incendios forestales en Argentina vía Telegram. El bot del
 - **Hero**: `forestTotal = high + moderate + low` (todos los wildfires en forestZone). Sub-line muestra "+N fuera de zona forestal".
 - **Mapa `/`**: capa Focos forestales filtra `f.forestZone` truthy. Toggle "+ No forestal" muestra los grises translúcidos (no-forestal con opacidad baja para no competir visualmente).
 - **`/ciudad/[p]/[c]`**: bloque `<CityForestFires>` muestra los 3 focos forestales más cercanos en 100km. Si 0, mensaje positivo "Sin actividad forestal en 100 km" (tono `--good`).
-- **Bot Telegram**: `/api/alerts` y `/api/goes-alerts` filtran focos no forestales para subscribers civilian. Fireman siempre recibe todo. Mensaje incluye línea "🌲 Zona: {nombre}".
+- **Bot Telegram**: `/api/alerts` y `/api/goes-alerts` filtran por rol (ver Key Patterns > Filtro forestal). Mensaje incluye línea "🌲 Zona: {nombre}".
 
 ## Satellite trajectories (WHI-752 a WHI-755)
 
@@ -181,7 +183,7 @@ Alertas tempranas de incendios forestales en Argentina vía Telegram. El bot del
 - **`/ciudad/[p]/[c]`** (`<CitySatelliteCoverage>`): card con "Última pasada VIIRS hace Xh" + "Próxima pasada en Yh". Fetch a `/api/satellites/tles` (1h CDN cache), re-computa cada 5min client-side. Para evitar React 19 purity rule, guarda `computedAt` con el state.
 
 ## SEO
-- Title template: "%s — CLARA"
+- Title template: "%s — AlertaForestal" (default: "AlertaForestal — Alertas de incendios forestales en Argentina")
 - robots.ts: allow all excepto /api/, /dashboard, /login
 - sitemap.ts: estáticas + 78 ciudades + /como-funciona = ~85 URLs
 - JSON-LD: WebApplication en root layout, Place + GeoCoordinates por ciudad
@@ -192,43 +194,13 @@ Alertas tempranas de incendios forestales en Argentina vía Telegram. El bot del
 - HSTS, X-Frame-Options DENY, X-Content-Type-Options, Referrer-Policy, Permissions-Policy en `next.config.ts`
 - RLS habilitado en todas las tablas, anon/auth roles bloqueados — service_role bypassea
 - Migrado al nuevo sistema de API keys de Supabase: `sb_publishable_*` (anon) + `sb_secret_*` (service role). Legacy JWT system disabled.
-- CRON_SECRET centralizado en `_clara_config` + `clara_cron_secret()` función — no literal en cron jobs
+- CRON_SECRET nunca literal en cron jobs (ver Config + API Routes — Cron para el doble path)
 - Secrets fuera del repo (.env*, scripts/*.env gitignored). Templates en *.env.example
 - Procedimiento de rotación documentado en `SECURITY-AUDIT.md`
 
-## Project Status (2026-05-19)
-- **Fase 1** Mejoras inmediatas: 67% (falta WHI-542 dominio — owner action)
-- **Fase 2** GOES detection: ✅ **100%** (WHI-545/546/547 + v2/v3 + filter funnel)
-- **Fase 3** Optimización: solo queda WHI-550 WhatsApp — owner action. WHI-548 (GLM) y WHI-549 (super-res) Canceled con docs.
-- **Fase 4** Trayectorias satelitales: ✅ **100%** (WHI-752/753/754/755)
-- **Fase 5** Pivote forestal: ✅ **100%** (WHI-756/757/758/759/760/761 + Chaco Norte)
-
-### Tickets cerrados recientes (sesión 2026-05-19)
-- WHI-750: fix contador preliminares + copy "Focos" vs "Incendios"
-- WHI-752-755: sistema de trayectorias satelitales (badge hero, ground tracks /mapa, cobertura por ciudad)
-- WHI-756: pivote conceptual a producto de prevención forestal (parent)
-- WHI-757: filtro forestal en landing + mapa (focos no-forestales pasan a opacidad baja)
-- WHI-758: filtro forestal en bot Telegram (civilian → solo forestal, fireman → todo)
-- WHI-759: bloque "focos forestales cerca de [ciudad]" en /ciudad para SEO + valor al usuario
-- WHI-760: WUI buffer 5km en `findForestZone` para capturar interfaz urbano-forestal
-- WHI-761: reemplazo de polígonos hand-drawn por MapBiomas Coll 2 oficial + Chaco Norte
-
-### Tickets cerrados (sesiones previas)
-- WHI-545: pipeline GOES-19 production
-- WHI-546: filtros v1/v2/v3 (mask, polígono ARG, urban, dedup, persistencia, Vaca Muerta, agricultural)
-- WHI-547: doble confirmación (preliminary/confirmed/dismissed)
-- WHI-581-585: bot rotation, mensajes mejorados, landing reorder, página /como-funciona, filtros v3
-- WHI-586: auditoría de seguridad + rotación completa de secrets
-- WHI-587: dashboard interno (Supabase Auth, métricas, filter funnel)
-- WHI-588: rol fireman v1 (Sprint 1 deployed)
-- WHI-589: reorden landing
-- WHI-590: página /como-funciona
-- WHI-582: OG image dinámica
-
-### Pendiente (owner action)
-- WHI-542 dominio propio
-- WHI-550 WhatsApp Business
-- WHI-591 SMS (análisis hecho, decisión pendiente)
+## Current focus
+- El producto está construido (detección dual GOES/FIRMS, pivote forestal, trayectorias satelitales, bot Telegram, dashboard) pero tiene casi 0 usuarios. Foco actual: **go-to-market** vía cuarteles de bomberos voluntarios. Plan en `founders_meeting.md`.
+- Estado de fases, tickets y pendientes (dominio propio, WhatsApp, SMS) viven en Linear (CLARA project) + git history — no en este archivo.
 
 ## Docs en el repo
 - `README.md` — overview para humanos + bot commands + APIs
@@ -238,6 +210,3 @@ Alertas tempranas de incendios forestales en Argentina vía Telegram. El bot del
 - `scripts/glm-spike/REPORT.md` — GLM evaluation (defer)
 - `scripts/super-res-research/REPORT.md` — super-resolución (rejected)
 - `scripts/WHI-581-bot-rotation.md` — procedimiento rotación bot
-
-## Proyecto Whitebay
-Este proyecto es parte del ecosistema Whitebay.
