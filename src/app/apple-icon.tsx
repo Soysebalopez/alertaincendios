@@ -13,7 +13,7 @@ export default async function AppleIcon() {
         style={{
           width: "100%",
           height: "100%",
-          background: "#0a0a08",
+          background: "#f4f1ea",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -27,7 +27,7 @@ export default async function AppleIcon() {
         >
           <path
             d="M 24 4 C 33 4 40 11 40 20 C 40 30 24 44 24 44 C 24 44 8 30 8 20 C 8 11 15 4 24 4 Z"
-            fill="#e8622c"
+            fill="#d2541d"
           />
           <path
             d="M 24 11 C 26 14 30 17 30 21 A 6 7 0 1 1 18 21 C 18 17 20 16 21 15 C 20 17 21 19 23 19 C 25 19 24 16 24 11 Z"

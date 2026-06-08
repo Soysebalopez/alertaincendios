@@ -14,16 +14,16 @@ export default async function Image() {
         style={{
           width: "100%",
           height: "100%",
-          background: "#0a0a08",
+          background: "#f4f1ea",
           display: "flex",
           flexDirection: "column",
           padding: "64px 80px",
           position: "relative",
-          color: "#d4d4cc",
+          color: "#1b1a15",
           fontFamily: "system-ui, -apple-system, sans-serif",
         }}
       >
-        {/* Coordinate grid (subtle, ember-toned) */}
+        {/* Coordinate grid (subtle, warm-dark on paper) */}
         <div
           style={{
             position: "absolute",
@@ -32,7 +32,7 @@ export default async function Image() {
             right: 0,
             bottom: 0,
             backgroundImage:
-              "linear-gradient(rgba(232,98,44,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(232,98,44,0.06) 1px, transparent 1px)",
+              "linear-gradient(rgba(40,30,14,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(40,30,14,0.05) 1px, transparent 1px)",
             backgroundSize: "60px 60px",
             display: "flex",
           }}
@@ -47,7 +47,7 @@ export default async function Image() {
             width: 720,
             height: 720,
             background:
-              "radial-gradient(circle, rgba(232,98,44,0.22) 0%, rgba(232,98,44,0) 70%)",
+              "radial-gradient(circle, rgba(210,84,29,0.18) 0%, rgba(210,84,29,0) 70%)",
             borderRadius: 9999,
             display: "flex",
           }}
@@ -65,7 +65,7 @@ export default async function Image() {
           >
             <path
               d="M 24 4 C 33 4 40 11 40 20 C 40 30 24 44 24 44 C 24 44 8 30 8 20 C 8 11 15 4 24 4 Z"
-              fill="#e8622c"
+              fill="#d2541d"
             />
             <path
               d="M 24 11 C 26 14 30 17 30 21 A 6 7 0 1 1 18 21 C 18 17 20 16 21 15 C 20 17 21 19 23 19 C 25 19 24 16 24 11 Z"
@@ -85,7 +85,7 @@ export default async function Image() {
             </div>
             <div
               style={{
-                color: "#8a8a7e",
+                color: "#76705f",
                 fontSize: 14,
                 letterSpacing: "0.12em",
                 fontFamily: "monospace",
@@ -121,7 +121,7 @@ export default async function Image() {
           </div>
           <div
             style={{
-              color: "rgba(212,212,204,0.68)",
+              color: "rgba(27,26,21,0.66)",
               fontSize: 26,
               lineHeight: 1.4,
               maxWidth: 880,
@@ -140,7 +140,7 @@ export default async function Image() {
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            color: "#8a8a7e",
+            color: "#76705f",
             fontSize: 18,
             fontFamily: "monospace",
             letterSpacing: "0.06em",
@@ -149,14 +149,14 @@ export default async function Image() {
         >
           <div style={{ display: "flex", gap: 22, alignItems: "center" }}>
             <span>NASA FIRMS</span>
-            <span style={{ color: "#3a3a30" }}>·</span>
+            <span style={{ color: "#cfc9bb" }}>·</span>
             <span>NOAA GOES-19</span>
-            <span style={{ color: "#3a3a30" }}>·</span>
+            <span style={{ color: "#cfc9bb" }}>·</span>
             <span>78 ciudades</span>
-            <span style={{ color: "#3a3a30" }}>·</span>
-            <span style={{ color: "#e8622c", fontWeight: 700 }}>GRATIS</span>
+            <span style={{ color: "#cfc9bb" }}>·</span>
+            <span style={{ color: "#d2541d", fontWeight: 700 }}>GRATIS</span>
           </div>
-          <div style={{ color: "#d4d4cc", fontWeight: 600 }}>
+          <div style={{ color: "#1b1a15", fontWeight: 600 }}>
             alertaforestal.org
           </div>
         </div>
