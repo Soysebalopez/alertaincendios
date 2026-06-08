@@ -80,40 +80,40 @@ const FireHistoryChart = React.memo(function FireHistoryChart({
           >
             <defs>
               <linearGradient id="fire-gradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#e8622c" stopOpacity={0.35} />
-                <stop offset="95%" stopColor="#e8622c" stopOpacity={0} />
+                <stop offset="5%" stopColor="#d2541d" stopOpacity={0.32} />
+                <stop offset="95%" stopColor="#d2541d" stopOpacity={0} />
               </linearGradient>
             </defs>
             <CartesianGrid
               strokeDasharray="3 3"
-              stroke="#252520"
-              strokeOpacity={0.6}
+              stroke="#e2ddd0"
+              strokeOpacity={0.9}
             />
             <XAxis
               dataKey="date"
-              tick={{ fontSize: 10, fill: "#8a8a7e" }}
+              tick={{ fontSize: 10, fill: "#76705f" }}
               tickFormatter={(d: string) => {
                 const parts = d.split("-");
                 return `${parts[2]}/${parts[1]}`;
               }}
-              axisLine={{ stroke: "#252520" }}
+              axisLine={{ stroke: "#e2ddd0" }}
               tickLine={false}
               interval="preserveStartEnd"
             />
             <YAxis
-              tick={{ fontSize: 10, fill: "#8a8a7e" }}
+              tick={{ fontSize: 10, fill: "#76705f" }}
               axisLine={false}
               tickLine={false}
               domain={[0, "auto"]}
             />
             <Tooltip
               contentStyle={{
-                backgroundColor: "#1a1a17",
-                border: "1px solid #252520",
+                backgroundColor: "#ffffff",
+                border: "1px solid #e2ddd0",
                 borderRadius: "8px",
                 fontSize: "11px",
                 padding: "8px 12px",
-                color: "#d4d4cc",
+                color: "#1b1a15",
               }}
               formatter={(value) => [`${value} focos`, "Detecciones"]}
               labelFormatter={(d) => {
@@ -129,15 +129,15 @@ const FireHistoryChart = React.memo(function FireHistoryChart({
             <Area
               type="monotone"
               dataKey="count"
-              stroke="#e8622c"
+              stroke="#d2541d"
               strokeWidth={2}
               fill="url(#fire-gradient)"
               dot={false}
               activeDot={{
                 r: 3,
-                stroke: "#e8622c",
+                stroke: "#d2541d",
                 strokeWidth: 2,
-                fill: "#1a1a17",
+                fill: "#ffffff",
               }}
             />
           </AreaChart>

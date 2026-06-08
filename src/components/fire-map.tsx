@@ -204,7 +204,7 @@ function buildPopup(f: FirePoint): string {
     </div>
 
     <a href="${gMapsUrl}" target="_blank" rel="noopener noreferrer"
-       style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#e8622c;text-decoration:none;font-weight:500">
+       style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#d2541d;text-decoration:none;font-weight:500">
       Ver en Google Maps &#8599;
     </a>
   </div>`;
@@ -352,7 +352,7 @@ export function FireMap({
     });
 
     L.tileLayer(
-      "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+      "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
       { maxZoom: 18 }
     ).addTo(map);
 
@@ -449,16 +449,18 @@ export function FireMap({
                   title={`${f.label} · ${f.range}`}
                   className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-mono transition-all duration-200 border select-none cursor-pointer"
                   style={{
-                    background: isActive ? `${f.color}18` : "#0a0a08cc",
-                    borderColor: isActive ? `${f.color}40` : "#25252080",
-                    color: isActive ? f.color : "#8a8a7e60",
-                    opacity: isActive ? 1 : 0.6,
+                    background: isActive ? `${f.color}18` : "#ffffffcc",
+                    borderColor: isActive ? `${f.color}55` : "#e2ddd0cc",
+                    color: isActive ? f.color : "#76705f",
+                    opacity: isActive ? 1 : 0.75,
+                    backdropFilter: "blur(4px)",
+                    WebkitBackdropFilter: "blur(4px)",
                   }}
                 >
                   <span>{f.label}</span>
                   <span
                     className="font-semibold tabular-nums"
-                    style={{ color: isActive ? f.color : "#8a8a7e40" }}
+                    style={{ color: isActive ? f.color : "#76705f99" }}
                   >
                     {count}
                   </span>
@@ -471,10 +473,12 @@ export function FireMap({
                 title="Quemas agrícolas, flaring y otra actividad fuera de zona forestal"
                 className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-mono transition-all duration-200 border select-none cursor-pointer"
                 style={{
-                  background: showNonForest ? "#8a8a7e22" : "#0a0a08cc",
-                  borderColor: showNonForest ? "#8a8a7e60" : "#25252080",
-                  color: showNonForest ? "#d4d4cc" : "#8a8a7e60",
-                  opacity: showNonForest ? 1 : 0.6,
+                  background: showNonForest ? "#8a8a7e22" : "#ffffffcc",
+                  borderColor: showNonForest ? "#8a8a7e80" : "#e2ddd0cc",
+                  color: showNonForest ? "#1b1a15" : "#76705f",
+                  opacity: showNonForest ? 1 : 0.75,
+                  backdropFilter: "blur(4px)",
+                  WebkitBackdropFilter: "blur(4px)",
                 }}
               >
                 <span>+ No forestal</span>
@@ -486,9 +490,9 @@ export function FireMap({
           <div
             className="flex flex-col gap-1 rounded-lg px-3 py-2 font-mono text-[10px] leading-tight select-none"
             style={{
-              background: "#0a0a08cc",
-              border: "1px solid #25252080",
-              color: "#8a8a7eb0",
+              background: "#ffffffcc",
+              border: "1px solid #e2ddd0cc",
+              color: "#76705f",
               backdropFilter: "blur(4px)",
               WebkitBackdropFilter: "blur(4px)",
             }}
