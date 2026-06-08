@@ -53,7 +53,7 @@ export function CityMap({
     });
 
     L.tileLayer(
-      "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+      "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
       { maxZoom: 18 },
     ).addTo(map);
 
@@ -62,7 +62,7 @@ export function CityMap({
 
     // City center marker
     const cityIcon = L.divIcon({
-      html: `<div style="width:14px;height:14px;border-radius:50%;background:#e8622c;border:2px solid #0a0a08;box-shadow:0 0 12px rgba(232,98,44,0.5)"></div>`,
+      html: `<div style="width:14px;height:14px;border-radius:50%;background:#d2541d;border:2px solid #ffffff;box-shadow:0 0 0 1px rgba(40,30,14,0.15),0 0 12px rgba(210,84,29,0.45)"></div>`,
       className: "",
       iconSize: [14, 14],
       iconAnchor: [7, 7],
@@ -181,7 +181,7 @@ export function CityMap({
       {/* Data panel — left side, SatAI style */}
       <div className="absolute top-3 left-3 z-[1000] flex flex-col gap-2 w-64 max-h-[calc(100%-24px)] overflow-y-auto">
         {/* Citizen summary */}
-        <CollapsibleCard title="Resumen ciudadano" accent="#e8622c">
+        <CollapsibleCard title="Resumen ciudadano" accent="#d2541d">
           {summary ? (
             <p className="text-xs text-foreground/70 leading-relaxed">
               {summary}

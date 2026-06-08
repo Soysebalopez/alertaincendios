@@ -181,7 +181,7 @@ export function MapInterpretation() {
         >
           <InterpCard
             icon={<Fire size={18} weight="duotone" />}
-            color="#e8622c"
+            color="#d2541d"
             title="Incendios"
             body={firesText}
             loading={loading}

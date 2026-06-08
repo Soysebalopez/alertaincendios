@@ -94,33 +94,33 @@ const PollutantChart = React.memo(function PollutantChart({
             </defs>
             <CartesianGrid
               strokeDasharray="3 3"
-              stroke="#252520"
-              strokeOpacity={0.8}
+              stroke="#e2ddd0"
+              strokeOpacity={0.9}
             />
             <XAxis
               dataKey="date"
-              tick={{ fontSize: 10, fill: "#6b6b60" }}
+              tick={{ fontSize: 10, fill: "#76705f" }}
               tickFormatter={(d: string) => {
                 const parts = d.split("-");
                 return `${parts[2]}/${parts[1]}`;
               }}
-              axisLine={{ stroke: "#252520" }}
+              axisLine={{ stroke: "#e2ddd0" }}
               tickLine={false}
             />
             <YAxis
-              tick={{ fontSize: 10, fill: "#6b6b60" }}
+              tick={{ fontSize: 10, fill: "#76705f" }}
               axisLine={false}
               tickLine={false}
               domain={[0, "auto"]}
             />
             <Tooltip
               contentStyle={{
-                backgroundColor: "#1a1a17",
-                border: "1px solid #252520",
+                backgroundColor: "#ffffff",
+                border: "1px solid #e2ddd0",
                 borderRadius: "8px",
                 fontSize: "11px",
                 padding: "6px 10px",
-                color: "#d4d4cc",
+                color: "#1b1a15",
               }}
               formatter={(value) => [`${value} ug/m3`, label]}
               labelFormatter={(d) => {
@@ -143,7 +143,7 @@ const PollutantChart = React.memo(function PollutantChart({
                 r: 3,
                 stroke: color,
                 strokeWidth: 2,
-                fill: "#1a1a17",
+                fill: "#ffffff",
               }}
             />
           </AreaChart>
