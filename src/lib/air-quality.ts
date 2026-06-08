@@ -28,11 +28,12 @@ export const AIR_LEVEL_LABELS: Record<AirLevel, string> = {
   dangerous: "Peligroso",
 };
 
+// Semáforo OMS afinado para contraste sobre fondo claro (design handoff).
 export const AIR_LEVEL_COLORS: Record<AirLevel, string> = {
-  good: "#7db97d",
-  moderate: "#e8b94c",
-  bad: "#e8622c",
-  dangerous: "#d94545",
+  good: "#4d8f54",
+  moderate: "#bd8512",
+  bad: "#d2541d",
+  dangerous: "#c23a3a",
 };
 
 export const POLLUTANT_LABELS: Record<string, string> = {
