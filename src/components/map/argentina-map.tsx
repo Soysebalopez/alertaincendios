@@ -5,6 +5,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { PROVINCES } from "@/lib/argentina-cities";
 import { AIR_LEVEL_COLORS, type AirLevel } from "@/lib/air-quality";
+import { forestZoneName } from "@/lib/forest-zones";
 import {
   computeGroundTrack,
   currentSubSatellitePoint,
@@ -59,6 +60,66 @@ function frpBucket(frp: number): Intensity {
   return "low";
 }
 
+/** Etiqueta legible de confianza VIIRS (l/n/h) para la lista de focos. */
+function confLabel(c: string): string {
+  if (c === "h" || c === "high") return "conf. alta";
+  if (c === "l" || c === "low") return "conf. baja";
+  return "conf. media";
+}
+
+/** "actualizado hace X" a partir del timestamp ISO de /api/fires. */
+function timeAgo(iso: string | null): string {
+  if (!iso) return "";
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const secs = Math.max(0, Math.floor((Date.now() - then) / 1000));
+  if (secs < 90) return "hace instantes";
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `hace ${mins} min`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `hace ${hrs} h`;
+  return `hace ${Math.floor(hrs / 24)} d`;
+}
+
+// Íconos de capa (line-art, heredan currentColor del botón .clp-layer).
+const ICON_PROPS = {
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.5,
+  strokeLinecap: "round" as const,
+  strokeLinejoin: "round" as const,
+};
+const FireIcon = () => (
+  <svg {...ICON_PROPS}>
+    <path d="M12 3c1 3 4 5 4 9a4 4 0 1 1-8 0c0-2 1-3 2-4-1 2 0 3 1 3s1-2 1-4c0-2 0-3 0-4z" />
+  </svg>
+);
+const AirIcon = () => (
+  <svg {...ICON_PROPS}>
+    <path d="M12 3s6 6 6 11a6 6 0 0 1-12 0c0-5 6-11 6-11z" />
+  </svg>
+);
+const WindIcon = () => (
+  <svg {...ICON_PROPS}>
+    <path d="M3 8h10a3 3 0 1 0-3-3" />
+    <path d="M3 12h16a3 3 0 1 1-3 3" />
+    <path d="M3 16h7" />
+  </svg>
+);
+const SatIcon = () => (
+  <svg {...ICON_PROPS}>
+    <circle cx="12" cy="12" r="2" />
+    <path d="M16.24 7.76a6 6 0 0 1 0 8.49M7.76 16.24a6 6 0 0 1 0-8.49" />
+  </svg>
+);
+const LayersIcon = () => (
+  <svg {...ICON_PROPS} width="14" height="14">
+    <path d="m12 2 9 5-9 5-9-5 9-5z" />
+    <path d="m3 12 9 5 9-5" />
+  </svg>
+);
+
 export function ArgentinaMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<L.Map | null>(null);
@@ -97,6 +158,12 @@ export function ArgentinaMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
   const [nonForestCount, setNonForestCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ fires: 0, cities: 0 });
+  // Datos para el side panel del diseño: lista de focos forestales recientes
+  // (ordenados por FRP) + timestamp de actualización del cache FIRMS.
+  const [recentFires, setRecentFires] = useState<FirePoint[]>([]);
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
+  // Drawer del panel en mobile (en desktop el panel es estático, ver globals.css).
+  const [panelOpen, setPanelOpen] = useState(false);
 
   const toggleIntensity = useCallback((key: Intensity) => {
     setIntensities((prev) => {
@@ -134,7 +201,7 @@ export function ArgentinaMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
     });
 
     L.tileLayer(
-      "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+      "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
       { maxZoom: 18 },
     ).addTo(map);
 
@@ -172,6 +239,14 @@ export function ArgentinaMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
         // El contador top-level "Focos" refleja únicamente los forestales por
         // default. Suma los no-forestales solo cuando el toggle está activo.
         setStats((s) => ({ ...s, fires: c.high + c.moderate + c.low }));
+        // Panel: top focos forestales por FRP para la lista "Focos recientes".
+        setRecentFires(
+          fires
+            .filter((f) => f.forestZone)
+            .sort((a, b) => b.frp - a.frp)
+            .slice(0, 14),
+        );
+        setUpdatedAt(typeof data.updated === "string" ? data.updated : null);
       } catch {}
     }
 
@@ -385,164 +460,228 @@ export function ArgentinaMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
   }, [intensities, intensityCounts, showNonForest]);
 
   return (
-    <div className="relative w-full" style={{ height: "100%", minHeight: "600px" }}>
-      <div ref={mapRef} style={{ width: "100%", height: "100%", position: "absolute", inset: 0 }} />
+    <div className="clara-map-shell">
+      {/* Backdrop del drawer (solo mobile) */}
+      <div
+        className={`clara-map-backdrop ${panelOpen ? "is-open" : ""}`}
+        onClick={() => setPanelOpen(false)}
+        aria-hidden
+      />
 
-      {/* Layer toggles */}
-      <div className="absolute top-4 right-4 z-[1000] flex flex-col gap-1">
-        <LayerToggle
-          label="Focos forestales"
-          color="#f97316"
-          active={layers.fires}
-          count={stats.fires}
-          onClick={() => setLayers((l) => ({ ...l, fires: !l.fires }))}
-        />
-        {/* Sub-chips de intensidad — solo aparecen si la capa Focos está activa */}
-        {layers.fires && stats.fires > 0 && (
-          <div className="flex flex-col gap-1 ml-3 mt-0.5 pl-2 border-l border-border/60">
-            {(Object.keys(INTENSITY_META) as Intensity[]).map((key) => {
-              const meta = INTENSITY_META[key];
-              const count = intensityCounts[key];
-              if (count === 0) return null;
-              const active = intensities.has(key);
-              return (
-                <button
-                  key={key}
-                  onClick={() => toggleIntensity(key)}
-                  title={meta.range}
-                  className="flex items-center gap-2 rounded-md px-2 py-1 text-[10px] font-mono transition-all bg-surface-2/70 backdrop-blur-sm"
-                  style={{
-                    color: active ? meta.color : "#8a8a7e80",
-                    opacity: active ? 1 : 0.55,
-                  }}
-                >
-                  <span
-                    className="h-1.5 w-1.5 rounded-full shrink-0"
-                    style={{ backgroundColor: active ? meta.color : "#333" }}
-                  />
-                  {meta.label}
-                  <span className="text-muted/60 tabular-nums">{count}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-        {/* WHI-757: toggle "ver no forestal". Solo visible si hay focos
-            no-forestales para sumar (i.e. cuando hay actividad agro/industrial
-            detectada esa jornada). */}
-        {layers.fires && nonForestCount > 0 && (
-          <div className="ml-3 mt-0.5 pl-2 border-l border-border/60">
-            <button
-              onClick={() => setShowNonForest((v) => !v)}
-              title="Quemas agrícolas, flaring y otra actividad fuera de zona forestal"
-              className="flex items-center gap-2 rounded-md px-2 py-1 text-[10px] font-mono transition-all bg-surface-2/70 backdrop-blur-sm"
-              style={{
-                color: showNonForest ? "#8a8a7e" : "#8a8a7e80",
-                opacity: showNonForest ? 1 : 0.55,
-              }}
-            >
-              <span
-                className="h-1.5 w-1.5 rounded-full shrink-0"
-                style={{ backgroundColor: showNonForest ? "#8a8a7e" : "#333" }}
-              />
-              + No forestal
-              <span className="text-muted/60 tabular-nums">{nonForestCount}</span>
-            </button>
-          </div>
-        )}
-        <LayerToggle
-          label="Aire"
-          color="#22c55e"
-          active={layers.air}
-          count={stats.cities}
-          onClick={() => setLayers((l) => ({ ...l, air: !l.air }))}
-        />
-        <LayerToggle
-          label="Viento"
-          color="#3b82f6"
-          active={layers.wind}
-          onClick={() => setLayers((l) => ({ ...l, wind: !l.wind }))}
-        />
-        {renderableTles.length > 0 && (
-          <>
-            <LayerToggle
-              label="Satélites"
-              color="#7ed3e8"
-              active={layers.satellites}
-              count={renderableTles.length}
-              onClick={() => setLayers((l) => ({ ...l, satellites: !l.satellites }))}
-            />
-            {layers.satellites && (
-              <div className="flex flex-col gap-1 ml-3 mt-0.5 pl-2 border-l border-border/60">
-                {renderableTles.map((tle) => {
-                  const meta = SATELLITE_META[tle.norad_id];
-                  const active = selectedSats.has(tle.norad_id);
-                  return (
-                    <button
-                      key={tle.norad_id}
-                      onClick={() => toggleSat(tle.norad_id)}
-                      title={`NORAD ${tle.norad_id} · ground track 3h forward`}
-                      className="flex items-center gap-2 rounded-md px-2 py-1 text-[10px] font-mono transition-all bg-surface-2/70 backdrop-blur-sm"
-                      style={{
-                        color: active ? meta.color : "#8a8a7e80",
-                        opacity: active ? 1 : 0.55,
-                      }}
-                    >
-                      <span
-                        className="h-1.5 w-1.5 rounded-full shrink-0"
-                        style={{ backgroundColor: active ? meta.color : "#333" }}
-                      />
-                      {meta.label}
-                    </button>
-                  );
-                })}
+      {/* ===== SIDE PANEL (design handoff · .clp-) ===== */}
+      <aside className={`clp-panel clara-map-panel ${panelOpen ? "is-open" : ""}`}>
+        {/* Cabecera */}
+        <div className="clp-block">
+          <span className="clp-pill">
+            <span className="clp-beacon" /> Mapa nacional
+          </span>
+          <h2 className="clp-title">Argentina en vivo</h2>
+          <p className="clp-sub">
+            {stats.fires} focos · {stats.cities} ciudades
+            {updatedAt ? ` · actualizado ${timeAgo(updatedAt)}` : ""}
+          </p>
+        </div>
+
+        {/* Selector de capas */}
+        <div className="clp-block">
+          <div className="clp-label">Capas</div>
+
+          {/* Focos */}
+          <button
+            className={`clp-layer ${layers.fires ? "is-active" : ""}`}
+            onClick={() => setLayers((l) => ({ ...l, fires: !l.fires }))}
+          >
+            <span className="clp-layer-l">
+              <FireIcon /> Focos forestales
+            </span>
+            <span className="clp-layer-c">{stats.fires}</span>
+          </button>
+          {/* Sub-chips de intensidad */}
+          {layers.fires && stats.fires > 0 && (
+            <div className="clp-sub-group">
+              {(Object.keys(INTENSITY_META) as Intensity[]).map((key) => {
+                const meta = INTENSITY_META[key];
+                const count = intensityCounts[key];
+                if (count === 0) return null;
+                const active = intensities.has(key);
+                return (
+                  <button
+                    key={key}
+                    onClick={() => toggleIntensity(key)}
+                    title={meta.range}
+                    className="clp-chip"
+                    style={{
+                      color: active ? meta.color : "var(--muted)",
+                      opacity: active ? 1 : 0.6,
+                    }}
+                  >
+                    <span
+                      className="clp-chip-dot"
+                      style={{ background: active ? meta.color : "var(--border)" }}
+                    />
+                    {meta.label}
+                    <span className="clp-chip-c">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {/* WHI-757: toggle "ver no forestal" */}
+          {layers.fires && nonForestCount > 0 && (
+            <div className="clp-sub-group">
+              <button
+                onClick={() => setShowNonForest((v) => !v)}
+                title="Quemas agrícolas, flaring y otra actividad fuera de zona forestal"
+                className="clp-chip"
+                style={{
+                  color: showNonForest ? "#8a8a7e" : "var(--muted)",
+                  opacity: showNonForest ? 1 : 0.6,
+                }}
+              >
+                <span
+                  className="clp-chip-dot"
+                  style={{ background: showNonForest ? "#8a8a7e" : "var(--border)" }}
+                />
+                + No forestal
+                <span className="clp-chip-c">{nonForestCount}</span>
+              </button>
+            </div>
+          )}
+
+          {/* Aire */}
+          <button
+            className={`clp-layer ${layers.air ? "is-active" : ""}`}
+            onClick={() => setLayers((l) => ({ ...l, air: !l.air }))}
+          >
+            <span className="clp-layer-l">
+              <AirIcon /> Calidad del aire
+            </span>
+            <span className="clp-layer-c">{stats.cities}</span>
+          </button>
+
+          {/* Viento */}
+          <button
+            className={`clp-layer ${layers.wind ? "is-active" : ""}`}
+            onClick={() => setLayers((l) => ({ ...l, wind: !l.wind }))}
+          >
+            <span className="clp-layer-l">
+              <WindIcon /> Viento
+            </span>
+            <span className="clp-layer-c">atmósfera</span>
+          </button>
+
+          {/* Satélites */}
+          {renderableTles.length > 0 && (
+            <>
+              <button
+                className={`clp-layer ${layers.satellites ? "is-active" : ""}`}
+                onClick={() =>
+                  setLayers((l) => ({ ...l, satellites: !l.satellites }))
+                }
+              >
+                <span className="clp-layer-l">
+                  <SatIcon /> Satélites
+                </span>
+                <span className="clp-layer-c">{renderableTles.length}</span>
+              </button>
+              {layers.satellites && (
+                <div className="clp-sub-group">
+                  {renderableTles.map((tle) => {
+                    const meta = SATELLITE_META[tle.norad_id];
+                    const active = selectedSats.has(tle.norad_id);
+                    return (
+                      <button
+                        key={tle.norad_id}
+                        onClick={() => toggleSat(tle.norad_id)}
+                        title={`NORAD ${tle.norad_id} · ground track 3h forward`}
+                        className="clp-chip"
+                        style={{
+                          color: active ? meta.color : "var(--muted)",
+                          opacity: active ? 1 : 0.6,
+                        }}
+                      >
+                        <span
+                          className="clp-chip-dot"
+                          style={{
+                            background: active ? meta.color : "var(--border)",
+                          }}
+                        />
+                        {meta.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Focos recientes */}
+        <div className="clp-block clp-block--scroll">
+          <div className="clp-label">Focos forestales recientes</div>
+          {recentFires.length === 0 ? (
+            <p className="clp-empty">
+              {loading
+                ? "Cargando focos…"
+                : "Sin focos forestales activos ahora mismo."}
+            </p>
+          ) : (
+            recentFires.map((f, i) => (
+              <div className="clp-fire" key={`${f.latitude}-${f.longitude}-${i}`}>
+                <div>
+                  <div className="clp-fire-region">
+                    {forestZoneName(f.forestZone) ?? "Zona forestal"}
+                  </div>
+                  <div className="clp-fire-meta">
+                    FRP {f.frp.toFixed(1)} MW · {confLabel(f.confidence)}
+                  </div>
+                </div>
+                <span
+                  className="clp-fire-dot"
+                  style={{ opacity: Math.min(1, Math.max(0.4, f.frp / 40)) }}
+                />
               </div>
-            )}
-          </>
+            ))
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="clp-foot">
+          Datos: NASA FIRMS VIIRS · NOAA GOES-19
+          <br />
+          Cadencia: 15 min · Resolución: 375 m
+        </div>
+      </aside>
+
+      {/* ===== LIENZO DEL MAPA ===== */}
+      <div className="clara-map-canvas">
+        <div
+          ref={mapRef}
+          style={{ width: "100%", height: "100%", position: "absolute", inset: 0 }}
+        />
+
+        {/* Botón para abrir el panel como drawer (solo mobile) */}
+        <button
+          className="clara-map-drawer-btn absolute top-4 left-4 z-[1000] items-center gap-2 rounded-lg px-3 py-2 font-mono text-[11px]"
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            color: "var(--foreground)",
+            boxShadow: "var(--shadow-panel)",
+          }}
+          onClick={() => setPanelOpen(true)}
+        >
+          <LayersIcon /> Capas
+        </button>
+
+        {loading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-background/60 z-[999]">
+            <span className="font-mono text-xs text-muted animate-pulse">
+              Cargando datos...
+            </span>
+          </div>
         )}
       </div>
-
-      {loading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-background/60 z-[999]">
-          <span className="font-mono text-xs text-muted animate-pulse">
-            Cargando datos...
-          </span>
-        </div>
-      )}
     </div>
-  );
-}
-
-function LayerToggle({
-  label,
-  color,
-  active,
-  count,
-  onClick,
-}: {
-  label: string;
-  color: string;
-  active: boolean;
-  count?: number;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-mono transition-all ${
-        active
-          ? "bg-surface-2/90 border border-border text-foreground/90 backdrop-blur-sm"
-          : "bg-surface-2/50 border border-transparent text-muted/60 backdrop-blur-sm"
-      }`}
-    >
-      <span
-        className="h-2 w-2 rounded-full shrink-0"
-        style={{ backgroundColor: active ? color : "#333" }}
-      />
-      {label}
-      {count != null && active && (
-        <span className="text-muted/60">{count}</span>
-      )}
-    </button>
   );
 }
