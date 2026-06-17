@@ -81,14 +81,18 @@ Una vez, offline: bajar el **reanálisis FWI de GWIS/CEMS** (CDS API) para **aju
 - Datos vía `/api/fire-danger?province=…` o lectura directa en server component → tabla `fire_danger`.
 
 ### 6.2 Alertas + briefing (bot de Telegram existente, **opt-in**)
-- **Alerta por umbral:** pg_cron revisa `fire_danger`; cuando una zona **cruza** a alto/extremo en el pronóstico (y antes no estaba), avisa a los suscriptos **con `prevention_enabled = true`** de esa zona. Dedup con tabla (patrón `goes_alerted`).
-- **Briefing diario:** pg_cron matutino arma el resumen por provincia y lo manda a los suscriptos con `prevention_enabled = true`.
+- **Alerta por umbral:** pg_cron revisa `fire_danger`; cuando una zona **cruza** a alto/extremo en el pronóstico (y antes no estaba), avisa a los suscriptos con `prevention_mode IN ('daily','alerts')` de esa zona. Dedup con tabla (patrón `goes_alerted`).
+- **Briefing diario:** pg_cron matutino arma el resumen por provincia y lo manda a los suscriptos con `prevention_mode = 'daily'`.
 
-### 6.3 Onboarding del bot (opt-in)
-- Campo nuevo `subscribers.prevention_enabled boolean default false` (mismo patrón que `lightning_enabled`).
-- Tras compartir ubicación (paso existente), el bot **explica brevemente** qué recibe (resumen diario + aviso cuando su zona entra en peligro alto/extremo) y pregunta con **botones inline Sí / No**. Setea `prevention_enabled`.
-- Suscriptos actuales: comando `/prevencion` para activar/desactivar (y, opcional, un anuncio único ofreciéndolo).
-- **Opción de granularidad (a decidir en review):** un único opt-in (briefing diario + alertas) vs. dos niveles ("solo cuando hay peligro" vs "resumen diario") para quienes no quieren mensajes todos los días.
+### 6.3 Onboarding del bot (opt-in con granularidad)
+- Campo nuevo `subscribers.prevention_mode text default 'off'` (CHECK `in ('off','alerts','daily')`):
+  - `off` — no recibe nada.
+  - `alerts` — **solo** aviso cuando su zona entra/permanece en peligro alto/extremo (no hay mensajes en días tranquilos).
+  - `daily` — **resumen diario** del peligro de su zona (incluye cualquier escalada).
+- **Onboarding:** tras compartir ubicación (paso existente), el bot **explica brevemente** qué recibiría y pregunta con **botones inline de 3 opciones**: *"Resumen diario"* / *"Solo avisarme si hay peligro"* / *"No, gracias"*. Setea `prevention_mode`.
+- **Desuscripción:** el comando `/prevencion` permite cambiar de modo en cualquier momento, incluido `off`. Cada briefing/alerta incluye una nota corta de cómo desactivar.
+- **Cambio de ubicación:** si el usuario actualiza su ciudad/ubicación, se **resetea la suscripción de prevención** (`prevention_mode = 'off'` + se limpia el vínculo de zona) y se **vuelve a correr el opt-in** para la nueva ubicación. Equivale a borrar la suscripción vieja y empezar de cero con la nueva zona. (La zona de un suscriptor se deriva de su `lat/lng` actual.)
+- Suscriptos actuales: se les ofrece vía `/prevencion` (y, opcional, un anuncio único).
 
 ## 7. Fuentes de datos
 
