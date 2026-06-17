@@ -291,13 +291,15 @@ def compute_persistence(rows: list[dict], supabase_url: str, supabase_key: str) 
     if not rows:
         return 0
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=PERSISTENCE_WINDOW_MIN)
-    endpoint = (
-        f"{supabase_url.rstrip('/')}/rest/v1/goes_preliminary"
-        f"?select=lat,lng&detected_at=gte.{cutoff.isoformat()}"
-    )
+    endpoint = f"{supabase_url.rstrip('/')}/rest/v1/goes_preliminary"
+    # Pass filters via `params` so requests URL-encodes them. Interpolating
+    # cutoff.isoformat() straight into the query string turns the `+00:00`
+    # offset into a space, which PostgREST rejects ("invalid input syntax for
+    # type timestamp with time zone") — silently breaking persistence.
+    params = {"select": "lat,lng", "detected_at": f"gte.{cutoff.isoformat()}"}
     headers = {"apikey": supabase_key, "Authorization": f"Bearer {supabase_key}"}
     try:
-        resp = requests.get(endpoint, headers=headers, timeout=15)
+        resp = requests.get(endpoint, params=params, headers=headers, timeout=15)
         if resp.status_code != 200:
             return 0
         prev = resp.json() or []
