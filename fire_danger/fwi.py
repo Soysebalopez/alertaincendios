@@ -58,3 +58,16 @@ def dmc(temp: float, rh: float, rain: float, dmc_prev: float,
         pr = 244.72 - 43.43 * math.log(mr - 20.0)
         dmc_prev = max(pr, 0.0)
     return max(dmc_prev + rk, 0.0)
+
+
+def dc(temp: float, rain: float, dc_prev: float, month: int, hemisphere: str) -> float:
+    t = max(temp, -2.8)
+    lf = dc_daylength(month, hemisphere)
+    pe = max((0.36 * (t + 2.8) + lf) / 2.0, 0.0)
+    if rain > 2.8:
+        rd = 0.83 * rain - 1.27
+        qo = 800.0 * math.exp(-dc_prev / 400.0)
+        qr = qo + 3.937 * rd
+        dr = 400.0 * math.log(800.0 / qr)
+        dc_prev = max(dr, 0.0)
+    return max(dc_prev + pe, 0.0)

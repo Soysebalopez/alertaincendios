@@ -17,3 +17,10 @@ def test_dmc_canonical(cffdrs_reference):
     got = fwi.dmc(d["input"]["temp"], d["input"]["rh"], d["input"]["rain"],
                   d["prev"]["dmc"], d["input"]["month"], d["input"]["hemisphere"])
     assert round(got, 1) == d["expect"]["dmc"]  # 8.5
+
+
+def test_dc_canonical(cffdrs_reference):
+    d = cffdrs_reference["single_day"]
+    got = fwi.dc(d["input"]["temp"], d["input"]["rain"], d["prev"]["dc"],
+                 d["input"]["month"], d["input"]["hemisphere"])
+    assert round(got, 1) == d["expect"]["dc"]  # 19.0
