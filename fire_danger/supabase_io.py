@@ -65,7 +65,7 @@ def upsert_state(rows: list[dict]) -> None:
     if not url or not key or not rows:
         return
     resp = requests.post(
-        f"{url}/rest/v1/fire_danger_state",
+        f"{url}/rest/v1/fire_danger_state?on_conflict=zone_id,date",
         headers={**_headers(key, "resolution=merge-duplicates,return=minimal")},
         json=rows, timeout=20)
     resp.raise_for_status()
@@ -75,8 +75,11 @@ def insert_forecast(rows: list[dict]) -> None:
     url, key = _base()
     if not url or not key or not rows:
         return
+    # on_conflict must name the UNIQUE columns: fire_danger's PK is the identity
+    # `id`, so without this PostgREST upserts on the PK and the secondary UNIQUE
+    # (zone_id,computed_at,target_date) raises 409 instead of merging.
     resp = requests.post(
-        f"{url}/rest/v1/fire_danger",
+        f"{url}/rest/v1/fire_danger?on_conflict=zone_id,computed_at,target_date",
         headers={**_headers(key, "resolution=merge-duplicates,return=minimal")},
         json=rows, timeout=30)
     resp.raise_for_status()
@@ -93,7 +96,7 @@ def seed_zones(zones: list) -> None:
         "bbox": list(z.bbox),
     } for z in zones]
     resp = requests.post(
-        f"{url}/rest/v1/danger_zones",
+        f"{url}/rest/v1/danger_zones?on_conflict=id",
         headers={**_headers(key, "resolution=merge-duplicates,return=minimal")},
         json=payload, timeout=20)
     resp.raise_for_status()
