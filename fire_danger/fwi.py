@@ -78,3 +78,15 @@ def isi(wind: float, ffmc_val: float) -> float:
     m = 147.2 * (101.0 - ffmc_val) / (59.5 + ffmc_val)
     ff = 91.9 * math.exp(-0.1386 * m) * (1.0 + m ** 5.31 / 4.93e7)
     return 0.208 * fw * ff
+
+
+def bui(dmc_val: float, dc_val: float) -> float:
+    if dmc_val == 0.0 and dc_val == 0.0:
+        return 0.0
+    if dmc_val <= 0.4 * dc_val:
+        result = 0.8 * dmc_val * dc_val / (dmc_val + 0.4 * dc_val)
+    else:
+        result = dmc_val - (1.0 - 0.8 * dc_val / (dmc_val + 0.4 * dc_val)) * (
+            0.92 + (0.0114 * dmc_val) ** 1.7
+        )
+    return max(result, 0.0)
