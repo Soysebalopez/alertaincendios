@@ -10,3 +10,10 @@ def test_ffmc_canonical(cffdrs_reference):
 
 def test_ffmc_clamped_to_101():
     assert fwi.ffmc(35.0, 5.0, 40.0, 0.0, 99.0) <= 101.0
+
+
+def test_dmc_canonical(cffdrs_reference):
+    d = cffdrs_reference["single_day"]
+    got = fwi.dmc(d["input"]["temp"], d["input"]["rh"], d["input"]["rain"],
+                  d["prev"]["dmc"], d["input"]["month"], d["input"]["hemisphere"])
+    assert round(got, 1) == d["expect"]["dmc"]  # 8.5

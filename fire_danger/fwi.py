@@ -37,3 +37,24 @@ def ffmc(temp: float, rh: float, wind: float, rain: float, ffmc_prev: float) -> 
             m = mo
     result = 59.5 * (250.0 - m) / (147.2 + m)
     return max(0.0, min(result, 101.0))
+
+
+def dmc(temp: float, rh: float, rain: float, dmc_prev: float,
+        month: int, hemisphere: str) -> float:
+    rh = min(rh, 100.0)
+    t = max(temp, -1.1)
+    le = dmc_daylength(month, hemisphere)
+    rk = 1.894 * (t + 1.1) * (100.0 - rh) * le * 1e-4
+    if rain > 1.5:
+        re = 0.92 * rain - 1.27
+        mo = 20.0 + math.exp(5.6348 - dmc_prev / 43.43)
+        if dmc_prev <= 33.0:
+            b = 100.0 / (0.5 + 0.3 * dmc_prev)
+        elif dmc_prev <= 65.0:
+            b = 14.0 - 1.3 * math.log(dmc_prev)
+        else:
+            b = 6.2 * math.log(dmc_prev) - 17.2
+        mr = mo + 1000.0 * re / (48.77 + b * re)
+        pr = 244.72 - 43.43 * math.log(mr - 20.0)
+        dmc_prev = max(pr, 0.0)
+    return max(dmc_prev + rk, 0.0)
