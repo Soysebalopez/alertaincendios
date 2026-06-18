@@ -15,6 +15,7 @@ export function DangerPanel({
   today,
   showDetection,
   onToggleDetection,
+  className,
 }: {
   data: ProvinceDanger;
   selectedDay: number;
@@ -22,13 +23,14 @@ export function DangerPanel({
   today: string;
   showDetection?: boolean;
   onToggleDetection?: () => void;
+  className?: string;
 }) {
   const dayClasses = data.zones.map((z) => z.forecast[selectedDay]?.danger_class ?? "bajo");
   const overall = worstClass(dayClasses);
   const dateStr = data.dates[selectedDay];
 
   return (
-    <div className="clp-panel">
+    <div className={`clp-panel${className ? ` ${className}` : ""}`}>
       <div className="clp-block">
         <div className="clp-title">{data.provinceName}</div>
         <div className="clp-sub">Peligro de incendio · {forecastDateLabel(dateStr, today)}</div>
