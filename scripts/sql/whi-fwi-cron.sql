@@ -1,59 +1,34 @@
 -- Fire-danger (FWI) engine — daily pg_cron schedule.
 --
--- APPLY GATED: present this file and wait for explicit OK before running it
--- against the shared production project (qmzuwnilehldvobjsbcs). Apply AFTER
--- whi-fwi-schema.sql and AFTER configuring the endpoint URL:
+-- Applied 2026-06-18 to the shared production project (qmzuwnilehldvobjsbcs).
+-- Pattern mirrors the goes-sync / goes-alerts jobs: a single net.http_get with
+-- the URL inline and the secret from clara_cron_secret() — no GUC, no trigger
+-- function. Uses the alertaincendios.vercel.app alias because the apex
+-- alertaforestal.org 307-redirects to www.alertaforestal.org and pg_net does
+-- not follow redirects.
 --
---   ALTER DATABASE postgres SET app.fire_danger_sync_url
---     = 'https://alertaforestal.org/api/fire-danger-sync';
---
--- (CRON_SECRET is available via clara_cron_secret() since WHI-586.)
--- Pattern mirrors scripts/sql/whi-753-cron.sql. search_path is pinned from the
--- start per the 2026-06-17 security hardening (avoids a function_search_path
--- advisor warning).
+-- Apply AFTER whi-fwi-schema.sql and AFTER the endpoint is live in production.
 
-CREATE OR REPLACE FUNCTION trigger_fire_danger_sync()
-RETURNS BIGINT
-LANGUAGE plpgsql
-SET search_path = pg_catalog, public
-AS $$
-DECLARE
-  v_url    TEXT := current_setting('app.fire_danger_sync_url', true);
-  v_secret TEXT := clara_cron_secret();
-  v_request_id BIGINT;
-BEGIN
-  IF v_url IS NULL THEN
-    RAISE EXCEPTION 'app.fire_danger_sync_url not configured';
-  END IF;
-  IF v_secret IS NULL THEN
-    RAISE EXCEPTION 'clara_cron_secret() returned NULL';
-  END IF;
-
-  -- pg_net is async; the Python endpoint writes straight to fire_danger.
-  -- Generous timeout: spin-up of a brand-new zone replays ~30 historical days
-  -- plus a 16-day forecast fetch per zone.
-  SELECT net.http_get(
-    url := v_url || '?secret=' || v_secret,
-    timeout_milliseconds := 290000
-  ) INTO v_request_id;
-
-  RETURN v_request_id;
-END;
-$$;
-
--- Schedule: 09:00 UTC daily = 06:00 ART. Once a day is enough — the forecast
--- horizon is 16 days and the danger class moves on a daily cadence.
-SELECT cron.schedule(
+select cron.schedule(
   'fire-danger-sync',
-  '0 9 * * *',
-  $$SELECT trigger_fire_danger_sync();$$
+  '0 9 * * *',  -- 09:00 UTC = 06:00 ART, daily
+  $$SELECT net.http_get(
+      'https://alertaincendios.vercel.app/api/fire-danger-sync?secret=' || clara_cron_secret(),
+      timeout_milliseconds := 290000
+    )$$
 );
 
--- Verify it scheduled:
--- SELECT jobid, jobname, schedule FROM cron.job WHERE jobname = 'fire-danger-sync';
+-- Verify it scheduled and is active:
+-- select jobid, jobname, schedule, active from cron.job where jobname = 'fire-danger-sync';
 
--- Run it manually the first time (seeds the empty zones):
---   SELECT trigger_fire_danger_sync();
+-- Trigger manually (idempotent — safe to re-run any time; on_conflict upserts):
+-- select net.http_get(
+--   'https://alertaincendios.vercel.app/api/fire-danger-sync?secret=' || clara_cron_secret(),
+--   timeout_milliseconds := 290000
+-- );
+
+-- Inspect the HTTP result of a manual/cron run:
+-- select status_code, content::text, created from net._http_response order by created desc limit 5;
 
 -- Unschedule (if it must be redone):
---   SELECT cron.unschedule('fire-danger-sync');
+-- select cron.unschedule('fire-danger-sync');
