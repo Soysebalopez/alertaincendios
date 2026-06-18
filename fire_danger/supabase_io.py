@@ -34,15 +34,23 @@ def state_row(zone_id: str, date: str, state: tuple[float, float, float]) -> dic
 
 
 # --- network I/O (covered by the e2e smoke test, not unit-mocked) ---
-def latest_state(zone_id: str) -> tuple[float, float, float] | None:
-    """Most-recent carried (ffmc, dmc, dc) for a zone, or None if never seeded."""
+def latest_state(zone_id: str, before_date: str | None = None) -> tuple[float, float, float] | None:
+    """Most-recent carried (ffmc, dmc, dc) for a zone, or None if never seeded.
+
+    When `before_date` is given, only rows STRICTLY before it are considered, so
+    a same-day re-run reads yesterday's state (not the one it just wrote) and the
+    rolling chain stays idempotent — a second run on the same UTC date recomputes
+    today identically instead of drifting the state one extra day."""
     url, key = _base()
     if not url or not key:
         return None
+    params = {"zone_id": f"eq.{zone_id}", "select": "ffmc,dmc,dc,date",
+              "order": "date.desc", "limit": 1}
+    if before_date:
+        params["date"] = f"lt.{before_date}"
     resp = requests.get(
         f"{url}/rest/v1/fire_danger_state",
-        params={"zone_id": f"eq.{zone_id}", "select": "ffmc,dmc,dc,date",
-                "order": "date.desc", "limit": 1},
+        params=params,
         headers=_headers(key, "return=representation"), timeout=15)
     resp.raise_for_status()
     data = resp.json()
