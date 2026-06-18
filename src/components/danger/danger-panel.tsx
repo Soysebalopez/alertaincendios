@@ -6,6 +6,7 @@ import {
   forecastDateLabel,
   type ProvinceDanger,
 } from "@/lib/fire-danger";
+import { DangerTrend } from "./danger-trend";
 
 export function DangerPanel({
   data,
@@ -62,6 +63,11 @@ export function DangerPanel({
             </div>
           );
         })}
+      </div>
+
+      <div className="clp-block">
+        <div className="clp-label">Tendencia · 16 días</div>
+        <DangerTrend zones={data.zones} />
       </div>
     </div>
   );
