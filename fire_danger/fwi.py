@@ -100,3 +100,27 @@ def fwi(isi_val: float, bui_val: float) -> float:
     if bb <= 1.0:
         return bb
     return math.exp(2.72 * (0.434 * math.log(bb)) ** 0.647)
+
+
+def fwi_from_weather(temp: float, rh: float, wind: float, rain: float,
+                     month: int, hemisphere: str,
+                     prev: tuple[float, float, float]) -> dict:
+    """Chain one day forward. `prev` is yesterday's (ffmc, dmc, dc).
+    Returns {fwi, isi, bui, state: {ffmc, dmc, dc}}."""
+    ffmc_prev, dmc_prev, dc_prev = prev
+    new_ffmc = ffmc(temp, rh, wind, rain, ffmc_prev)
+    new_dmc = dmc(temp, rh, rain, dmc_prev, month, hemisphere)
+    new_dc = dc(temp, rain, dc_prev, month, hemisphere)
+    isi_val = isi(wind, new_ffmc)
+    bui_val = bui(new_dmc, new_dc)
+    fwi_val = fwi(isi_val, bui_val)
+    return {
+        "fwi": fwi_val,
+        "isi": isi_val,
+        "bui": bui_val,
+        "state": {"ffmc": new_ffmc, "dmc": new_dmc, "dc": new_dc},
+    }
+
+
+# CFFDRS default startup state, used to seed a brand-new zone's spin-up.
+DEFAULT_STATE: tuple[float, float, float] = (85.0, 6.0, 15.0)

@@ -53,3 +53,17 @@ def test_fwi_canonical(cffdrs_reference):
     d = cffdrs_reference["single_day"]
     got = fwi.fwi(d["expect"]["isi"], d["expect"]["bui"])
     assert round(got, 1) == d["expect"]["fwi"]  # 10.1
+
+
+def test_fwi_from_weather_returns_state_and_indices(cffdrs_reference):
+    d = cffdrs_reference["single_day"]
+    out = fwi.fwi_from_weather(
+        temp=d["input"]["temp"], rh=d["input"]["rh"], wind=d["input"]["wind"],
+        rain=d["input"]["rain"], month=d["input"]["month"],
+        hemisphere=d["input"]["hemisphere"],
+        prev=(d["prev"]["ffmc"], d["prev"]["dmc"], d["prev"]["dc"]),
+    )
+    assert round(out["fwi"], 1) == d["expect"]["fwi"]      # 10.1
+    assert round(out["state"]["ffmc"], 1) == d["expect"]["ffmc"]  # 87.7
+    assert round(out["state"]["dmc"], 1) == d["expect"]["dmc"]    # 8.5
+    assert round(out["state"]["dc"], 1) == d["expect"]["dc"]      # 19.0
