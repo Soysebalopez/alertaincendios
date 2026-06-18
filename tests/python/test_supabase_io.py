@@ -1,0 +1,24 @@
+from fire_danger.supabase_io import forecast_rows, state_row
+from fire_danger.zones import ZONES
+
+
+def test_forecast_rows_shape():
+    zone = ZONES[0]
+    computed = "2026-06-18"
+    results = [
+        {"target_date": "2026-06-18", "fwi": 10.1, "isi": 10.9, "bui": 8.5,
+         "danger_class": "alto", "temp": 17.0, "rh": 42.0, "wind": 25.0, "precip": 0.0},
+    ]
+    rows = forecast_rows(zone.id, computed, results)
+    assert rows[0] == {
+        "zone_id": "tdf-norte-estepa", "computed_at": "2026-06-18",
+        "target_date": "2026-06-18", "fwi": 10.1, "danger_class": "alto",
+        "isi": 10.9, "bui": 8.5, "temp": 17.0, "rh": 42.0, "wind": 25.0, "precip": 0.0,
+    }
+
+
+def test_state_row_shape():
+    assert state_row("tdf-sur-bosque", "2026-06-18", (87.7, 8.5, 19.0)) == {
+        "zone_id": "tdf-sur-bosque", "date": "2026-06-18",
+        "ffmc": 87.7, "dmc": 8.5, "dc": 19.0,
+    }
