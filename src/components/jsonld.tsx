@@ -87,6 +87,32 @@ export function CityJsonLd({
   );
 }
 
+export function ProvinceJsonLd({
+  provinceName,
+  lat,
+  lng,
+  url,
+}: {
+  provinceName: string;
+  lat: number;
+  lng: number;
+  url: string;
+}) {
+  const data = {
+    "@context": "https://schema.org",
+    "@type": "Place",
+    name: `Peligro de incendios en ${provinceName}`,
+    url,
+    geo: { "@type": "GeoCoordinates", latitude: lat, longitude: lng },
+  };
+  return (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }}
+    />
+  );
+}
+
 /**
  * BreadcrumbList for city pages — habilita el breadcrumb visual en SERP
  * (Inicio → Calidad del aire → Provincia → Ciudad), +CTR ~5-10% según data
