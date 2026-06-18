@@ -120,6 +120,7 @@ Pg_cron daily ──► /api/goes-dismissals (hourly) ──► "falsa alarma" +
 | `/api/goes-alerts?secret=...` | GET | CRON_SECRET | Cron: preliminary GOES → Telegram |
 | `/api/goes-dismissals?secret=...` | GET | CRON_SECRET | Cron: falsa alarma + purge |
 | `/api/lightning-alerts?secret=...` | GET | CRON_SECRET | Cron: tormenta seca |
+| `/api/fire-danger-sync?secret=...` | GET | CRON_SECRET | **Python** — cron diario FWI: fetcha Open-Meteo, encadena índice canadiense, persiste peligro por zona TDF |
 
 ## Pg_cron (Supabase)
 
@@ -136,6 +137,7 @@ Todo el scheduling corre en Postgres con `pg_cron` + `pg_net`. El secret se lee 
 | `goes-dismissals` | `:37 hourly` | Falsa alarma + DELETE preliminaries descartadas + huérfanos |
 | `goes-prune` | `3:30 UTC daily` | Cleanup defensivo (>7 días sin alerted) |
 | `lightning-alerts` | `:11,:26,:41,:56` | Tormenta seca → Telegram (rate-limit 30 min/sub) |
+| `fire-danger-sync` | `9:00 UTC daily` | FWI prevención: encadena índice canadiense por zona TDF, persiste forecast 16 días |
 
 ## Variables de entorno
 

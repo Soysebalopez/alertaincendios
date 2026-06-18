@@ -226,6 +226,52 @@ Output en `out/`. Tiempos esperados:
 - `spike.py`: ~3s (descarga + parse)
 - `evaluate.py`: ~12s (4 scans secuenciales)
 
+## 7. FWI fire-danger engine
+
+### 7.1 — Disparar manualmente el cron
+
+```bash
+curl -s "https://alertaforestal.org/api/fire-danger-sync?secret=$CRON_SECRET" | python3 -m json.tool
+```
+
+**Forma esperada de la respuesta:**
+```json
+{
+  "ok": true,
+  "date": "2026-06-18",
+  "zones": [
+    {"zone": "tdf-norte-estepa", "seeded": true, "days": 16, "today_class": "moderado"},
+    {"zone": "tdf-sur-bosque",   "seeded": true, "days": 16, "today_class": "bajo"}
+  ]
+}
+```
+
+- `seeded: true` → la zona no tenía estado previo y se corrió el spin-up con ~30 días históricos.
+- `seeded: false` → se leyó el estado llevado de `fire_danger_state` (comportamiento normal en llamadas posteriores).
+- Una segunda llamada el mismo día **no** debe duplicar filas en `fire_danger` (UNIQUE por `zone_id, computed_at, target_date`) y debe devolver `seeded: false`.
+
+### 7.2 — Tests unitarios locales (21 tests)
+
+El paquete `fire_danger/` incluye suite de pytest. Requiere el venv local (PEP 668):
+
+```bash
+./.venv/bin/python -m pytest -q
+```
+
+Salida esperada: 21 tests passed.
+
+### 7.3 — Verificar persistencia en Supabase (read-only)
+
+Filas de forecast por zona (~16 por cada una):
+```sql
+SELECT zone_id, count(*) FROM public.fire_danger GROUP BY 1;
+```
+
+Estado llevado (una fila por zona, fecha de hoy):
+```sql
+SELECT zone_id, date, ffmc, dmc, dc FROM public.fire_danger_state;
+```
+
 ## Tabla resumen — qué SQL pegar para qué pregunta
 
 | Pregunta | SQL |
