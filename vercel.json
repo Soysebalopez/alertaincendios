@@ -4,7 +4,12 @@
     "api/goes-sync.py": {
       "maxDuration": 300,
       "memory": 1024,
-      "excludeFiles": "{scripts/**,public/**,docs/**,src/**,.next/**,node_modules/**}"
+      "excludeFiles": "{scripts/**,public/**,docs/**,src/**,.next/**,node_modules/**,tests/**,fire_danger/**,**/__pycache__/**}"
+    },
+    "api/fire-danger-sync.py": {
+      "maxDuration": 300,
+      "memory": 1024,
+      "excludeFiles": "{scripts/**,public/**,docs/**,src/**,.next/**,node_modules/**,tests/**,**/__pycache__/**}"
     }
   }
 }
