@@ -66,6 +66,7 @@ Autorización vía `isCronAuthorized()` en `src/lib/cron-auth.ts`: acepta el sec
 - `/api/goes-dismissals` — falsa alarma + DELETE preliminary descartadas + huérfanos
 - `/api/lightning-alerts` — tormenta seca (OpenWeather + Open-Meteo fallback)
 - `/api/satellites/sync-tles` — baja TLEs de CelesTrak para Suomi NPP/NOAA-20/NOAA-21 (WHI-753)
+- `/api/fire-danger-sync` — **Python** (`api/fire-danger-sync.py`), diario 09:00 UTC (06:00 ART). Por cada zona TDF: lee estado llevado `(ffmc,dmc,dc)` (spin-up ~30 días históricos si ausente), fetcha forecast 16 días Open-Meteo, encadena FWI ecuaciones Van Wagner, clasifica `bajo→moderado→alto→muy alto→extremo`, persiste en `fire_danger` y `fire_danger_state`
 
 ### API Routes — Públicas (sat data)
 - `/api/satellites/tles` — read-only, devuelve los TLEs almacenados. Cache CDN 1h + SWR 5min. Lo consume `<CitySatelliteCoverage>` para computar cobertura sin requerir cómputo server-side por las 78 páginas SSG.
@@ -99,6 +100,11 @@ Autorización vía `isCronAuthorized()` en `src/lib/cron-auth.ts`: acepta el sec
 ### Satélites (Fase 4 — WHI-752/753)
 - `satellite_tles` (norad_id int PK, name, line1, line2, fetched_at) — Two-Line Elements de CelesTrak para Suomi NPP (37849), NOAA-20 (43013), NOAA-21 (54234). Refresh diario vía pg_cron. Si fetched_at > 7 días, la lib descarta el TLE (propagación con datos viejos da resultados sin sentido).
 
+### Prevención (FWI)
+- `danger_zones` (id text PK, province, name, lat, lng, bbox double precision[], geometry jsonb nullable) — definición de zonas de peligro
+- `fire_danger_state` (zone_id, date, ffmc, dmc, dc; PK (zone_id, date)) — estado de humedad llevado día a día para encadenar el FWI
+- `fire_danger` (id, zone_id, computed_at, target_date, fwi, danger_class, isi, bui, temp, rh, wind, precip; UNIQUE (zone_id, computed_at, target_date)) — forecast de peligro legible por zona
+
 ### Lightning
 - `lightning_alerted` (id bigserial PK, chat_id, alerted_at) — rate-limit 30 min/sub
 
@@ -115,6 +121,7 @@ Autorización vía `isCronAuthorized()` en `src/lib/cron-auth.ts`: acepta el sec
 - `goes-dismissals` (`37 * * * *` hourly) — falsa alarma + DELETE preliminary descartadas + huérfanos
 - `goes-prune` (`30 3 * * *` daily) — cleanup defensivo >7 días
 - `satellites-sync-tles` (`30 4 * * *` daily, 01:30 ART) — `/api/satellites/sync-tles` baja TLEs frescos de CelesTrak (WHI-753)
+- `fire-danger-sync` (`0 9 * * *` daily, 06:00 ART) — `/api/fire-danger-sync` Python: FWI por zona TDF, 16-day forecast. Usa `trigger_fire_danger_sync()` + GUC `app.fire_danger_sync_url` + `clara_cron_secret()`. SQL en `scripts/sql/whi-fwi-cron.sql`
 
 ## Supabase Functions / RPC
 - `fires_sync_step1_fetch()` — HTTP GET a FIRMS via pg_net
@@ -181,6 +188,17 @@ Autorización vía `isCronAuthorized()` en `src/lib/cron-auth.ts`: acepta el sec
 - **Hero** (`src/app/(main)/page.tsx`): badge "🛰 Pase VIIRS en Xh Ymin" en pill row. Mini-mapa (`fire-map.tsx`) muestra ground tracks 90 min + emoji 🛰 en posición actual (sin marker animado, render una sola vez).
 - **`/mapa`** (`argentina-map.tsx`): capa "Satélites" activa por default. Ground tracks 3h con polylines punteadas. Marker emoji 🛰 con tooltip (NORAD + link n2yo). Reposiciona cada 5s vía `setLatLng()` sin re-trazar la polyline. Toggle on/off + sub-chips por satélite.
 - **`/ciudad/[p]/[c]`** (`<CitySatelliteCoverage>`): card con "Última pasada VIIRS hace Xh" + "Próxima pasada en Yh". Fetch a `/api/satellites/tles` (1h CDN cache), re-computa cada 5min client-side. Para evitar React 19 purity rule, guarda `computedAt` con el state.
+
+## Prevención (FWI)
+
+**Pivote B2B (Milestone 1 — feat/prevention-fwi)**: índice de peligro de incendio *antes* de que aparezca un foco. FWI canadiense (Van Wagner & Pickett 1985), implementado nativamente (stdlib math, sin dependencia externa), corrección hemisferio sur aplicada. Datos: Open-Meteo forecast 16 días + `fire_danger_state` como estado llevado con spin-up de ~30 días históricos si la zona no tiene estado previo.
+
+- Spec: `docs/superpowers/specs/2026-06-17-prevencion-fwi-design.md`
+- Plan: `docs/superpowers/plans/2026-06-18-fwi-engine.md`
+- Esquema SQL: `scripts/sql/whi-fwi-schema.sql` + `scripts/sql/whi-fwi-cron.sql`
+- Zonas implementadas: `tdf-norte-estepa` + `tdf-sur-bosque` (Tierra del Fuego). Más provincias en fases posteriores.
+- Clases de peligro: `bajo → moderado → alto → muy alto → extremo`. Umbrales provisorios — calibración pendiente.
+- Página pública por provincia y bot Telegram: milestones posteriores (no en Milestone 1).
 
 ## SEO
 - Title template: "%s — AlertaForestal" (default: "AlertaForestal — Alertas de incendios forestales en Argentina")
