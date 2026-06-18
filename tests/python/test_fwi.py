@@ -47,3 +47,9 @@ def test_bui_canonical(cffdrs_reference):
 
 def test_bui_zero_when_dmc_zero():
     assert fwi.bui(0.0, 19.0) == 0.0
+
+
+def test_fwi_canonical(cffdrs_reference):
+    d = cffdrs_reference["single_day"]
+    got = fwi.fwi(d["expect"]["isi"], d["expect"]["bui"])
+    assert round(got, 1) == d["expect"]["fwi"]  # 10.1

@@ -90,3 +90,13 @@ def bui(dmc_val: float, dc_val: float) -> float:
             0.92 + (0.0114 * dmc_val) ** 1.7
         )
     return max(result, 0.0)
+
+
+def fwi(isi_val: float, bui_val: float) -> float:
+    if bui_val <= 80.0:
+        bb = 0.1 * isi_val * (0.626 * bui_val ** 0.809 + 2.0)
+    else:
+        bb = 0.1 * isi_val * (1000.0 / (25.0 + 108.64 * math.exp(-0.023 * bui_val)))
+    if bb <= 1.0:
+        return bb
+    return math.exp(2.72 * (0.434 * math.log(bb)) ** 0.647)
