@@ -1,5 +1,6 @@
 import { MetadataRoute } from "next";
 import { PROVINCES } from "@/lib/argentina-cities";
+import { PREVENTION_PROVINCE_IDS } from "@/lib/fire-danger";
 
 function slugify(name: string): string {
   return name
@@ -69,6 +70,16 @@ export default function sitemap(): MetadataRoute.Sitemap {
         priority: 0.7,
       });
     }
+  }
+
+  // Province danger pages (FWI prevention layer)
+  for (const provincia of PREVENTION_PROVINCE_IDS) {
+    routes.push({
+      url: `${baseUrl}/provincia/${provincia}`,
+      lastModified: STATIC_LAST_MODIFIED,
+      changeFrequency: "daily",
+      priority: 0.8,
+    });
   }
 
   return routes;
