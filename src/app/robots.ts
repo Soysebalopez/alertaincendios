@@ -11,7 +11,7 @@ export default function robots(): MetadataRoute.Robots {
         allow: "/",
         // Defense-in-depth: las páginas ya tienen `robots: noindex,nofollow`
         // en metadata, pero bloquear acá evita crawl budget desperdiciado.
-        disallow: ["/api/", "/dashboard", "/dashboard/", "/login"],
+        disallow: ["/api/", "/dashboard", "/dashboard/", "/login", "/provincia/"],
       },
     ],
     sitemap: `${baseUrl}/sitemap.xml`,

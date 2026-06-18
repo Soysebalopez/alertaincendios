@@ -85,6 +85,7 @@ export async function getProvinceDanger(
     }));
 
     const dates = builtZones[0]?.forecast.map((f) => f.target_date) ?? [];
+    if (dates.length === 0) return null;
     const provinceName =
       PROVINCES.find((p) => p.id === provinceId)?.name ?? provinceId;
 
