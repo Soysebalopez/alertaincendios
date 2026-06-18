@@ -71,3 +71,10 @@ def dc(temp: float, rain: float, dc_prev: float, month: int, hemisphere: str) ->
         dr = 400.0 * math.log(800.0 / qr)
         dc_prev = max(dr, 0.0)
     return max(dc_prev + pe, 0.0)
+
+
+def isi(wind: float, ffmc_val: float) -> float:
+    fw = math.exp(0.05039 * wind)
+    m = 147.2 * (101.0 - ffmc_val) / (59.5 + ffmc_val)
+    ff = 91.9 * math.exp(-0.1386 * m) * (1.0 + m ** 5.31 / 4.93e7)
+    return 0.208 * fw * ff

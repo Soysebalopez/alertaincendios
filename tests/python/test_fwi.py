@@ -24,3 +24,9 @@ def test_dc_canonical(cffdrs_reference):
     got = fwi.dc(d["input"]["temp"], d["input"]["rain"], d["prev"]["dc"],
                  d["input"]["month"], d["input"]["hemisphere"])
     assert round(got, 1) == d["expect"]["dc"]  # 19.0
+
+
+def test_isi_canonical(cffdrs_reference):
+    d = cffdrs_reference["single_day"]
+    got = fwi.isi(d["input"]["wind"], d["expect"]["ffmc"])
+    assert round(got, 1) == d["expect"]["isi"]  # 10.9
