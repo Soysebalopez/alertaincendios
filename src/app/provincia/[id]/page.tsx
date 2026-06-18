@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { PROVINCES } from "@/lib/argentina-cities";
 import { PREVENTION_PROVINCE_IDS } from "@/lib/fire-danger";
 import { getProvinceDanger } from "@/lib/fire-danger-server";
+import { ProvinceView } from "@/components/danger/province-view";
 
 export const revalidate = 3600;
 export const dynamicParams = false;
@@ -42,24 +43,18 @@ export default async function ProvinciaPage({ params }: PageProps) {
   const { id } = await params;
   if (!PREVENTION_PROVINCE_IDS.includes(id)) notFound();
   const data = await getProvinceDanger(id);
+  const today = new Date().toISOString().slice(0, 10);
 
+  if (!data) {
+    return (
+      <main className="relative z-10 border-t border-border p-6">
+        <p className="text-muted">Sin datos de pronóstico disponibles para esta provincia.</p>
+      </main>
+    );
+  }
   return (
-    <main className="relative z-10 border-t border-border p-6">
-      <h1 className="text-2xl font-bold">
-        Peligro de incendios — {data?.provinceName ?? id}
-      </h1>
-      {!data ? (
-        <p className="text-muted mt-3">Sin datos de pronóstico disponibles.</p>
-      ) : (
-        <ul className="mt-4 space-y-2">
-          {data.zones.map((z) => (
-            <li key={z.id} className="font-mono text-sm">
-              {z.name}: {z.forecast[0]?.danger_class ?? "—"} (FWI{" "}
-              {z.forecast[0]?.fwi ?? "—"})
-            </li>
-          ))}
-        </ul>
-      )}
+    <main className="relative z-10 border-t border-border">
+      <ProvinceView data={data} today={today} />
     </main>
   );
 }
