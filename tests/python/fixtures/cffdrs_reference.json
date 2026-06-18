@@ -1,0 +1,9 @@
+{
+  "source": "CFFDRS worked example (Van Wagner & Pickett 1985 / Wang et al. 2015). Confirm with the R `cffdrs` package offline before trusting; the R package is the oracle.",
+  "rounding": "Assertions compare to 1 decimal place to absorb implementation rounding differences.",
+  "single_day": {
+    "input": { "temp": 17.0, "rh": 42.0, "wind": 25.0, "rain": 0.0, "month": 4, "hemisphere": "north" },
+    "prev":  { "ffmc": 85.0, "dmc": 6.0, "dc": 15.0 },
+    "expect": { "ffmc": 87.7, "dmc": 8.5, "dc": 19.0, "isi": 10.9, "bui": 8.5, "fwi": 10.1 }
+  }
+}
