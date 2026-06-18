@@ -11,12 +11,20 @@ const ProvinceMap = dynamic(() => import("./province-map").then((m) => m.Provinc
 
 export function ProvinceView({ data, today }: { data: ProvinceDanger; today: string }) {
   const [selectedDay, setSelectedDay] = useState(0);
+  const [showDetection, setShowDetection] = useState(false);
   return (
     <div style={{ display: "flex", height: "calc(100dvh - 64px)" }}>
       <div style={{ flex: 1 }}>
-        <ProvinceMap data={data} selectedDay={selectedDay} />
+        <ProvinceMap data={data} selectedDay={selectedDay} showDetection={showDetection} />
       </div>
-      <DangerPanel data={data} selectedDay={selectedDay} onSelectDay={setSelectedDay} today={today} />
+      <DangerPanel
+        data={data}
+        selectedDay={selectedDay}
+        onSelectDay={setSelectedDay}
+        today={today}
+        showDetection={showDetection}
+        onToggleDetection={() => setShowDetection((v) => !v)}
+      />
     </div>
   );
 }

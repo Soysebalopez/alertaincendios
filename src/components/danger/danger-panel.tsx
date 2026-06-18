@@ -13,11 +13,15 @@ export function DangerPanel({
   selectedDay,
   onSelectDay,
   today,
+  showDetection,
+  onToggleDetection,
 }: {
   data: ProvinceDanger;
   selectedDay: number;
   onSelectDay: (i: number) => void;
   today: string;
+  showDetection?: boolean;
+  onToggleDetection?: () => void;
 }) {
   const dayClasses = data.zones.map((z) => z.forecast[selectedDay]?.danger_class ?? "bajo");
   const overall = worstClass(dayClasses);
@@ -68,6 +72,14 @@ export function DangerPanel({
       <div className="clp-block">
         <div className="clp-label">Tendencia · 16 días</div>
         <DangerTrend zones={data.zones} />
+      </div>
+
+      <div className="clp-block">
+        <label className="clp-sub" style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+          <input type="checkbox" checked={!!showDetection} onChange={() => onToggleDetection?.()} />
+          Mostrar focos activos (detección)
+        </label>
+        <div className="clp-sub" style={{ marginTop: 6 }}>Fuentes: Open-Meteo · FWI canadiense (SNMF)</div>
       </div>
     </div>
   );
