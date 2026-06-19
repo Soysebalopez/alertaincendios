@@ -1,4 +1,4 @@
-from fire_danger.supabase_io import forecast_rows, state_row
+from fire_danger.supabase_io import forecast_rows, grid_state_row, state_row
 from fire_danger.zones import ZONES
 
 
@@ -22,3 +22,16 @@ def test_state_row_shape():
         "zone_id": "tdf-sur-bosque", "date": "2026-06-18",
         "ffmc": 87.7, "dmc": 8.5, "dc": 19.0,
     }
+
+
+def test_grid_state_row_shape():
+    row = grid_state_row("tdf-norte-estepa", "2026-06-18",
+                         [(87.7, 8.5, 19.0), (90.1, 12.0, 25.0)])
+    assert row["zone_id"] == "tdf-norte-estepa"
+    assert row["date"] == "2026-06-18"
+    assert row["grid_state"] == [
+        {"ffmc": 87.7, "dmc": 8.5, "dc": 19.0},
+        {"ffmc": 90.1, "dmc": 12.0, "dc": 25.0},
+    ]
+    # legacy NOT-NULL scalars fall back to the first grid point
+    assert (row["ffmc"], row["dmc"], row["dc"]) == (87.7, 8.5, 19.0)
