@@ -1,0 +1,6 @@
+*.nc
+*.grib
+cems_tdf.csv
+ours_tdf.csv
+venv/
+__pycache__/
