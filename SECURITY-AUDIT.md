@@ -91,9 +91,22 @@ if (receivedToken !== expectedToken) return new Response("Unauthorized", { statu
 
 ### 2. NASA FIRMS MAP_KEY (3 min)
 
-1. https://firms.modaps.eosdis.nasa.gov/api/area/ → solicitar nueva key (instant, gratis)
+1. https://firms.modaps.eosdis.nasa.gov/api/map_key/ → solicitar nueva key (instant, gratis)
 2. Revocar la vieja desde el panel de tu cuenta
-3. Pegar en `scripts/backfill.env`
+3. Actualizar en los DOS lugares donde se usa:
+   - **Cron de producción** (el que alimenta el mapa): la key vive en `_clara_config`
+     (la lee `clara_firms_map_key()` desde `fires_sync_step1_fetch()`). Rotar = un UPDATE:
+     ```sql
+     update public._clara_config set value = '<MAP_KEY>', updated_at = now()
+     where key = 'firms_map_key';
+     ```
+     (Aplicado 2026-06-19: antes la key estaba literal en la función SQL — ver
+     `scripts/sql/whi-firms-map-key-config.sql`.)
+   - **Backfill local**: pegar en `scripts/backfill.env` (gitignored).
+
+> Nota: si la key se invalida, el cron sigue reportando "succeeded" pero el mapa se
+> congela en silencio. El monitor `fires-freshness-monitor` avisa por Telegram cuando
+> `fires_cache` deja de actualizarse (ver `scripts/sql/whi-firms-freshness-cron.sql`).
 
 ### 3. CRON_SECRET (5 min)
 
