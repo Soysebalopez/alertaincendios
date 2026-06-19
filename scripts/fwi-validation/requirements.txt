@@ -1,0 +1,9 @@
+cdsapi>=0.7.0
+xarray>=2024.1.0
+netCDF4>=1.6.5
+requests>=2.31.0
+pandas>=2.0.0
+scipy>=1.11.0
+matplotlib>=3.8.0
+pyshp>=2.3.0
+shapely>=2.0.0

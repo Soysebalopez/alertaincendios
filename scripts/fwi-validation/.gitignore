@@ -1,0 +1,10 @@
+*.nc
+*.grib
+cems_tdf.csv
+ours_tdf.csv
+venv/
+__pycache__/
+ne_land/
+ne_lakes/
+ne_50m_land.zip
+ne_50m_lakes.zip

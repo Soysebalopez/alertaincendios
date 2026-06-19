@@ -33,6 +33,19 @@ def state_row(zone_id: str, date: str, state: tuple[float, float, float]) -> dic
     return {"zone_id": zone_id, "date": date, "ffmc": ffmc, "dmc": dmc, "dc": dc}
 
 
+def grid_state_row(zone_id: str, date: str,
+                   carry_states: list[tuple[float, float, float]]) -> dict:
+    """One fire_danger_state row carrying the whole grid's per-point state as a
+    JSON array (grid order). The legacy NOT-NULL scalar ffmc/dmc/dc mirror the
+    first grid point for back-compat readers; grid_state is the source of truth."""
+    first = carry_states[0]
+    return {
+        "zone_id": zone_id, "date": date,
+        "ffmc": first[0], "dmc": first[1], "dc": first[2],
+        "grid_state": [{"ffmc": s[0], "dmc": s[1], "dc": s[2]} for s in carry_states],
+    }
+
+
 # --- network I/O (covered by the e2e smoke test, not unit-mocked) ---
 def latest_state(zone_id: str, before_date: str | None = None) -> tuple[float, float, float] | None:
     """Most-recent carried (ffmc, dmc, dc) for a zone, or None if never seeded.
@@ -58,6 +71,29 @@ def latest_state(zone_id: str, before_date: str | None = None) -> tuple[float, f
         return None
     r = data[0]
     return (r["ffmc"], r["dmc"], r["dc"])
+
+
+def latest_grid_state(zone_id: str,
+                      before_date: str | None = None) -> list[tuple[float, float, float]] | None:
+    """Most-recent per-point grid state for a zone, or None if absent (legacy row
+    or never seeded). `before_date` keeps a same-day re-run idempotent, exactly
+    like latest_state."""
+    url, key = _base()
+    if not url or not key:
+        return None
+    params = {"zone_id": f"eq.{zone_id}", "select": "grid_state,date",
+              "order": "date.desc", "limit": 1}
+    if before_date:
+        params["date"] = f"lt.{before_date}"
+    resp = requests.get(
+        f"{url}/rest/v1/fire_danger_state",
+        params=params,
+        headers=_headers(key, "return=representation"), timeout=15)
+    resp.raise_for_status()
+    data = resp.json()
+    if not data or not data[0].get("grid_state"):
+        return None
+    return [(s["ffmc"], s["dmc"], s["dc"]) for s in data[0]["grid_state"]]
 
 
 def upsert_state(rows: list[dict]) -> None:

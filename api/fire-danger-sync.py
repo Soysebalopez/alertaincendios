@@ -1,8 +1,10 @@
 """Fire-danger (FWI) daily sync endpoint.
 
 Triggered by Supabase pg_cron once a day via pg_net HTTP GET. For each TDF zone:
-read the carried (ffmc,dmc,dc) state (seed via spin-up if absent), fetch the
-16-day Open-Meteo forecast, chain the FWI forward, classify, and persist the new
+read the carried per-point (ffmc,dmc,dc) grid state (seed via spin-up if absent
+or if the grid shape changed), fetch the 16-day Open-Meteo forecast for every
+land grid point in one request, chain the FWI forward per point, aggregate the
+zone value as the p95 across points, classify, and persist the new per-point
 state + forecast rows to Supabase.
 
 URL: GET /api/fire-danger-sync?secret=<CRON_SECRET>
@@ -20,34 +22,37 @@ import urllib.parse
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler
 
-from fire_danger import openmeteo, supabase_io, spinup
-from fire_danger.pipeline import compute_zone_forecast
+from fire_danger import grids, openmeteo, supabase_io, spinup
+from fire_danger.pipeline import compute_zone_forecast_grid
 from fire_danger.zones import ZONES
 
 SPINUP_DAYS = 30
 
 
 def _sync_zone(zone, today: str) -> dict:
-    """Compute and persist one zone. Pure side effects are the two Supabase
-    writes. Raises on failure so the caller can isolate it per zone."""
-    # before_date=today: read yesterday's carried state, never the row this run
-    # may have already written today (keeps a same-day re-run idempotent).
-    state = supabase_io.latest_state(zone.id, before_date=today)
+    """Compute and persist one zone over its land grid. Each grid point carries
+    its own FWI state; the zone value is the p95 across points. Raises on failure
+    so the caller isolates it per zone."""
+    points = grids.grid_points(zone.id) or ((zone.lat, zone.lng),)
+
+    states = supabase_io.latest_grid_state(zone.id, before_date=today)
     seeded = False
-    if state is None:
+    # Re-seed when there is no grid state yet OR the grid changed shape (e.g. the
+    # density was regenerated) — never chain misaligned per-point states.
+    if states is None or len(states) != len(points):
         end = datetime.now(timezone.utc).date() - timedelta(days=1)
         start = end - timedelta(days=SPINUP_DAYS)
-        history = openmeteo.fetch_history(zone.lat, zone.lng, start.isoformat(), end.isoformat())
-        state = tuple(spinup.replay_state(history, zone.hemisphere).values())
+        histories = openmeteo.fetch_history_multi(list(points), start.isoformat(), end.isoformat())
+        states = [tuple(spinup.replay_state(h, zone.hemisphere).values()) for h in histories]
         seeded = True
 
-    forecast = openmeteo.fetch_forecast(zone.lat, zone.lng, days=16)
-    results, carry_state = compute_zone_forecast(forecast, state, zone.hemisphere)
+    forecasts = openmeteo.fetch_forecast_multi(list(points), days=16)
+    results, carry_states = compute_zone_forecast_grid(forecasts, states, zone.hemisphere)
 
     supabase_io.insert_forecast(supabase_io.forecast_rows(zone.id, today, results))
-    supabase_io.upsert_state([supabase_io.state_row(zone.id, today, carry_state)])
+    supabase_io.upsert_state([supabase_io.grid_state_row(zone.id, today, carry_states)])
     return {
-        "zone": zone.id, "seeded": seeded, "days": len(results),
+        "zone": zone.id, "seeded": seeded, "points": len(points), "days": len(results),
         "today_class": results[0]["danger_class"] if results else None,
     }
 

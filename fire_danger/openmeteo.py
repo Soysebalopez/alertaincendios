@@ -74,3 +74,31 @@ def fetch_history(lat: float, lng: float, start_date: str, end_date: str) -> lis
         "start_date": start_date, "end_date": end_date,
     })
     return parse_daily(raw)
+
+
+def _get_multi(url: str, params: dict) -> list[dict]:
+    resp = requests.get(url, params=params, timeout=60)
+    resp.raise_for_status()
+    data = resp.json()
+    # Open-Meteo returns a bare object for one location, a list for many.
+    return data if isinstance(data, list) else [data]
+
+
+def _points_params(points: list[tuple[float, float]]) -> dict:
+    return {
+        "latitude": ",".join(str(p[0]) for p in points),
+        "longitude": ",".join(str(p[1]) for p in points),
+        "hourly": _HOURLY, "wind_speed_unit": "kmh", "timezone": TZ,
+    }
+
+
+def fetch_forecast_multi(points: list[tuple[float, float]], days: int = 16) -> list[list[DayWeather]]:
+    blocks = _get_multi(FORECAST_URL, {**_points_params(points), "forecast_days": days})
+    return [parse_daily(b) for b in blocks]
+
+
+def fetch_history_multi(points: list[tuple[float, float]],
+                        start_date: str, end_date: str) -> list[list[DayWeather]]:
+    blocks = _get_multi(ARCHIVE_URL, {**_points_params(points),
+                                      "start_date": start_date, "end_date": end_date})
+    return [parse_daily(b) for b in blocks]
