@@ -10,7 +10,8 @@ from fire_danger.openmeteo import DayWeather
 
 def compute_zone_forecast(forecast: list[DayWeather],
                           start_state: tuple[float, float, float],
-                          hemisphere: str) -> tuple[list[dict], tuple[float, float, float]]:
+                          hemisphere: str,
+                          zone_id: str | None = None) -> tuple[list[dict], tuple[float, float, float]]:
     """Chain the forecast forward and classify each day.
 
     Returns (results, carry_state). `carry_state` is the (ffmc, dmc, dc) AFTER
@@ -34,7 +35,7 @@ def compute_zone_forecast(forecast: list[DayWeather],
             "fwi": round(out["fwi"], 2),
             "isi": round(out["isi"], 2),
             "bui": round(out["bui"], 2),
-            "danger_class": danger_class(out["fwi"]),
+            "danger_class": danger_class(out["fwi"], zone_id),
             "temp": day.temp, "rh": day.rh, "wind": day.wind, "precip": day.precip,
         })
     return results, carry_state
@@ -44,6 +45,7 @@ def compute_zone_forecast_grid(
     per_point_forecasts: list[list[DayWeather]],
     per_point_state: list[tuple[float, float, float]],
     hemisphere: str,
+    zone_id: str | None = None,
 ) -> tuple[list[dict], list[tuple[float, float, float]]]:
     """Grid version of compute_zone_forecast. Chain the FWI per point — each point
     carries its OWN (ffmc,dmc,dc) forward, because the spatial heterogeneity lives
@@ -55,6 +57,8 @@ def compute_zone_forecast_grid(
     per_point_results: list[list[dict]] = []
     carry_states: list[tuple[float, float, float]] = []
     for forecast, start_state in zip(per_point_forecasts, per_point_state):
+        # zone_id intentionally omitted: per-point danger classes are discarded;
+        # calibrated classification applies only to the aggregated zone row below.
         results, carry = compute_zone_forecast(forecast, start_state, hemisphere)
         per_point_results.append(results)
         carry_states.append(carry)
@@ -70,7 +74,7 @@ def compute_zone_forecast_grid(
             "target_date": lead["target_date"],
             "fwi": agg,
             "isi": lead["isi"], "bui": lead["bui"],
-            "danger_class": danger_class(agg),
+            "danger_class": danger_class(agg, zone_id),
             "temp": lead["temp"], "rh": lead["rh"],
             "wind": lead["wind"], "precip": lead["precip"],
         })

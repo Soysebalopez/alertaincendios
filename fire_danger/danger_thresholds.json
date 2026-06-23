@@ -1,0 +1,14 @@
+{
+  "tdf-norte-estepa": {
+    "moderado": 2.17,
+    "alto": 15.03,
+    "muy alto": 31.18,
+    "extremo": 44.73
+  },
+  "tdf-sur-bosque": {
+    "moderado": 0.58,
+    "alto": 6.95,
+    "muy alto": 17.95,
+    "extremo": 27.07
+  }
+}

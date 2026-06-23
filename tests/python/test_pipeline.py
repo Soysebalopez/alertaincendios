@@ -66,3 +66,16 @@ def test_grid_day_fwi_equals_p95_of_point_fwis():
     res_cool, _ = compute_zone_forecast(cool, start, hemisphere="south")
     res_grid, _ = compute_zone_forecast_grid([hot, cool], [start, start], hemisphere="south")
     assert res_grid[0]["fwi"] == round(aggregate_fwi([res_hot[0]["fwi"], res_cool[0]["fwi"]]), 2)
+
+
+def test_grid_forecast_applies_zone_calibration(monkeypatch):
+    import fire_danger.classify as classify_mod
+    # calibrated cuts where everything >= 0 is "extremo"
+    monkeypatch.setattr(classify_mod, "_calibrated",
+                        lambda: {"z": {"moderado": 0.0, "alto": 0.0, "muy alto": 0.0, "extremo": 0.0}})
+    forecast = [_day("2026-06-18", 10.0, 90.0, 5.0)]   # low-danger day
+    start = (85.0, 6.0, 15.0)
+    cal, _ = compute_zone_forecast_grid([forecast], [start], hemisphere="south", zone_id="z")
+    base, _ = compute_zone_forecast_grid([forecast], [start], hemisphere="south")
+    assert cal[0]["danger_class"] == "extremo"      # calibrated zone z
+    assert base[0]["danger_class"] != "extremo"     # global fallback on a calm day
