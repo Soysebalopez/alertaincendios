@@ -385,36 +385,51 @@ async function handlePreferencesCommand(chatId: number) {
   await sendMessage(chatId, body, { reply_markup: keyboard });
 }
 
-// Applies a preferences button press and re-renders the menu.
+// Applies a preferences button press and re-renders the menu. Todo el cuerpo va
+// envuelto en try/catch: este handler corre FUERA del try general del POST, y el
+// webhook NUNCA debe tirar 500 (Telegram reintentaría el update). Mismo patrón
+// defensivo que handleVote — best-effort answerCallbackQuery en el catch.
 async function handlePreferencesCallback(cb: {
   id: string;
   from: { id: number };
   message?: { message_id: number; chat: { id: number } };
   data?: string;
 }) {
-  const action = parsePreferencesCallback(cb.data);
-  if (!action) {
-    await answerCallbackQuery(cb.id);
-    return;
-  }
-  const chatId = cb.from.id;
-  const db = getSupabase();
+  try {
+    const action = parsePreferencesCallback(cb.data);
+    if (!action) {
+      await answerCallbackQuery(cb.id);
+      return;
+    }
+    const chatId = cb.from.id;
+    const db = getSupabase();
 
-  if (action.kind === "lightning") {
-    const { data: sub } = await db.from("subscribers").select("lightning_enabled").eq("chat_id", chatId).limit(1).maybeSingle();
-    const next = sub?.lightning_enabled === false;
-    await db.from("subscribers").update({ lightning_enabled: next }).eq("chat_id", chatId);
-    await answerCallbackQuery(cb.id, next ? "Rayos activados" : "Rayos desactivados");
-  } else {
-    await db.from("subscribers").update({ prevention_mode: action.mode }).eq("chat_id", chatId);
-    // starting fresh: drop any stale episode so a new crossing re-alerts cleanly
-    await db.from("prevention_alerted").delete().eq("chat_id", chatId);
-    const label = action.mode === "daily" ? "Resumen diario" : action.mode === "alerts" ? "Solo si hay peligro" : "Prevención desactivada";
-    await answerCallbackQuery(cb.id, label);
-  }
+    if (action.kind === "lightning") {
+      const { data: sub } = await db.from("subscribers").select("lightning_enabled").eq("chat_id", chatId).limit(1).maybeSingle();
+      const next = sub?.lightning_enabled === false;
+      await db.from("subscribers").update({ lightning_enabled: next }).eq("chat_id", chatId);
+      await answerCallbackQuery(cb.id, next ? "Rayos activados" : "Rayos desactivados");
+    } else {
+      await db.from("subscribers").update({ prevention_mode: action.mode }).eq("chat_id", chatId);
+      // starting fresh: drop any stale episode so a new crossing re-alerts cleanly
+      await db.from("prevention_alerted").delete().eq("chat_id", chatId);
+      const label = action.mode === "daily" ? "Resumen diario" : action.mode === "alerts" ? "Solo si hay peligro" : "Prevención desactivada";
+      await answerCallbackQuery(cb.id, label);
+    }
 
-  // re-render the menu in place
-  await handlePreferencesCommand(chatId);
+    // re-render the menu sending a fresh message (no editMessage helper aún)
+    await handlePreferencesCommand(chatId);
+  } catch (e) {
+    log.error({
+      event: "bot.preferences_callback_failed",
+      err: e instanceof Error ? e.message : String(e),
+    });
+    try {
+      await answerCallbackQuery(cb.id);
+    } catch {
+      // best-effort
+    }
+  }
 }
 
 async function handleLocation(chatId: number, lat: number, lng: number) {
