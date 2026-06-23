@@ -47,7 +47,7 @@ def _sync_zone(zone, today: str) -> dict:
         seeded = True
 
     forecasts = openmeteo.fetch_forecast_multi(list(points), days=16)
-    results, carry_states = compute_zone_forecast_grid(forecasts, states, zone.hemisphere)
+    results, carry_states = compute_zone_forecast_grid(forecasts, states, zone.hemisphere, zone.id)
 
     supabase_io.insert_forecast(supabase_io.forecast_rows(zone.id, today, results))
     supabase_io.upsert_state([supabase_io.grid_state_row(zone.id, today, carry_states)])
