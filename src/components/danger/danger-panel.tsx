@@ -4,6 +4,7 @@ import {
   dangerPillTone,
   worstClass,
   forecastDateLabel,
+  dangerCopy,
   type ProvinceDanger,
 } from "@/lib/fire-danger";
 import { DangerTrend } from "./danger-trend";
@@ -27,6 +28,7 @@ export function DangerPanel({
 }) {
   const dayClasses = data.zones.map((z) => z.forecast[selectedDay]?.danger_class ?? "bajo");
   const overall = worstClass(dayClasses);
+  const copy = dangerCopy(overall);
   const dateStr = data.dates[selectedDay];
 
   return (
@@ -37,6 +39,8 @@ export function DangerPanel({
         <div style={{ marginTop: 8 }}>
           <Pill tone={dangerPillTone(overall)}>{overall}</Pill>
         </div>
+        <div className="clp-sub" style={{ marginTop: 8 }}>{copy.summary}</div>
+        <div className="clp-sub" style={{ marginTop: 4, fontWeight: 600 }}>{copy.action}</div>
       </div>
 
       <div className="clp-block">
