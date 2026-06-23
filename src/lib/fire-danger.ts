@@ -88,3 +88,33 @@ export function forecastDateLabel(dateStr: string, todayStr: string): string {
   if (diff > 1) return `+${diff} días`;
   return dateStr;
 }
+
+// Citizen-language copy per danger class: what it means + what to do. Shown under
+// the overall pill in the danger panel. Generic by class (a level means the same
+// in any zone). Spanish, plain, escalating in tone.
+export const DANGER_COPY: Record<DangerClass, { summary: string; action: string }> = {
+  bajo: {
+    summary: "Las condiciones son poco favorables para que un fuego se inicie o se propague.",
+    action: "Mantené las precauciones de siempre con el fuego.",
+  },
+  moderado: {
+    summary: "Un fuego puede iniciarse y avanzar si hay sequedad o viento.",
+    action: "Cuidado al usar fuego al aire libre. Apagá bien colillas y brasas.",
+  },
+  alto: {
+    summary: "Las condiciones favorecen que un incendio se inicie y se propague rápido.",
+    action: "Evitá fuego al aire libre, quemas y asados. Reportá cualquier humo.",
+  },
+  "muy alto": {
+    summary: "Un incendio puede iniciarse con facilidad y avanzar rápido y con intensidad.",
+    action: "No hagas ningún fuego al aire libre. Atento a avisos de las autoridades.",
+  },
+  extremo: {
+    summary: "Condiciones críticas: cualquier chispa puede provocar un incendio difícil de controlar.",
+    action: "Prohibido todo fuego al aire libre. Preparate por si hay que evacuar y seguí a las autoridades.",
+  },
+};
+
+export function dangerCopy(c: DangerClass): { summary: string; action: string } {
+  return DANGER_COPY[c];
+}

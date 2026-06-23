@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   DANGER_CLASSES,
+  DANGER_COPY,
   PREVENTION_PROVINCE_IDS,
   dangerColor,
+  dangerCopy,
   dangerPillTone,
   worstClass,
   provinceBbox,
@@ -45,5 +47,24 @@ describe("fire-danger pure helpers", () => {
 
   it("exposes Tierra del Fuego as a prevention province", () => {
     expect(PREVENTION_PROVINCE_IDS).toContain("tierra-del-fuego");
+  });
+});
+
+describe("danger copy (citizen language)", () => {
+  it("has non-empty summary + action for every class", () => {
+    for (const c of DANGER_CLASSES) {
+      const copy = dangerCopy(c);
+      expect(copy.summary.length).toBeGreaterThan(0);
+      expect(copy.action.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("covers exactly the five classes with no gaps", () => {
+    expect(Object.keys(DANGER_COPY).sort()).toEqual([...DANGER_CLASSES].sort());
+  });
+
+  it("returns the level-specific copy", () => {
+    expect(dangerCopy("extremo").summary).toMatch(/cr[ií]tic/i);
+    expect(dangerCopy("bajo").action).toMatch(/precauciones/i);
   });
 });
