@@ -57,6 +57,8 @@ def compute_zone_forecast_grid(
     per_point_results: list[list[dict]] = []
     carry_states: list[tuple[float, float, float]] = []
     for forecast, start_state in zip(per_point_forecasts, per_point_state):
+        # zone_id intentionally omitted: per-point danger classes are discarded;
+        # calibrated classification applies only to the aggregated zone row below.
         results, carry = compute_zone_forecast(forecast, start_state, hemisphere)
         per_point_results.append(results)
         carry_states.append(carry)
