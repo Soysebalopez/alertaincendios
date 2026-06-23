@@ -455,6 +455,27 @@ async function handleLocation(chatId: number, lat: number, lng: number) {
       "📊 Probá /estado para ver focos activos cerca tuyo ahora." +
       FOOTER
   );
+
+  // Offer prevention only if the new location falls in a covered zone.
+  const db = getSupabase();
+  const { data: zoneData } = await db
+    .from("danger_zones")
+    .select("id,name,bbox")
+    .in("province", PREVENTION_PROVINCE_IDS);
+  const zone = findDangerZone(lat, lng, (zoneData ?? []) as never);
+  if (zone) {
+    await sendMessage(
+      chatId,
+      `🌲 Tu zona (${zone.name}) tiene pronóstico de peligro de incendio. ¿Querés que te avise?`,
+      {
+        reply_markup: buildPreferencesKeyboard({
+          lightning: true,
+          prevention: "off",
+          covered: true,
+        }),
+      }
+    );
+  }
 }
 
 async function handleCiudad(chatId: number, query: string) {
@@ -730,6 +751,29 @@ async function upsertSubscriber(
     .select("source")
     .eq("chat_id", chatId)
     .maybeSingle();
+
+  // Reset prevention opt-in when the covered zone changes (or coverage is lost):
+  // the user opted into a *specific* zone's forecast, so a relocation should not
+  // silently keep alerting on the old zone. Only relevant if prevention is on.
+  const { data: prev } = await db
+    .from("subscribers")
+    .select("lat, lng, prevention_mode")
+    .eq("chat_id", chatId)
+    .limit(1)
+    .maybeSingle();
+
+  let resetPrevention = false;
+  if (prev && prev.prevention_mode && prev.prevention_mode !== "off") {
+    const { data: zoneData } = await db
+      .from("danger_zones")
+      .select("id,name,bbox")
+      .in("province", PREVENTION_PROVINCE_IDS);
+    const zones = (zoneData ?? []) as never;
+    const oldZone = findDangerZone(prev.lat, prev.lng, zones);
+    const newZone = findDangerZone(lat, lng, zones);
+    if (oldZone?.id !== newZone?.id) resetPrevention = true;
+  }
+
   const row: Record<string, unknown> = {
     chat_id: chatId,
     lat,
@@ -740,7 +784,11 @@ async function upsertSubscriber(
     const src = await resolveSource(chatId);
     if (src) row.source = src;
   }
+  if (resetPrevention) row.prevention_mode = "off";
   await db.from("subscribers").upsert(row, { onConflict: "chat_id" });
+  if (resetPrevention) {
+    await db.from("prevention_alerted").delete().eq("chat_id", chatId);
+  }
 }
 
 // WHI-587 — append-only command log for dashboard engagement chart.
