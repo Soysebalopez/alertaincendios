@@ -30,4 +30,14 @@ CREATE TABLE IF NOT EXISTS public.prevention_briefing_sent (
 );
 ALTER TABLE public.prevention_briefing_sent ENABLE ROW LEVEL SECURITY;
 
--- The cron job (prevention-alerts) is appended in Task 10.
+-- 4. Cron job: daily at 09:30 UTC (06:30 ART), ~30 min after fire-danger-sync
+--    (09:00 UTC), so the day's forecast is already in fire_danger. Same host as
+--    the sibling fire-danger-sync cron. Apply with explicit OK.
+SELECT cron.schedule(
+  'prevention-alerts',
+  '30 9 * * *',
+  $$SELECT net.http_get(
+      'https://alertaincendios.vercel.app/api/prevention-alerts?secret=' || clara_cron_secret(),
+      timeout_milliseconds := 120000
+    )$$
+);
