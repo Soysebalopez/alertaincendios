@@ -24,7 +24,7 @@ from fwi_cache import cached_fetch             # noqa: E402
 
 # validation point name -> production zone id
 ZONE_OF = {"rio_grande": "tdf-norte-estepa", "ushuaia": "tdf-sur-bosque"}
-YEARS = list(range(2019, 2023))  # recent 4 years; CEMS ref covers through 2022
+YEARS = list(range(2013, 2023))  # 10 years for stable tail percentiles (calibration)
 SUBSET_STEP = 1                  # FULL grid (all land points) — isolate the sampling factor
 SPINUP_DROP = 30
 _RETRY_DELAYS = [5, 15, 30, 60]  # seconds between retries on 429
