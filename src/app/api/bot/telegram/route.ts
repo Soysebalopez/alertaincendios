@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { sendMessage, answerCallbackQuery } from "@/lib/telegram";
+import { sendMessage, answerCallbackQuery, editMessageText } from "@/lib/telegram";
 import { parseFeedbackCallback } from "@/lib/feedback-keyboard";
 import { buildPreferencesKeyboard, parsePreferencesCallback } from "@/lib/preferences-keyboard";
 import { findDangerZone } from "@/lib/danger-zone-match";
@@ -350,8 +350,12 @@ async function handleRayosToggle(chatId: number) {
   );
 }
 
-// Loads the sub, derives coverage, and shows the unified preferences menu.
-async function handlePreferencesCommand(chatId: number) {
+// Builds the preferences menu (body + keyboard) for an existing subscriber, or
+// null if the chat has no subscriber yet. Shared by the command and the callback
+// so the menu can be rendered (sendMessage) or updated in place (editMessageText).
+async function preferencesView(
+  chatId: number
+): Promise<{ body: string; keyboard: ReturnType<typeof buildPreferencesKeyboard> } | null> {
   const db = getSupabase();
   const { data: sub } = await db
     .from("subscribers")
@@ -359,11 +363,7 @@ async function handlePreferencesCommand(chatId: number) {
     .eq("chat_id", chatId)
     .limit(1)
     .maybeSingle();
-
-  if (!sub) {
-    await sendMessage(chatId, "⚙️ Primero suscribite con /ciudad o compartiendo tu ubicación." + FOOTER);
-    return;
-  }
+  if (!sub) return null;
 
   const { data: zoneData } = await db
     .from("danger_zones")
@@ -382,7 +382,17 @@ async function handlePreferencesCommand(chatId: number) {
     "🔥 Focos cercanos — <b>siempre activos</b> (es el corazón del servicio)\n" +
     (covered ? "🌲 Elegí si querés avisos de prevención de incendio." : "");
 
-  await sendMessage(chatId, body, { reply_markup: keyboard });
+  return { body, keyboard };
+}
+
+// Loads the sub, derives coverage, and shows the unified preferences menu.
+async function handlePreferencesCommand(chatId: number) {
+  const view = await preferencesView(chatId);
+  if (!view) {
+    await sendMessage(chatId, "⚙️ Primero suscribite con /ciudad o compartiendo tu ubicación." + FOOTER);
+    return;
+  }
+  await sendMessage(chatId, view.body, { reply_markup: view.keyboard });
 }
 
 // Applies a preferences button press and re-renders the menu. Todo el cuerpo va
@@ -417,8 +427,14 @@ async function handlePreferencesCallback(cb: {
       await answerCallbackQuery(cb.id, label);
     }
 
-    // re-render the menu sending a fresh message (no editMessage helper aún)
-    await handlePreferencesCommand(chatId);
+    // re-render the menu IN PLACE: edit the existing message instead of stacking
+    // a fresh one on every tap. Falls back silently if there's no message ref.
+    const view = await preferencesView(chatId);
+    if (view && cb.message) {
+      await editMessageText(cb.message.chat.id, cb.message.message_id, view.body, {
+        reply_markup: view.keyboard,
+      });
+    }
   } catch (e) {
     log.error({
       event: "bot.preferences_callback_failed",

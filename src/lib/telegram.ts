@@ -22,6 +22,33 @@ export async function sendMessage(
   });
 }
 
+/**
+ * Edita un mensaje ya enviado (texto + reply_markup). Se usa para actualizar un
+ * menú inline en su lugar en vez de apilar un mensaje nuevo en cada toque.
+ * Best-effort, mismo patrón que sendMessage.
+ */
+export async function editMessageText(
+  chatId: number,
+  messageId: number,
+  text: string,
+  extra?: Record<string, unknown>
+): Promise<void> {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) return;
+
+  await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      message_id: messageId,
+      text,
+      parse_mode: "HTML",
+      ...extra,
+    }),
+  });
+}
+
 export type BotCommand = { command: string; description: string };
 
 /**
