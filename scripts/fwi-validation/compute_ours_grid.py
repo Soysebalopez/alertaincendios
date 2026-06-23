@@ -20,13 +20,15 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 from fire_danger import fwi as fwi_eq          # noqa: E402
 from fire_danger import openmeteo, grids       # noqa: E402
 from fire_danger.aggregate import aggregate_fwi  # noqa: E402
+from fwi_cache import cached_fetch             # noqa: E402
 
 # validation point name -> production zone id
 ZONE_OF = {"rio_grande": "tdf-norte-estepa", "ushuaia": "tdf-sur-bosque"}
 YEARS = list(range(2019, 2023))  # recent 4 years; CEMS ref covers through 2022
-SUBSET_STEP = 3                  # sample every 3rd land point (~11 of 32, ~13 of 39)
+SUBSET_STEP = 1                  # FULL grid (all land points) — isolate the sampling factor
 SPINUP_DROP = 30
 _RETRY_DELAYS = [5, 15, 30, 60]  # seconds between retries on 429
+CACHE_DIR = pathlib.Path(__file__).resolve().parent / "om_cache"
 
 
 def _fetch_with_retry(points, start, end):
@@ -60,11 +62,19 @@ def compute_zone(zone_id):
     # fetch history per point, year by year (archive responses get large)
     per_point_days = [[] for _ in points]
     for year in YEARS:
-        print(f"  year {year}...")
-        blocks = _fetch_with_retry(points, f"{year}-01-01", f"{year}-12-31")
+        # Cache key encodes zone + year + point count so a SUBSET_STEP change misses
+        # the cache. Resumable: a 429 mid-run leaves earlier (zone, year) files on
+        # disk; the next run reads them and only fetches what's still missing.
+        key = f"{zone_id}-{year}-{len(points)}pts"
+        cached = (CACHE_DIR / f"{key}.json").exists()
+        print(f"  year {year}{' (cached)' if cached else ''}...")
+        blocks = cached_fetch(
+            CACHE_DIR, key,
+            lambda y=year: _fetch_with_retry(points, f"{y}-01-01", f"{y}-12-31"))
         for i, days in enumerate(blocks):
             per_point_days[i].extend(days)
-        time.sleep(2)  # small courtesy pause between years
+        if not cached:
+            time.sleep(2)  # courtesy pause only when we actually hit the API
 
     per_point_series = [dict(_series_for_point(days)) for days in per_point_days]
     dates = sorted(per_point_series[0])
