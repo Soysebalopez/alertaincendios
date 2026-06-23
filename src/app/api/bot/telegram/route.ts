@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { sendMessage, answerCallbackQuery } from "@/lib/telegram";
 import { parseFeedbackCallback } from "@/lib/feedback-keyboard";
+import { buildPreferencesKeyboard, parsePreferencesCallback } from "@/lib/preferences-keyboard";
+import { findDangerZone } from "@/lib/danger-zone-match";
+import { PREVENTION_PROVINCE_IDS } from "@/lib/fire-danger";
 import { geocodeCity } from "@/lib/geocode";
 import { fetchFires } from "@/lib/firms";
 import { haversineKm } from "@/lib/geo";
@@ -71,7 +74,12 @@ export async function POST(request: NextRequest) {
   // Voto de feedback comunitario (botón inline). Se maneja ANTES que message y
   // SIEMPRE devuelve {ok:true} — un fallo nunca debe hacer reintentar el webhook.
   if (update.callback_query) {
-    await handleVote(update.callback_query);
+    const cb = update.callback_query;
+    if (parsePreferencesCallback(cb.data)) {
+      await handlePreferencesCallback(cb);
+    } else {
+      await handleVote(cb);
+    }
     return NextResponse.json({ ok: true });
   }
 
@@ -98,6 +106,9 @@ export async function POST(request: NextRequest) {
     } else if (text === "/rayos") {
       await logBotCommand(chatId, "/rayos");
       await handleRayosToggle(chatId);
+    } else if (text === "/preferencias" || text === "/prevencion") {
+      await logBotCommand(chatId, text);
+      await handlePreferencesCommand(chatId);
     } else if (location) {
       await logBotCommand(chatId, "<location>");
       await handleLocation(chatId, location.latitude, location.longitude);
@@ -337,6 +348,73 @@ async function handleRayosToggle(chatId: number) {
       : "⚡ Alertas de tormenta seca <b>desactivadas</b>.\n\nSeguís recibiendo alertas de focos de calor. Usa /rayos otra vez para reactivar." +
           FOOTER
   );
+}
+
+// Loads the sub, derives coverage, and shows the unified preferences menu.
+async function handlePreferencesCommand(chatId: number) {
+  const db = getSupabase();
+  const { data: sub } = await db
+    .from("subscribers")
+    .select("lat, lng, lightning_enabled, prevention_mode")
+    .eq("chat_id", chatId)
+    .limit(1)
+    .maybeSingle();
+
+  if (!sub) {
+    await sendMessage(chatId, "⚙️ Primero suscribite con /ciudad o compartiendo tu ubicación." + FOOTER);
+    return;
+  }
+
+  const { data: zoneData } = await db
+    .from("danger_zones")
+    .select("id,name,bbox")
+    .in("province", PREVENTION_PROVINCE_IDS);
+  const covered = findDangerZone(sub.lat, sub.lng, (zoneData ?? []) as never) !== null;
+
+  const keyboard = buildPreferencesKeyboard({
+    lightning: sub.lightning_enabled !== false,
+    prevention: (sub.prevention_mode ?? "off") as "off" | "alerts" | "daily",
+    covered,
+  });
+
+  const body =
+    "⚙️ <b>Tus avisos</b>\n\n" +
+    "🔥 Focos cercanos — <b>siempre activos</b> (es el corazón del servicio)\n" +
+    (covered ? "🌲 Elegí si querés avisos de prevención de incendio." : "");
+
+  await sendMessage(chatId, body, { reply_markup: keyboard });
+}
+
+// Applies a preferences button press and re-renders the menu.
+async function handlePreferencesCallback(cb: {
+  id: string;
+  from: { id: number };
+  message?: { message_id: number; chat: { id: number } };
+  data?: string;
+}) {
+  const action = parsePreferencesCallback(cb.data);
+  if (!action) {
+    await answerCallbackQuery(cb.id);
+    return;
+  }
+  const chatId = cb.from.id;
+  const db = getSupabase();
+
+  if (action.kind === "lightning") {
+    const { data: sub } = await db.from("subscribers").select("lightning_enabled").eq("chat_id", chatId).limit(1).maybeSingle();
+    const next = sub?.lightning_enabled === false;
+    await db.from("subscribers").update({ lightning_enabled: next }).eq("chat_id", chatId);
+    await answerCallbackQuery(cb.id, next ? "Rayos activados" : "Rayos desactivados");
+  } else {
+    await db.from("subscribers").update({ prevention_mode: action.mode }).eq("chat_id", chatId);
+    // starting fresh: drop any stale episode so a new crossing re-alerts cleanly
+    await db.from("prevention_alerted").delete().eq("chat_id", chatId);
+    const label = action.mode === "daily" ? "Resumen diario" : action.mode === "alerts" ? "Solo si hay peligro" : "Prevención desactivada";
+    await answerCallbackQuery(cb.id, label);
+  }
+
+  // re-render the menu in place
+  await handlePreferencesCommand(chatId);
 }
 
 async function handleLocation(chatId: number, lat: number, lng: number) {
