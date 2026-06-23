@@ -17,6 +17,8 @@ const COMMANDS: BotCommand[] = [
   { command: "ciudad", description: "Suscribirte por ciudad (ej: /ciudad Bariloche)" },
   { command: "estado", description: "Focos activos en 100 km a tu alrededor" },
   { command: "rayos", description: "Activar/desactivar alertas de tormenta seca" },
+  { command: "preferencias", description: "Ajustar tus avisos (rayos y prevención)" },
+  { command: "prevencion", description: "Avisos de prevención de incendio" },
   { command: "soybombero", description: "Modo bombero (para cuarteles)" },
   { command: "dejarcuartel", description: "Volver a alertas de vecino" },
   { command: "about", description: "Sobre el proyecto" },

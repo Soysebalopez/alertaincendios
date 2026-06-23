@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { sendMessage, answerCallbackQuery } from "@/lib/telegram";
 import { parseFeedbackCallback } from "@/lib/feedback-keyboard";
+import { buildPreferencesKeyboard, parsePreferencesCallback } from "@/lib/preferences-keyboard";
+import { findDangerZone } from "@/lib/danger-zone-match";
+import { PREVENTION_PROVINCE_IDS } from "@/lib/fire-danger";
 import { geocodeCity } from "@/lib/geocode";
 import { fetchFires } from "@/lib/firms";
 import { haversineKm } from "@/lib/geo";
@@ -71,7 +74,12 @@ export async function POST(request: NextRequest) {
   // Voto de feedback comunitario (botón inline). Se maneja ANTES que message y
   // SIEMPRE devuelve {ok:true} — un fallo nunca debe hacer reintentar el webhook.
   if (update.callback_query) {
-    await handleVote(update.callback_query);
+    const cb = update.callback_query;
+    if (parsePreferencesCallback(cb.data)) {
+      await handlePreferencesCallback(cb);
+    } else {
+      await handleVote(cb);
+    }
     return NextResponse.json({ ok: true });
   }
 
@@ -98,6 +106,9 @@ export async function POST(request: NextRequest) {
     } else if (text === "/rayos") {
       await logBotCommand(chatId, "/rayos");
       await handleRayosToggle(chatId);
+    } else if (text === "/preferencias" || text === "/prevencion") {
+      await logBotCommand(chatId, text);
+      await handlePreferencesCommand(chatId);
     } else if (location) {
       await logBotCommand(chatId, "<location>");
       await handleLocation(chatId, location.latitude, location.longitude);
@@ -339,6 +350,88 @@ async function handleRayosToggle(chatId: number) {
   );
 }
 
+// Loads the sub, derives coverage, and shows the unified preferences menu.
+async function handlePreferencesCommand(chatId: number) {
+  const db = getSupabase();
+  const { data: sub } = await db
+    .from("subscribers")
+    .select("lat, lng, lightning_enabled, prevention_mode")
+    .eq("chat_id", chatId)
+    .limit(1)
+    .maybeSingle();
+
+  if (!sub) {
+    await sendMessage(chatId, "⚙️ Primero suscribite con /ciudad o compartiendo tu ubicación." + FOOTER);
+    return;
+  }
+
+  const { data: zoneData } = await db
+    .from("danger_zones")
+    .select("id,name,bbox")
+    .in("province", PREVENTION_PROVINCE_IDS);
+  const covered = findDangerZone(sub.lat, sub.lng, (zoneData ?? []) as never) !== null;
+
+  const keyboard = buildPreferencesKeyboard({
+    lightning: sub.lightning_enabled !== false,
+    prevention: (sub.prevention_mode ?? "off") as "off" | "alerts" | "daily",
+    covered,
+  });
+
+  const body =
+    "⚙️ <b>Tus avisos</b>\n\n" +
+    "🔥 Focos cercanos — <b>siempre activos</b> (es el corazón del servicio)\n" +
+    (covered ? "🌲 Elegí si querés avisos de prevención de incendio." : "");
+
+  await sendMessage(chatId, body, { reply_markup: keyboard });
+}
+
+// Applies a preferences button press and re-renders the menu. Todo el cuerpo va
+// envuelto en try/catch: este handler corre FUERA del try general del POST, y el
+// webhook NUNCA debe tirar 500 (Telegram reintentaría el update). Mismo patrón
+// defensivo que handleVote — best-effort answerCallbackQuery en el catch.
+async function handlePreferencesCallback(cb: {
+  id: string;
+  from: { id: number };
+  message?: { message_id: number; chat: { id: number } };
+  data?: string;
+}) {
+  try {
+    const action = parsePreferencesCallback(cb.data);
+    if (!action) {
+      await answerCallbackQuery(cb.id);
+      return;
+    }
+    const chatId = cb.from.id;
+    const db = getSupabase();
+
+    if (action.kind === "lightning") {
+      const { data: sub } = await db.from("subscribers").select("lightning_enabled").eq("chat_id", chatId).limit(1).maybeSingle();
+      const next = sub?.lightning_enabled === false;
+      await db.from("subscribers").update({ lightning_enabled: next }).eq("chat_id", chatId);
+      await answerCallbackQuery(cb.id, next ? "Rayos activados" : "Rayos desactivados");
+    } else {
+      await db.from("subscribers").update({ prevention_mode: action.mode }).eq("chat_id", chatId);
+      // starting fresh: drop any stale episode so a new crossing re-alerts cleanly
+      await db.from("prevention_alerted").delete().eq("chat_id", chatId);
+      const label = action.mode === "daily" ? "Resumen diario" : action.mode === "alerts" ? "Solo si hay peligro" : "Prevención desactivada";
+      await answerCallbackQuery(cb.id, label);
+    }
+
+    // re-render the menu sending a fresh message (no editMessage helper aún)
+    await handlePreferencesCommand(chatId);
+  } catch (e) {
+    log.error({
+      event: "bot.preferences_callback_failed",
+      err: e instanceof Error ? e.message : String(e),
+    });
+    try {
+      await answerCallbackQuery(cb.id);
+    } catch {
+      // best-effort
+    }
+  }
+}
+
 async function handleLocation(chatId: number, lat: number, lng: number) {
   // Reverse geocode to get city name
   const geo = await geocodeCity(`${lat},${lng}`);
@@ -362,6 +455,27 @@ async function handleLocation(chatId: number, lat: number, lng: number) {
       "📊 Probá /estado para ver focos activos cerca tuyo ahora." +
       FOOTER
   );
+
+  // Offer prevention only if the new location falls in a covered zone.
+  const db = getSupabase();
+  const { data: zoneData } = await db
+    .from("danger_zones")
+    .select("id,name,bbox")
+    .in("province", PREVENTION_PROVINCE_IDS);
+  const zone = findDangerZone(lat, lng, (zoneData ?? []) as never);
+  if (zone) {
+    await sendMessage(
+      chatId,
+      `🌲 Tu zona (${zone.name}) tiene pronóstico de peligro de incendio. ¿Querés que te avise?`,
+      {
+        reply_markup: buildPreferencesKeyboard({
+          lightning: true,
+          prevention: "off",
+          covered: true,
+        }),
+      }
+    );
+  }
 }
 
 async function handleCiudad(chatId: number, query: string) {
@@ -637,6 +751,29 @@ async function upsertSubscriber(
     .select("source")
     .eq("chat_id", chatId)
     .maybeSingle();
+
+  // Reset prevention opt-in when the covered zone changes (or coverage is lost):
+  // the user opted into a *specific* zone's forecast, so a relocation should not
+  // silently keep alerting on the old zone. Only relevant if prevention is on.
+  const { data: prev } = await db
+    .from("subscribers")
+    .select("lat, lng, prevention_mode")
+    .eq("chat_id", chatId)
+    .limit(1)
+    .maybeSingle();
+
+  let resetPrevention = false;
+  if (prev && prev.prevention_mode && prev.prevention_mode !== "off") {
+    const { data: zoneData } = await db
+      .from("danger_zones")
+      .select("id,name,bbox")
+      .in("province", PREVENTION_PROVINCE_IDS);
+    const zones = (zoneData ?? []) as never;
+    const oldZone = findDangerZone(prev.lat, prev.lng, zones);
+    const newZone = findDangerZone(lat, lng, zones);
+    if (oldZone?.id !== newZone?.id) resetPrevention = true;
+  }
+
   const row: Record<string, unknown> = {
     chat_id: chatId,
     lat,
@@ -647,7 +784,11 @@ async function upsertSubscriber(
     const src = await resolveSource(chatId);
     if (src) row.source = src;
   }
+  if (resetPrevention) row.prevention_mode = "off";
   await db.from("subscribers").upsert(row, { onConflict: "chat_id" });
+  if (resetPrevention) {
+    await db.from("prevention_alerted").delete().eq("chat_id", chatId);
+  }
 }
 
 // WHI-587 — append-only command log for dashboard engagement chart.
