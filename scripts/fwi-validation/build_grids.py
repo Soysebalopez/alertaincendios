@@ -22,6 +22,10 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 from fire_danger.zones import ZONES  # noqa: E402
 
 STEP = 0.2
+MAX_POINTS = 50  # Cap per zone. Province-sized boxes (Patagonia) yield hundreds of
+                 # points at 0.2deg, which blows the Open-Meteo archive request weight
+                 # (429). 50 points is plenty for the daily p95 and matches TDF's scale
+                 # (32-39 pts, below the cap → TDF unchanged). Uniform subsample.
 HERE = pathlib.Path(__file__).resolve().parent
 OUT_DIR = pathlib.Path(__file__).resolve().parents[2] / "fire_danger" / "grids"
 
@@ -43,6 +47,9 @@ def build() -> None:
                 p = Point(float(lng), float(lat))  # shapely is (x=lng, y=lat)
                 if land.contains(p) and not lakes.contains(p):
                     pts.append([round(float(lat), 4), round(float(lng), 4)])
+        if len(pts) > MAX_POINTS:
+            step = (len(pts) + MAX_POINTS - 1) // MAX_POINTS  # uniform subsample
+            pts = pts[::step]
         (OUT_DIR / f"{z.id}.json").write_text(json.dumps(pts))
         print(f"{z.id}: {len(pts)} land points")
 
