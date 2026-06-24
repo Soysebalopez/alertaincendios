@@ -27,22 +27,57 @@ ZONE_OF = {"rio_grande": "tdf-norte-estepa", "ushuaia": "tdf-sur-bosque"}
 YEARS = list(range(2013, 2023))  # 10 years for stable tail percentiles (calibration)
 SUBSET_STEP = 1                  # FULL grid (all land points) — isolate the sampling factor
 SPINUP_DROP = 30
-_RETRY_DELAYS = [5, 15, 30, 60]  # seconds between retries on 429
+_RETRY_DELAYS = [5, 15, 30, 60]  # seconds between retries on a minutely / unspecified 429
 CACHE_DIR = pathlib.Path(__file__).resolve().parent / "om_cache"
+_HOURLY_WAIT = 900       # 15 min: the free-tier *hourly* budget refills over the clock hour
+_MAX_HOURLY_WAITS = 20   # ~5 h of patience before giving up on a stuck hourly limit
+
+
+class DailyQuotaExceeded(RuntimeError):
+    """Open-Meteo's *daily* free-tier budget is exhausted — cannot proceed until it
+    resets (next UTC day). Distinct from the hourly limit, which we just wait out.
+    The resumable cache means a re-run tomorrow continues from where this stopped."""
 
 
 def _fetch_with_retry(points, start, end):
-    """Fetch history for many points, retrying on 429 with exponential backoff."""
+    """Fetch history for many points, pacing around the Open-Meteo free-tier limits.
+
+    The 429 *reason* (in the response body) tells us which budget we hit:
+    - 'hourly'  -> wait it out (the hourly bucket refills); retry up to _MAX_HOURLY_WAITS.
+    - 'daily'   -> raise DailyQuotaExceeded; today's budget is gone, resume tomorrow.
+    - else (minutely / transient) -> short exponential backoff."""
     import requests
-    for attempt, delay in enumerate(_RETRY_DELAYS + [None]):
+    hourly_waits = 0
+    short_idx = 0
+    while True:
         try:
             return openmeteo.fetch_history_multi(points, start, end)
         except requests.exceptions.HTTPError as exc:
-            if exc.response is not None and exc.response.status_code == 429 and delay is not None:
-                print(f"  429 rate-limit; waiting {delay}s before retry {attempt + 1}...")
-                time.sleep(delay)
+            resp = exc.response
+            if resp is None or resp.status_code != 429:
+                raise
+            try:
+                reason = (resp.json() or {}).get("reason", "") or ""
+            except Exception:  # noqa: BLE001 — body may not be JSON
+                reason = (resp.text or "")[:200]
+            low = reason.lower()
+            if "daily" in low:
+                raise DailyQuotaExceeded(reason) from exc
+            if "hourly" in low:
+                hourly_waits += 1
+                if hourly_waits > _MAX_HOURLY_WAITS:
+                    raise RuntimeError(f"hourly limit not clearing after {hourly_waits} waits") from exc
+                print(f"  hourly limit; waiting {_HOURLY_WAIT}s "
+                      f"({hourly_waits}/{_MAX_HOURLY_WAITS})...", flush=True)
+                time.sleep(_HOURLY_WAIT)
                 continue
-            raise
+            delay = _RETRY_DELAYS[min(short_idx, len(_RETRY_DELAYS) - 1)]
+            short_idx += 1
+            if short_idx > 8:
+                raise
+            print(f"  rate-limit ({reason or '429'}); waiting {delay}s...", flush=True)
+            time.sleep(delay)
+            continue
 
 
 def _series_for_point(days):
