@@ -7,8 +7,16 @@ export type DangerClass = "bajo" | "moderado" | "alto" | "muy alto" | "extremo";
 
 export const DANGER_CLASSES: DangerClass[] = ["bajo", "moderado", "alto", "muy alto", "extremo"];
 
-// Provinces with prevention zones today. Add an id here when its zones exist.
-export const PREVENTION_PROVINCE_IDS: string[] = ["tierra-del-fuego"];
+// Provinces with calibrated FWI prevention zones (fire_danger/zones.py). Gates the
+// /provincia/[id] pages, the prevention-alerts cron, and the bot's prevention
+// coverage — add an id here when a province's zones go live on the Python side.
+export const PREVENTION_PROVINCE_IDS: string[] = [
+  "tierra-del-fuego",
+  "santa-cruz",
+  "chubut",
+  "rio-negro",
+  "neuquen",
+];
 
 export interface ZoneForecastDay {
   target_date: string; // YYYY-MM-DD
