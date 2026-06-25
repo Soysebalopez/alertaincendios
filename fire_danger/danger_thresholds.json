@@ -10,5 +10,53 @@
     "alto": 6.95,
     "muy alto": 17.95,
     "extremo": 27.07
+  },
+  "santa-cruz-estepa": {
+    "moderado": 15.64,
+    "alto": 52.93,
+    "muy alto": 81.78,
+    "extremo": 107.03
+  },
+  "santa-cruz-bosque-andino": {
+    "moderado": 0.28,
+    "alto": 4.53,
+    "muy alto": 14.52,
+    "extremo": 24.71
+  },
+  "chubut-estepa": {
+    "moderado": 20.95,
+    "alto": 57.85,
+    "muy alto": 83.96,
+    "extremo": 103.72
+  },
+  "chubut-bosque-andino": {
+    "moderado": 0.7,
+    "alto": 22.37,
+    "muy alto": 39.37,
+    "extremo": 50.1
+  },
+  "rio-negro-estepa": {
+    "moderado": 19.06,
+    "alto": 48.98,
+    "muy alto": 70.23,
+    "extremo": 88.44
+  },
+  "rio-negro-bosque-andino": {
+    "moderado": 0.0,
+    "alto": 0.7,
+    "muy alto": 8.32,
+    "extremo": 14.49
+  },
+  "neuquen-estepa": {
+    "moderado": 23.03,
+    "alto": 50.84,
+    "muy alto": 71.93,
+    "extremo": 93.23
+  },
+  "neuquen-bosque-andino": {
+    "moderado": 0.42,
+    "alto": 18.07,
+    "muy alto": 35.38,
+    "extremo": 44.96
   }
 }
