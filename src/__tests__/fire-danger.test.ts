@@ -45,8 +45,16 @@ describe("fire-danger pure helpers", () => {
     expect(forecastDateLabel("2026-06-21", "2026-06-18")).toBe("+3 días");
   });
 
-  it("exposes Tierra del Fuego as a prevention province", () => {
-    expect(PREVENTION_PROVINCE_IDS).toContain("tierra-del-fuego");
+  it("exposes the Phase-1 prevention provinces (TDF + Patagonia)", () => {
+    for (const id of [
+      "tierra-del-fuego",
+      "santa-cruz",
+      "chubut",
+      "rio-negro",
+      "neuquen",
+    ]) {
+      expect(PREVENTION_PROVINCE_IDS).toContain(id);
+    }
   });
 });
 
