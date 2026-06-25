@@ -17,6 +17,18 @@ EXPECTED_IDS = [
     "san-juan-valle-fertil",
     "la-rioja-velasco", "la-rioja-llanos",
     "catamarca-ancasti", "catamarca-aconquija",
+    # Phase 3 — NOA / Chaco / Litoral / Pampa serrana
+    "salta-chaco-este", "salta-yungas-pedemonte",
+    "jujuy-yungas-pedemonte",
+    "tucuman-cumbres-pastizal",
+    "santiago-chaco-seco",
+    "chaco-impenetrable",
+    "formosa-chaco-oeste",
+    "corrientes-ibera",
+    "entre-rios-montiel",
+    "santa-fe-chaco-norte",
+    "misiones-plantaciones",
+    "buenos-aires-tandilia", "buenos-aires-ventania",
 ]
 
 

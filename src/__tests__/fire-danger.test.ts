@@ -61,6 +61,18 @@ describe("fire-danger pure helpers", () => {
       "san-juan",
       "la-rioja",
       "catamarca",
+      // Phase 3 — NOA / Chaco / Litoral / Pampa serrana
+      "salta",
+      "jujuy",
+      "tucuman",
+      "santiago-del-estero",
+      "chaco",
+      "formosa",
+      "corrientes",
+      "entre-rios",
+      "santa-fe",
+      "misiones",
+      "buenos-aires",
     ]) {
       expect(PREVENTION_PROVINCE_IDS).toContain(id);
     }

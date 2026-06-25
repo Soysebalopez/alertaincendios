@@ -25,6 +25,18 @@ export const PREVENTION_PROVINCE_IDS: string[] = [
   "san-juan",
   "la-rioja",
   "catamarca",
+  // Phase 3 — NOA / Chaco / Litoral / Pampa serrana (CABA excluded — urban)
+  "salta",
+  "jujuy",
+  "tucuman",
+  "santiago-del-estero",
+  "chaco",
+  "formosa",
+  "corrientes",
+  "entre-rios",
+  "santa-fe",
+  "misiones",
+  "buenos-aires",
 ];
 
 export interface ZoneForecastDay {
