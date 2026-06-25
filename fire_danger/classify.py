@@ -11,12 +11,23 @@ import pathlib
 
 DANGER_CLASSES = ["bajo", "moderado", "alto", "muy alto", "extremo"]
 
+# Absolute minimum FWI for each class to be physically meaningful (generic Canadian
+# FWI danger breakpoints). Two roles:
+#  1. Fallback thresholds for an uncalibrated/missing zone (used below).
+#  2. A FLOOR on the per-zone percentile cuts at calibration time
+#     (scripts/fwi-validation/calibrate.py): cut = max(zone_percentile, floor). This
+#     stops the percentile calibration from labelling trivially-low FWI as "alto" in
+#     intrinsically wet, low-danger zones (e.g. Andean forest where >30% of days are
+#     FWI 0, so p30=0 collapses "bajo"). Estepa / dry zones sit far above the floor,
+#     so their per-zone calibration is unaffected.
+GLOBAL_FLOOR = {"moderado": 5.0, "alto": 10.0, "muy alto": 21.0, "extremo": 30.0}
+
 # Global provisional lower-bound thresholds (FWI >= bound -> class). Fallback only.
 _THRESHOLDS = [
-    (30.0, "extremo"),
-    (21.0, "muy alto"),
-    (10.0, "alto"),
-    (5.0, "moderado"),
+    (GLOBAL_FLOOR["extremo"], "extremo"),
+    (GLOBAL_FLOOR["muy alto"], "muy alto"),
+    (GLOBAL_FLOOR["alto"], "alto"),
+    (GLOBAL_FLOOR["moderado"], "moderado"),
     (0.0, "bajo"),
 ]
 
