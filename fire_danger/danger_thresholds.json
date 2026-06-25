@@ -58,5 +58,65 @@
     "alto": 18.07,
     "muy alto": 35.38,
     "extremo": 44.96
+  },
+  "la-pampa-caldenal": {
+    "moderado": 12.93,
+    "alto": 39.12,
+    "muy alto": 62.95,
+    "extremo": 80.95
+  },
+  "la-pampa-monte-oeste": {
+    "moderado": 23.32,
+    "alto": 53.42,
+    "muy alto": 77.14,
+    "extremo": 97.6
+  },
+  "mendoza-monte-este": {
+    "moderado": 23.09,
+    "alto": 49.7,
+    "muy alto": 72.86,
+    "extremo": 91.91
+  },
+  "mendoza-piedemonte-sur": {
+    "moderado": 20.46,
+    "alto": 44.83,
+    "muy alto": 63.6,
+    "extremo": 78.53
+  },
+  "san-luis-comechingones": {
+    "moderado": 8.95,
+    "alto": 25.56,
+    "muy alto": 40.76,
+    "extremo": 53.59
+  },
+  "san-luis-sierras-centro": {
+    "moderado": 14.76,
+    "alto": 39.9,
+    "muy alto": 62.93,
+    "extremo": 82.81
+  },
+  "cordoba-sierras": {
+    "moderado": 13.56,
+    "alto": 32.7,
+    "muy alto": 50.67,
+    "extremo": 64.85
+  },
+  "san-juan-valle-fertil": {
+    "moderado": 22.59,
+    "alto": 48.2,
+    "muy alto": 72.59,
+    "extremo": 96.33
+  },
+  "la-rioja-velasco": {
+    "moderado": 17.56,
+    "alto": 40.53,
+    "muy alto": 57.24,
+    "extremo": 71.65
+  },
+  "la-rioja-llanos": {
+    "moderado": 22.64,
+    "alto": 47.41,
+    "muy alto": 71.23,
+    "extremo": 97.37
   }
 }

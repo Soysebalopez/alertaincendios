@@ -45,13 +45,22 @@ describe("fire-danger pure helpers", () => {
     expect(forecastDateLabel("2026-06-21", "2026-06-18")).toBe("+3 días");
   });
 
-  it("exposes the Phase-1 prevention provinces (TDF + Patagonia)", () => {
+  it("exposes the Phase-1 + Phase-2 prevention provinces", () => {
     for (const id of [
+      // Phase 1 — Patagonia
       "tierra-del-fuego",
       "santa-cruz",
       "chubut",
       "rio-negro",
       "neuquen",
+      // Phase 2 — Centro / Cuyo / Sierras / southern NOA
+      "la-pampa",
+      "mendoza",
+      "san-luis",
+      "cordoba",
+      "san-juan",
+      "la-rioja",
+      "catamarca",
     ]) {
       expect(PREVENTION_PROVINCE_IDS).toContain(id);
     }

@@ -11,11 +11,20 @@ export const DANGER_CLASSES: DangerClass[] = ["bajo", "moderado", "alto", "muy a
 // /provincia/[id] pages, the prevention-alerts cron, and the bot's prevention
 // coverage — add an id here when a province's zones go live on the Python side.
 export const PREVENTION_PROVINCE_IDS: string[] = [
+  // Phase 1 — Patagonia
   "tierra-del-fuego",
   "santa-cruz",
   "chubut",
   "rio-negro",
   "neuquen",
+  // Phase 2 — Centro / Cuyo / Sierras / southern NOA
+  "la-pampa",
+  "mendoza",
+  "san-luis",
+  "cordoba",
+  "san-juan",
+  "la-rioja",
+  "catamarca",
 ];
 
 export interface ZoneForecastDay {
