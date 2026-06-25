@@ -1,15 +1,15 @@
 {
   "tdf-norte-estepa": {
-    "moderado": 2.17,
+    "moderado": 5.0,
     "alto": 15.03,
     "muy alto": 31.18,
     "extremo": 44.73
   },
   "tdf-sur-bosque": {
-    "moderado": 0.58,
-    "alto": 6.95,
-    "muy alto": 17.95,
-    "extremo": 27.07
+    "moderado": 5.0,
+    "alto": 10.0,
+    "muy alto": 21.0,
+    "extremo": 30.0
   },
   "santa-cruz-estepa": {
     "moderado": 15.64,
@@ -18,10 +18,10 @@
     "extremo": 107.03
   },
   "santa-cruz-bosque-andino": {
-    "moderado": 0.28,
-    "alto": 4.53,
-    "muy alto": 14.52,
-    "extremo": 24.71
+    "moderado": 5.0,
+    "alto": 10.0,
+    "muy alto": 21.0,
+    "extremo": 30.0
   },
   "chubut-estepa": {
     "moderado": 20.95,
@@ -30,7 +30,7 @@
     "extremo": 103.72
   },
   "chubut-bosque-andino": {
-    "moderado": 0.7,
+    "moderado": 5.0,
     "alto": 22.37,
     "muy alto": 39.37,
     "extremo": 50.1
@@ -42,10 +42,10 @@
     "extremo": 88.44
   },
   "rio-negro-bosque-andino": {
-    "moderado": 0.0,
-    "alto": 0.7,
-    "muy alto": 8.32,
-    "extremo": 14.49
+    "moderado": 5.0,
+    "alto": 10.0,
+    "muy alto": 21.0,
+    "extremo": 30.0
   },
   "neuquen-estepa": {
     "moderado": 23.03,
@@ -54,7 +54,7 @@
     "extremo": 93.23
   },
   "neuquen-bosque-andino": {
-    "moderado": 0.42,
+    "moderado": 5.0,
     "alto": 18.07,
     "muy alto": 35.38,
     "extremo": 44.96
