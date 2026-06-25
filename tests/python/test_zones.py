@@ -3,11 +3,20 @@ from fire_danger.zones import ZONES, Zone
 # Phase-1 zone set (TDF + Patagonia). IDs are stable — they key rows in danger_zones
 # and the per-zone cuts in danger_thresholds.json, so a rename is a breaking change.
 EXPECTED_IDS = [
+    # Phase 1 — Patagonia
     "tdf-norte-estepa", "tdf-sur-bosque",
     "santa-cruz-estepa", "santa-cruz-bosque-andino",
     "chubut-estepa", "chubut-bosque-andino",
     "rio-negro-estepa", "rio-negro-bosque-andino",
     "neuquen-estepa", "neuquen-bosque-andino",
+    # Phase 2 — Centro / Cuyo / Sierras / southern NOA
+    "la-pampa-caldenal", "la-pampa-monte-oeste",
+    "mendoza-monte-este", "mendoza-piedemonte-sur",
+    "san-luis-comechingones", "san-luis-sierras-centro",
+    "cordoba-sierras",
+    "san-juan-valle-fertil",
+    "la-rioja-velasco", "la-rioja-llanos",
+    "catamarca-ancasti", "catamarca-aconquija",
 ]
 
 
