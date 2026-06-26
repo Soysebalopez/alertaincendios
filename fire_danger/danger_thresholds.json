@@ -118,5 +118,95 @@
     "alto": 47.41,
     "muy alto": 71.23,
     "extremo": 97.37
+  },
+  "catamarca-ancasti": {
+    "moderado": 9.99,
+    "alto": 29.92,
+    "muy alto": 49.31,
+    "extremo": 65.36
+  },
+  "catamarca-aconquija": {
+    "moderado": 30.03,
+    "alto": 55.91,
+    "muy alto": 77.61,
+    "extremo": 96.35
+  },
+  "salta-chaco-este": {
+    "moderado": 11.28,
+    "alto": 31.52,
+    "muy alto": 51.41,
+    "extremo": 68.89
+  },
+  "salta-yungas-pedemonte": {
+    "moderado": 5.0,
+    "alto": 16.84,
+    "muy alto": 32.5,
+    "extremo": 44.48
+  },
+  "jujuy-yungas-pedemonte": {
+    "moderado": 5.0,
+    "alto": 21.4,
+    "muy alto": 36.4,
+    "extremo": 46.71
+  },
+  "tucuman-cumbres-pastizal": {
+    "moderado": 14.71,
+    "alto": 37.18,
+    "muy alto": 50.93,
+    "extremo": 59.61
+  },
+  "santiago-chaco-seco": {
+    "moderado": 12.13,
+    "alto": 30.64,
+    "muy alto": 49.75,
+    "extremo": 68.58
+  },
+  "chaco-impenetrable": {
+    "moderado": 9.29,
+    "alto": 26.37,
+    "muy alto": 43.67,
+    "extremo": 60.38
+  },
+  "formosa-chaco-oeste": {
+    "moderado": 9.28,
+    "alto": 26.73,
+    "muy alto": 45.13,
+    "extremo": 61.36
+  },
+  "corrientes-ibera": {
+    "moderado": 5.0,
+    "alto": 14.66,
+    "muy alto": 26.98,
+    "extremo": 40.53
+  },
+  "entre-rios-montiel": {
+    "moderado": 5.0,
+    "alto": 12.55,
+    "muy alto": 24.51,
+    "extremo": 35.58
+  },
+  "santa-fe-chaco-norte": {
+    "moderado": 6.58,
+    "alto": 18.82,
+    "muy alto": 32.3,
+    "extremo": 45.8
+  },
+  "misiones-plantaciones": {
+    "moderado": 5.0,
+    "alto": 10.0,
+    "muy alto": 21.0,
+    "extremo": 30.0
+  },
+  "buenos-aires-tandilia": {
+    "moderado": 5.0,
+    "alto": 15.3,
+    "muy alto": 28.69,
+    "extremo": 44.2
+  },
+  "buenos-aires-ventania": {
+    "moderado": 7.68,
+    "alto": 23.63,
+    "muy alto": 43.28,
+    "extremo": 61.94
   }
 }
