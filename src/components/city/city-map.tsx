@@ -5,12 +5,14 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { CaretDown, CaretUp } from "@phosphor-icons/react";
 import { AIR_LEVEL_COLORS, type AirLevel } from "@/lib/air-quality";
+import { haversineKm } from "@/lib/geo";
 
 interface FirePoint {
   latitude: number;
   longitude: number;
   confidence: string;
   frp: number;
+  forestZone?: string;
 }
 
 interface AirRes {
@@ -40,6 +42,7 @@ export function CityMap({
   const [air, setAir] = useState<AirRes | null>(null);
   const [wind, setWind] = useState<WindRes | null>(null);
   const [fireCount, setFireCount] = useState(0);
+  const [firesLoaded, setFiresLoaded] = useState(false);
   const [summary, setSummary] = useState<string | null>(null);
 
   useEffect(() => {
@@ -80,12 +83,13 @@ export function CityMap({
       .then((r) => r.json())
       .then((data) => {
         const fires: FirePoint[] = data.fires || [];
-        const nearby = fires.filter((f) => {
-          const d = Math.sqrt(
-            (f.latitude - lat) ** 2 + (f.longitude - lng) ** 2,
-          );
-          return d < 1;
-        });
+        // Forest fires within a real 100 km radius — aligns with
+        // CityForestFires / hero / map (haversine + forestZone filter).
+        const nearby = fires.filter(
+          (f) =>
+            f.forestZone &&
+            haversineKm(lat, lng, f.latitude, f.longitude) <= 100,
+        );
         nearby.forEach((f) => {
           const color =
             f.confidence === "h" || f.confidence === "high"
@@ -100,6 +104,7 @@ export function CityMap({
           }).addTo(map);
         });
         setFireCount(nearby.length);
+        setFiresLoaded(true);
       })
       .catch(() => {});
 
@@ -243,11 +248,20 @@ export function CityMap({
         )}
 
         {/* Fires */}
-        {fireCount > 0 && (
-          <CollapsibleCard title="Focos de calor" accent="#f97316">
-            <p className="text-xs text-muted">
-              {fireCount} foco(s) detectado(s) en un radio de 100 km.
-            </p>
+        {firesLoaded && (
+          <CollapsibleCard
+            title="Focos forestales"
+            accent={fireCount > 0 ? "#f97316" : undefined}
+          >
+            {fireCount > 0 ? (
+              <p className="text-xs text-muted">
+                {fireCount} foco(s) forestal(es) en un radio de 100 km.
+              </p>
+            ) : (
+              <p className="text-xs" style={{ color: "var(--good)" }}>
+                Sin focos forestales en un radio de 100 km.
+              </p>
+            )}
           </CollapsibleCard>
         )}
       </div>

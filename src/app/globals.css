@@ -26,6 +26,10 @@
   --radius: 8px;
   --radius-lg: 12px;
   --shadow-panel: 0 24px 60px -28px rgba(40, 30, 14, 0.3);
+
+  /* Nav height — used by sticky bars (e.g. air-quality filter) so they offset
+     correctly under the fixed nav. ~57px matches the desktop nav. */
+  --nav-h: 57px;
 }
 
 @theme inline {
@@ -411,4 +415,18 @@ body {
 .clp-fire-region { font-size: 13px; color: var(--foreground); }
 .clp-fire-meta { font-family: var(--font-mono); font-size: 10px; color: var(--muted); margin-top: 2px; }
 .clp-fire-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent); flex-shrink: 0; }
+
+/* Accessibility — honour the OS "reduce motion" setting. Neutralises infinite
+   animations (embers, thermal-pulse, beacon-ping, slide, etc.) and shortens
+   transitions without affecting layout. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
 .clp-empty { font-size: 12px; color: var(--muted); line-height: 1.55; }

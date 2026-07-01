@@ -22,6 +22,7 @@ export function FireHistoryDashboard() {
   const [months, setMonths] = useState(1);
   const [maxMonths, setMaxMonths] = useState(60);
   const [data, setData] = useState<HistoryPoint[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch("/api/fires/history?months=120")
@@ -37,13 +38,26 @@ export function FireHistoryDashboard() {
       .catch(() => {});
   }, []);
 
+  // Single fetch per range — KPIs and the chart share this data (the chart
+  // receives it via prop instead of re-fetching the same endpoint).
   useEffect(() => {
+    let cancelled = false;
+    // Intentional: show the loading state each time the range changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoading(true);
     fetch(`/api/fires/history?months=${months}`)
       .then((r) => r.json())
       .then((res) => {
+        if (cancelled) return;
         setData(res.data || []);
+        setLoading(false);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [months]);
 
   const total = data.reduce((s, d) => s + d.count, 0);
@@ -176,7 +190,7 @@ export function FireHistoryDashboard() {
           </div>
         </div>
 
-        <FireHistoryChart months={months} />
+        <FireHistoryChart months={months} data={data} loading={loading} />
       </div>
 
       <p

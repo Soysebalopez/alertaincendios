@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   findLastVIIRSCoverage,
   findNextVIIRSCoverage,
@@ -44,6 +44,9 @@ export function CitySatelliteCoverage({ lat, lng, cityName }: Props) {
   // ambos valores juntos.
   const [coverage, setCoverage] = useState<ComputedCoverage | null>(null);
   const [loading, setLoading] = useState(true);
+  // Hold the interval id in a ref so the effect cleanup can clear it
+  // synchronously — avoids the orphaned-interval window of awaiting the promise.
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -70,17 +73,19 @@ export function CitySatelliteCoverage({ lat, lng, cityName }: Props) {
           setLoading(false);
         };
         compute();
-        const interval = setInterval(compute, REFRESH_MS);
-        return () => clearInterval(interval);
+        intervalRef.current = setInterval(compute, REFRESH_MS);
       } catch {
         if (!cancelled) setLoading(false);
       }
     }
 
-    const cleanup = load();
+    load();
     return () => {
       cancelled = true;
-      cleanup.then((fn) => fn?.());
+      if (intervalRef.current !== null) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
     };
   }, [lat, lng]);
 
