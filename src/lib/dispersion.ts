@@ -24,13 +24,15 @@ export interface DispersionResult {
     opacity: number;
     polygon: [number, number][];
     reachesZones: string[];
-    etaMinutes: number;
+    /** null = wind calm (no dispersion); UI shows "sin dispersión". */
+    etaMinutes: number | null;
   }>;
   windBearing: number;
   affectedZones: Array<{
     name: string;
     distanceKm: number;
-    etaMinutes: number;
+    /** null = wind calm (no dispersion); UI shows "sin dispersión". */
+    etaMinutes: number | null;
     concentrationLevel: "high" | "medium" | "low" | "none";
   }>;
   summary: string;
@@ -86,14 +88,21 @@ export function calculateDispersion(
       ) / 1000,
   };
 
+  // Convention: each ring's ETA uses the SAME wind speed its distance was
+  // computed with — the "low" ring spreads with gusts, so its ETA is gust-based;
+  // "high"/"medium" use the mean wind. Otherwise distance and ETA disagree.
+  const ringSpeedMs = { high: windMs, medium: windMs, low: gustMs };
+
   const spreadAngle = { high: 15, medium: 25, low: 40 };
 
   const plumes = (["high", "medium", "low"] as const).map((level) => {
     const dist = distances[level];
     const angle = spreadAngle[level];
+    const speedMs = ringSpeedMs[level];
     const polygon = generatePlumePolygon(source, bearingRad, dist, angle);
+    // null = calm (no advective transport): no meaningful ETA.
     const etaMinutes =
-      windMs > 0 ? Math.round((dist * 1000) / windMs / 60) : 999;
+      speedMs > 0 ? Math.round((dist * 1000) / speedMs / 60) : null;
 
     const reachesZones = nearbyZones
       .filter((zone) =>
@@ -125,8 +134,9 @@ export function calculateDispersion(
   const affectedZones = nearbyZones
     .map((zone) => {
       const distKm = haversineKm(source[1], source[0], zone.lat, zone.lng);
+      // null = calm (no advective transport): no meaningful ETA.
       const etaMinutes =
-        windMs > 0 ? Math.round((distKm * 1000) / windMs / 60) : 999;
+        windMs > 0 ? Math.round((distKm * 1000) / windMs / 60) : null;
 
       let concentrationLevel: "high" | "medium" | "low" | "none" = "none";
       if (
@@ -167,7 +177,8 @@ export function calculateDispersion(
       return {
         name: zone.name,
         distanceKm: Math.round(distKm * 10) / 10,
-        etaMinutes: concentrationLevel !== "none" ? etaMinutes : -1,
+        // null when out of plume or calm — no ETA to show.
+        etaMinutes: concentrationLevel !== "none" ? etaMinutes : null,
         concentrationLevel,
       };
     })
@@ -178,7 +189,7 @@ export function calculateDispersion(
   );
   const summary =
     affected.length > 0
-      ? `Simulacion de ${params.label.toLowerCase()} con viento de ${windSpeed} km/h. Zonas potencialmente afectadas: ${affected.map((z) => `${z.name} (${z.etaMinutes} min)`).join(", ")}.`
+      ? `Simulacion de ${params.label.toLowerCase()} con viento de ${windSpeed} km/h. Zonas potencialmente afectadas: ${affected.map((z) => `${z.name} (${z.etaMinutes !== null ? `${z.etaMinutes} min` : "sin dispersión"})`).join(", ")}.`
       : `Simulacion de ${params.label.toLowerCase()} con viento de ${windSpeed} km/h. Segun las condiciones actuales, la dispersion no alcanza zonas pobladas en ${durationMinutes} minutos.`;
 
   return { plumes, windBearing: plumeBearing, affectedZones, summary };
@@ -212,15 +223,37 @@ function isPointInPlume(
   const pointDist = haversineKm(source[1], source[0], lat, lng);
   if (pointDist > distKm) return false;
 
-  const pointBearing = Math.atan2(
-    (lng - source[0]) * Math.cos((lat * Math.PI) / 180),
-    lat - source[1],
-  );
+  // Spherical bearing in compass convention (0 = N, clockwise), matching the
+  // plume `bearingRad` which derives from a compass wind direction. The old
+  // flat-earth atan2 used a mathematical convention and disagreed with the cone.
+  const pointBearing = compassBearingRad(source[1], source[0], lat, lng);
 
   let angleDiff = Math.abs(pointBearing - bearingRad);
   if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
 
   return angleDiff <= (spreadAngleDeg * Math.PI) / 180;
+}
+
+/**
+ * Great-circle initial bearing from (lat1,lng1) to (lat2,lng2), returned in
+ * radians on the compass convention (0 = North, increasing clockwise),
+ * normalized to [0, 2π). Consistent with the plume's `bearingRad`.
+ */
+function compassBearingRad(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number,
+): number {
+  const φ1 = (lat1 * Math.PI) / 180;
+  const φ2 = (lat2 * Math.PI) / 180;
+  const Δλ = ((lng2 - lng1) * Math.PI) / 180;
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x =
+    Math.cos(φ1) * Math.sin(φ2) -
+    Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  const θ = Math.atan2(y, x);
+  return (θ + 2 * Math.PI) % (2 * Math.PI);
 }
 
 function offsetPoint(

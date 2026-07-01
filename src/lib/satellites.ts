@@ -31,7 +31,7 @@ const ARG_BBOX = {
 } as const;
 
 // Propagation tuning. The "next pass" we display is when the sub-satellite point
-// (SSP) enters the Argentina bbox. VIIRS swath is ~3060 km wide so the satellite
+// (SSP) enters the Argentina bbox. VIIRS swath is ~3040 km wide so the satellite
 // already starts observing Argentina before the SSP crosses the border, but for
 // the badge ("próximo pase") the SSP-over-Argentina moment is the most intuitive
 // definition and ±5 min of error is fine.
@@ -205,9 +205,10 @@ export function formatCountdown(msUntil: number): string {
 }
 
 // VIIRS swath: 3040 km wide → 1520 km a cada lado del ground track. Una ciudad
-// está "dentro del swath" durante una pasada si su distancia mínima al SSP en
-// algún instante del pase es <1520 km (aproximación: el track es curvo, así que
-// la perpendicular real puede diferir hasta ~medio paso ≈ 105 km a 30s steps).
+// está "dentro del swath" durante una pasada si su distancia PERPENDICULAR
+// (cross-track) al segmento del ground track entre dos muestras consecutivas
+// es <1520 km. Medir contra el segmento (no contra un único SSP) elimina el
+// error de medio paso de la versión anterior.
 const VIIRS_SWATH_HALF_KM = 1520;
 const COVERAGE_STEP_MS = 60_000; // 1 min
 const COVERAGE_HORIZON_MS = 24 * 60 * 60_000; // 24h
@@ -219,8 +220,10 @@ export type CoverageEvent = {
   distanceKm: number;
 };
 
+const EARTH_R_KM = 6371;
+
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371;
+  const R = EARTH_R_KM;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLng = ((lng2 - lng1) * Math.PI) / 180;
   const a =
@@ -229,6 +232,48 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
       Math.cos((lat2 * Math.PI) / 180) *
       Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+function bearingRad(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const φ1 = (lat1 * Math.PI) / 180;
+  const φ2 = (lat2 * Math.PI) / 180;
+  const Δλ = ((lng2 - lng1) * Math.PI) / 180;
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x =
+    Math.cos(φ1) * Math.sin(φ2) -
+    Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return Math.atan2(y, x);
+}
+
+/**
+ * Great-circle distance from point (lat,lng) to the segment of ground track
+ * between two consecutive sub-satellite points. Returns the perpendicular
+ * (cross-track) distance when the point projects onto the segment, else the
+ * distance to the nearer endpoint. Ported from forest-zones-geo.ts.
+ *
+ * Using the cross-track distance (instead of distance to a single SSP sample)
+ * removes the ~half-step sampling error: with 60s steps the track moves ~420 km
+ * between samples, so a point-to-sample test could be off by ~210 km near a
+ * city; the segment test bounds the error to the curvature within one step.
+ */
+function pointToSegmentDistanceKm(
+  lat: number,
+  lng: number,
+  sLat: number,
+  sLng: number,
+  eLat: number,
+  eLng: number
+): number {
+  const δ13 = haversineKm(sLat, sLng, lat, lng) / EARTH_R_KM;
+  if (δ13 === 0) return 0;
+  const θ13 = bearingRad(sLat, sLng, lat, lng);
+  const θ12 = bearingRad(sLat, sLng, eLat, eLng);
+  const dxt = Math.asin(Math.sin(δ13) * Math.sin(θ13 - θ12)) * EARTH_R_KM;
+  const dat = Math.acos(Math.cos(δ13) / Math.cos(dxt / EARTH_R_KM)) * EARTH_R_KM;
+  const segLength = haversineKm(sLat, sLng, eLat, eLng);
+  if (Number.isNaN(dat) || dat < 0) return haversineKm(lat, lng, sLat, sLng);
+  if (dat > segLength) return haversineKm(lat, lng, eLat, eLng);
+  return Math.abs(dxt);
 }
 
 /**
@@ -260,17 +305,26 @@ export function findLastVIIRSCoverage(
       continue;
     }
 
+    // Walk backward; keep the previous (later-in-time) sample so we can measure
+    // the perpendicular distance to the ground-track segment, not to a point.
+    let prev: { lat: number; lng: number } | null = null;
     for (let dt = 0; dt < COVERAGE_HORIZON_MS; dt += COVERAGE_STEP_MS) {
       const date = new Date(now.getTime() - dt);
       const ssp = subSatellitePoint(satrec, date);
-      if (!ssp) continue;
-      const distance = haversineKm(lat, lng, ssp.lat, ssp.lng);
+      if (!ssp) {
+        prev = null;
+        continue;
+      }
+      const distance = prev
+        ? pointToSegmentDistanceKm(lat, lng, ssp.lat, ssp.lng, prev.lat, prev.lng)
+        : haversineKm(lat, lng, ssp.lat, ssp.lng);
       if (distance < VIIRS_SWATH_HALF_KM) {
         if (!best || date.getTime() > best.at.getTime()) {
           best = { norad_id: tle.norad_id, name: tle.name, at: date, distanceKm: distance };
         }
         break; // first hit walking backward = most recent for this sat
       }
+      prev = ssp;
     }
   }
   return best;
@@ -301,17 +355,26 @@ export function findNextVIIRSCoverage(
       continue;
     }
 
+    // Walk forward; keep the previous (earlier-in-time) sample so we can measure
+    // the perpendicular distance to the ground-track segment, not to a point.
+    let prev: { lat: number; lng: number } | null = null;
     for (let dt = 0; dt < COVERAGE_HORIZON_MS; dt += COVERAGE_STEP_MS) {
       const date = new Date(now.getTime() + dt);
       const ssp = subSatellitePoint(satrec, date);
-      if (!ssp) continue;
-      const distance = haversineKm(lat, lng, ssp.lat, ssp.lng);
+      if (!ssp) {
+        prev = null;
+        continue;
+      }
+      const distance = prev
+        ? pointToSegmentDistanceKm(lat, lng, prev.lat, prev.lng, ssp.lat, ssp.lng)
+        : haversineKm(lat, lng, ssp.lat, ssp.lng);
       if (distance < VIIRS_SWATH_HALF_KM) {
         if (!best || date.getTime() < best.at.getTime()) {
           best = { norad_id: tle.norad_id, name: tle.name, at: date, distanceKm: distance };
         }
         break;
       }
+      prev = ssp;
     }
   }
   return best;
