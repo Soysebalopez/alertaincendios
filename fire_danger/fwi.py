@@ -9,7 +9,10 @@ from fire_danger.daylength import dc_daylength, dmc_daylength
 
 
 def ffmc(temp: float, rh: float, wind: float, rain: float, ffmc_prev: float) -> float:
-    rh = min(rh, 100.0)
+    # Defensive clamps for invalid inputs (negative wind / out-of-range rh would
+    # crash math.sqrt / break the moisture equations). No effect on valid inputs.
+    wind = max(wind, 0.0)
+    rh = min(max(rh, 0.0), 100.0)
     mo = 147.2 * (101.0 - ffmc_prev) / (59.5 + ffmc_prev)
     if rain > 0.5:
         rf = rain - 0.5
@@ -41,7 +44,8 @@ def ffmc(temp: float, rh: float, wind: float, rain: float, ffmc_prev: float) -> 
 
 def dmc(temp: float, rh: float, rain: float, dmc_prev: float,
         month: int, hemisphere: str) -> float:
-    rh = min(rh, 100.0)
+    # Defensive clamp for invalid rh. No effect on valid inputs ([0, 100]).
+    rh = min(max(rh, 0.0), 100.0)
     t = max(temp, -1.1)
     le = dmc_daylength(month, hemisphere)
     rk = 1.894 * (t + 1.1) * (100.0 - rh) * le * 1e-4
@@ -74,6 +78,8 @@ def dc(temp: float, rain: float, dc_prev: float, month: int, hemisphere: str) ->
 
 
 def isi(wind: float, ffmc_val: float) -> float:
+    # Defensive clamp for negative wind. No effect on valid inputs (wind >= 0).
+    wind = max(wind, 0.0)
     fw = math.exp(0.05039 * wind)
     m = 147.2 * (101.0 - ffmc_val) / (59.5 + ffmc_val)
     ff = 91.9 * math.exp(-0.1386 * m) * (1.0 + m ** 5.31 / 4.93e7)
