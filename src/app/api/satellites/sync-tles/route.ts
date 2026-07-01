@@ -29,7 +29,10 @@ export async function GET(request: Request) {
   for (const noradId of noradIds) {
     try {
       const url = `${CELESTRAK_BASE}?CATNR=${noradId}&FORMAT=tle`;
-      const res = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
+      const res = await fetch(url, {
+        headers: { "User-Agent": USER_AGENT },
+        signal: AbortSignal.timeout(10000),
+      });
       if (!res.ok) {
         failed.push({ norad_id: noradId, reason: `celestrak_http_${res.status}` });
         continue;

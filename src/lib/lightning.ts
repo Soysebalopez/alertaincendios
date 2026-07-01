@@ -57,7 +57,7 @@ async function fetchFromOpenWeather(
   apiKey: string
 ): Promise<LightningRisk> {
   const url = `https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lng}&exclude=minutely,daily&units=metric&appid=${apiKey}`;
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
   if (!res.ok) throw new Error(`OWM ${res.status}`);
   const data = await res.json();
 
@@ -97,7 +97,7 @@ async function fetchFromOpenMeteo(
 ): Promise<LightningRisk> {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=weather_code,relative_humidity_2m,precipitation&hourly=weather_code&past_hours=6&forecast_hours=3`;
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
     if (!res.ok) throw new Error(`Open-Meteo ${res.status}`);
     const data = await res.json();
 

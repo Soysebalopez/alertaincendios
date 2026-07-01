@@ -28,21 +28,30 @@ export function cardinalToSpanish(cardinal: string): string {
   return map[cardinal] || cardinal;
 }
 
-/** Fetch current wind for a location (fallback values on error) */
+// Return a fresh object each time (not a shared reference) so a caller that
+// caches/mutates the result can't corrupt the fallback for everyone else.
+function windFallback(): WindData {
+  return { windSpeed: 10, windDirection: 180, temperature: 20 };
+}
+
+/** Fetch current wind for a location (fallback values on error/timeout) */
 export async function fetchWind(lat: number, lng: number): Promise<WindData> {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=wind_speed_10m,wind_direction_10m,temperature_2m`;
 
-  const res = await fetch(url);
-  if (!res.ok) {
-    return { windSpeed: 10, windDirection: 180, temperature: 20 };
+  try {
+    // Timeout so a hung Open-Meteo doesn't stall the alert-fan-out cron.
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return windFallback();
+
+    const data = await res.json();
+    const current = data.current;
+
+    return {
+      windSpeed: current?.wind_speed_10m ?? 10,
+      windDirection: current?.wind_direction_10m ?? 180,
+      temperature: current?.temperature_2m ?? 20,
+    };
+  } catch {
+    return windFallback();
   }
-
-  const data = await res.json();
-  const current = data.current;
-
-  return {
-    windSpeed: current.wind_speed_10m ?? 10,
-    windDirection: current.wind_direction_10m ?? 180,
-    temperature: current.temperature_2m ?? 20,
-  };
 }

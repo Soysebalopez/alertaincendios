@@ -83,7 +83,13 @@ export async function syncFiresFromFirms(): Promise<{
   count: number;
   error?: string;
 }> {
-  const res = await fetch(getFirmsUrl());
+  let res: Response;
+  try {
+    // FIRMS CSV can be large; allow a generous timeout but never hang forever.
+    res = await fetch(getFirmsUrl(), { signal: AbortSignal.timeout(20000) });
+  } catch (e) {
+    return { count: 0, error: e instanceof Error ? e.message : String(e) };
+  }
   if (!res.ok) {
     return { count: 0, error: `FIRMS responded ${res.status}` };
   }
