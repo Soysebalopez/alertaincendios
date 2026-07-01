@@ -4,6 +4,14 @@ import {
   type DispersionInput,
 } from "@/lib/dispersion";
 import { PROVINCES } from "@/lib/argentina-cities";
+import {
+  checkRateLimit,
+  clientIp,
+  isInternalCall,
+  rateLimitHeaders,
+} from "@/lib/ratelimit";
+
+const SIMULATE_LIMIT = 10;
 
 /**
  * POST /api/simulate
@@ -13,6 +21,23 @@ import { PROVINCES } from "@/lib/argentina-cities";
  */
 
 export async function POST(request: NextRequest) {
+  // Rate-limit FIRST (before any parsing/work) — this endpoint amplifies load
+  // to Open-Meteo (via /api/wind) and is O(n) over all cities.
+  if (!isInternalCall(request)) {
+    const rl = await checkRateLimit({
+      namespace: "simulate",
+      key: clientIp(request),
+      limit: SIMULATE_LIMIT,
+      windowSec: 60,
+    });
+    if (!rl.ok) {
+      return NextResponse.json(
+        { error: "Demasiadas simulaciones, probá en un minuto" },
+        { status: 429, headers: rateLimitHeaders(rl, SIMULATE_LIMIT) },
+      );
+    }
+  }
+
   try {
     const body = await request.json();
     const { source, eventType, durationMinutes } = body;
@@ -32,10 +57,15 @@ export async function POST(request: NextRequest) {
     const [lng, lat] = source;
     const origin = new URL(request.url).origin;
 
-    // Fetch current wind
-    const windRes = await fetch(
-      `${origin}/api/wind?lat=${lat}&lng=${lng}`,
-    ).then((r) => r.json());
+    // Fetch current wind. Mark as an internal call so it bypasses /api/wind's
+    // own rate limit (otherwise it counts against the user's IP budget), and
+    // bound it with a timeout so a hung upstream doesn't stall the request.
+    const windRes = await fetch(`${origin}/api/wind?lat=${lat}&lng=${lng}`, {
+      headers: process.env.CRON_SECRET
+        ? { "x-clara-internal": process.env.CRON_SECRET }
+        : undefined,
+      signal: AbortSignal.timeout(8000),
+    }).then((r) => r.json());
 
     // Find nearby cities (within ~50km) for impact analysis
     const allCities = PROVINCES.flatMap((p) =>

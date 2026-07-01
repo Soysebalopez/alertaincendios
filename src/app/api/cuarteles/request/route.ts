@@ -68,6 +68,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  // B6 — rate-limit ANTES de validar, para que un atacante no pueda martillar el
+  // endpoint con bodies inválidos sin tocar el limiter.
+  const rl = await checkRateLimit({
+    key: clientIp(request),
+    limit: RATE_LIMIT_PER_MIN,
+    windowSec: 60,
+    namespace: "cuarteles-request",
+  });
+  if (!rl.ok) {
+    return NextResponse.json({ error: "rate_limited" }, { status: 429 });
+  }
+
   const cuartel = clean(body.cuartel);
   const provincia = clean(body.provincia);
   const localidad = clean(body.localidad);
@@ -78,16 +90,6 @@ export async function POST(request: NextRequest) {
 
   if (!cuartel || !provincia || !localidad || !contacto || !telefono) {
     return NextResponse.json({ error: "missing_fields" }, { status: 400 });
-  }
-
-  const rl = await checkRateLimit({
-    key: clientIp(request),
-    limit: RATE_LIMIT_PER_MIN,
-    windowSec: 60,
-    namespace: "cuarteles-request",
-  });
-  if (!rl.ok) {
-    return NextResponse.json({ error: "rate_limited" }, { status: 429 });
   }
 
   const resend = getResend();
