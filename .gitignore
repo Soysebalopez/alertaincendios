@@ -31,6 +31,13 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# python caches
+__pycache__/
+*.py[cod]
+
+# tooling
+.playwright-mcp/
+
 # env files (can opt-in for committing if needed)
 .env*
 # Local secret files for scripts (sync-fires.env, backfill.env, etc.)
