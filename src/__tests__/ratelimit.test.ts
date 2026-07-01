@@ -111,14 +111,16 @@ describe("isInternalCall (H-10 bypass)", () => {
 });
 
 describe("clientIp", () => {
-  it("prioriza x-forwarded-for sobre x-real-ip", () => {
+  it("prioriza x-real-ip (Vercel) sobre el x-forwarded-for spoofeable", () => {
+    // B5 — el primer segmento de x-forwarded-for lo provee el cliente y se
+    // puede falsificar; x-real-ip lo setea Vercel y es confiable.
     const req = new Request("https://x.com", {
       headers: {
         "x-forwarded-for": "1.2.3.4, 5.6.7.8",
         "x-real-ip": "9.10.11.12",
       },
     });
-    expect(clientIp(req)).toBe("1.2.3.4");
+    expect(clientIp(req)).toBe("9.10.11.12");
   });
 
   it("usa x-real-ip si no hay x-forwarded-for", () => {
@@ -126,6 +128,13 @@ describe("clientIp", () => {
       headers: { "x-real-ip": "9.10.11.12" },
     });
     expect(clientIp(req)).toBe("9.10.11.12");
+  });
+
+  it("cae al ÚLTIMO hop de x-forwarded-for (el más confiable) si no hay x-real-ip", () => {
+    const req = new Request("https://x.com", {
+      headers: { "x-forwarded-for": "1.2.3.4, 5.6.7.8" },
+    });
+    expect(clientIp(req)).toBe("5.6.7.8");
   });
 
   it("devuelve 'anon' sin headers", () => {
