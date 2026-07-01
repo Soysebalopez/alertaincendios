@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { sendMessage, answerCallbackQuery, editMessageText } from "@/lib/telegram";
+import { sendMessage, answerCallbackQuery, editMessageText, escapeHtml } from "@/lib/telegram";
 import { parseFeedbackCallback } from "@/lib/feedback-keyboard";
 import { buildPreferencesKeyboard, parsePreferencesCallback } from "@/lib/preferences-keyboard";
 import { findDangerZone } from "@/lib/danger-zone-match";
@@ -8,6 +8,7 @@ import { PREVENTION_PROVINCE_IDS } from "@/lib/fire-danger";
 import { geocodeCity } from "@/lib/geocode";
 import { fetchFires } from "@/lib/firms";
 import { haversineKm } from "@/lib/geo";
+import { artHour } from "@/lib/time";
 import { log } from "@/lib/logger";
 
 /**
@@ -69,7 +70,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const update: TelegramUpdate = await request.json();
+  // M2 — parse defensivo. Un body no-JSON (o vacío) no debe tirar 500: Telegram
+  // reintenta ante 5xx y entraría en loop con basura. Ack con {ok:true}.
+  let update: TelegramUpdate;
+  try {
+    update = await request.json();
+  } catch {
+    return NextResponse.json({ ok: true });
+  }
 
   // Voto de feedback comunitario (botón inline). Se maneja ANTES que message y
   // SIEMPRE devuelve {ok:true} — un fallo nunca debe hacer reintentar el webhook.
@@ -86,7 +94,12 @@ export async function POST(request: NextRequest) {
   const chatId = update.message?.chat.id;
   if (!chatId) return NextResponse.json({ ok: true });
 
-  const text = update.message?.text?.trim() || "";
+  // Strip a trailing `@botname` from the command token so group-style commands
+  // (`/estado@alertaforestal_bot`) still match the exact-equality dispatch.
+  const text = (update.message?.text?.trim() || "").replace(
+    /^(\/[A-Za-z0-9_]+)@[A-Za-z0-9_]+/,
+    "$1"
+  );
   const location = update.message?.location;
 
   try {
@@ -112,8 +125,10 @@ export async function POST(request: NextRequest) {
     } else if (location) {
       await logBotCommand(chatId, "<location>");
       await handleLocation(chatId, location.latitude, location.longitude);
-    } else if (text.startsWith("/ciudad ")) {
-      const arg = text.replace("/ciudad ", "").trim();
+    } else if (text === "/ciudad" || text.startsWith("/ciudad ")) {
+      // A5 — `/ciudad` sin argumento debe llegar a handleCiudad (que muestra el
+      // prompt "escribí tu ciudad"), no caer en "comando no reconocido".
+      const arg = text === "/ciudad" ? "" : text.slice("/ciudad ".length).trim();
       await logBotCommand(chatId, "/ciudad", arg);
       await handleCiudad(chatId, arg);
     } else if (text === "/estado") {
@@ -247,7 +262,7 @@ async function handleVote(cb: {
       fireLat != null && fireLng != null && sub.lat != null && sub.lng != null
         ? haversineKm(sub.lat, sub.lng, fireLat, fireLng)
         : null;
-    const localHour = (new Date().getUTCHours() + 24 - 3) % 24; // Argentina UTC-3
+    const localHour = artHour(); // Argentina-local hour (B7 — centralized helper)
 
     await db.from("feedback").insert({
       alert_id: parsed.alertId,
@@ -334,6 +349,11 @@ async function handleRayosToggle(chatId: number) {
     return;
   }
 
+  // M8 — read-modify-write toggle. There's a tiny race if the user taps /rayos
+  // and the preferences button near-simultaneously (two serverless invocations
+  // reading the same value). Low impact for a self-toggle; a fully atomic
+  // version needs a DB RPC (`SET lightning_enabled = NOT COALESCE(...)`) — see
+  // scripts/sql/whi-audit-2026-06-30-optional.sql.
   const next = sub.lightning_enabled === false; // toggle
   await db
     .from("subscribers")
@@ -456,7 +476,7 @@ async function handleLocation(chatId: number, lat: number, lng: number) {
 
   await upsertSubscriber(chatId, lat, lng, cityName);
 
-  const label = province ? `${cityName}, ${province}` : cityName;
+  const label = escapeHtml(province ? `${cityName}, ${province}` : cityName);
   // WHI-585 — set clear expectations on when/why alerts arrive
   await sendMessage(
     chatId,
@@ -482,7 +502,7 @@ async function handleLocation(chatId: number, lat: number, lng: number) {
   if (zone) {
     await sendMessage(
       chatId,
-      `🌲 Tu zona (${zone.name}) tiene pronóstico de peligro de incendio. ¿Querés que te avise?`,
+      `🌲 Tu zona (${escapeHtml(zone.name)}) tiene pronóstico de peligro de incendio. ¿Querés que te avise?`,
       {
         reply_markup: buildPreferencesKeyboard({
           lightning: true,
@@ -504,14 +524,14 @@ async function handleCiudad(chatId: number, query: string) {
   if (!geo) {
     await sendMessage(
       chatId,
-      `No encontré "${query}" en Argentina.\nIntentá con otro nombre o compartí tu ubicación GPS.`
+      `No encontré "${escapeHtml(query)}" en Argentina.\nIntentá con otro nombre o compartí tu ubicación GPS.`
     );
     return;
   }
 
   await upsertSubscriber(chatId, geo.lat, geo.lng, geo.name);
 
-  const label = geo.admin1 ? `${geo.name}, ${geo.admin1}` : geo.name;
+  const label = escapeHtml(geo.admin1 ? `${geo.name}, ${geo.admin1}` : geo.name);
   // WHI-585 — set clear expectations on when/why alerts arrive
   await sendMessage(
     chatId,
@@ -564,7 +584,7 @@ async function handleEstado(chatId: number) {
     await sendMessage(
       chatId,
       `🔥 <b>Clara — Estado</b>\n\n` +
-        `📍 <b>${sub.city_name}</b>\n\n` +
+        `📍 <b>${escapeHtml(sub.city_name)}</b>\n\n` +
         "✅ No hay focos de calor en un radio de 100 km.\n\n" +
         `${lastCheckLine}\n` +
         "🛰️ GOES-19 escanea cada 10 min · NASA FIRMS cada 15 min\n\n" +
@@ -587,10 +607,10 @@ async function handleEstado(chatId: number) {
   const interpretation = await interpretFires(sub.city_name, fireData, nearby.length);
 
   let msg = `🔥 <b>Clara — Estado</b>\n\n`;
-  msg += `📍 <b>${sub.city_name}</b> — ${nearby.length} foco(s) en 100 km\n\n`;
+  msg += `📍 <b>${escapeHtml(sub.city_name)}</b> — ${nearby.length} foco(s) en 100 km\n\n`;
 
   if (interpretation) {
-    msg += `<i>${interpretation}</i>\n\n`;
+    msg += `<i>${escapeHtml(interpretation)}</i>\n\n`;
   }
 
   // Add Google Maps links for top 3
@@ -902,7 +922,7 @@ async function handleSoyBombero(chatId: number, code: string) {
   if (status === "already_used") {
     await sendMessage(
       chatId,
-      `ℹ️ Ya estás registrado como bombero${cuartel ? ` de ${cuartel}` : ""}. ` +
+      `ℹ️ Ya estás registrado como bombero${cuartel ? ` de ${escapeHtml(cuartel)}` : ""}. ` +
         "Si querés volver a alertas de vecino, usá <code>/dejarcuartel</code> (seguís suscripto). " +
         "Para borrar todo, <code>/cancelar</code>." +
         FOOTER
@@ -931,7 +951,7 @@ async function handleSoyBombero(chatId: number, code: string) {
 
   await sendMessage(
     chatId,
-    `✅ <b>Listo, bombero de ${cuartel}</b>\n\n` +
+    `✅ <b>Listo, bombero de ${escapeHtml(cuartel)}</b>\n\n` +
       "Desde ahora vas a recibir <b>mensajes operativos</b> cuando se detecte un " +
       "foco confirmado en tu zona. Más conciso, con info para coordinar respuesta.\n\n" +
       "Si querés volver a alertas de vecino, usá <code>/dejarcuartel</code> " +

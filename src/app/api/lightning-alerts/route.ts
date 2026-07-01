@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { fetchLightningRisk } from "@/lib/lightning";
-import { sendMessage } from "@/lib/telegram";
+import { sendMessage, escapeHtml } from "@/lib/telegram";
 import { isCronAuthorized } from "@/lib/cron-auth";
+import { fetchAllRows } from "@/lib/paginate";
+import { log } from "@/lib/logger";
 
 /**
  * GET /api/lightning-alerts
@@ -19,9 +21,20 @@ export async function GET(request: Request) {
   }
 
   const db = getSupabase();
-  const { data: subscribers } = await db
-    .from("subscribers")
-    .select("chat_id, lat, lng, city_name, lightning_enabled");
+  // Paginated — a plain select caps silently at 1000 rows (PostgREST).
+  type Subscriber = {
+    chat_id: number;
+    lat: number;
+    lng: number;
+    city_name: string;
+    lightning_enabled?: boolean;
+  };
+  const subscribers = await fetchAllRows<Subscriber>(
+    db,
+    "subscribers",
+    "chat_id, lat, lng, city_name, lightning_enabled",
+    (q) => q.order("chat_id")
+  );
 
   if (!subscribers || subscribers.length === 0) {
     return NextResponse.json({ checked: 0, alerts: 0 });
@@ -54,7 +67,7 @@ export async function GET(request: Request) {
 
     const msg =
       `⚡ <b>Clara — Alerta de tormenta seca</b>\n\n` +
-      `📍 <b>${sub.city_name}</b>\n` +
+      `📍 <b>${escapeHtml(sub.city_name)}</b>\n` +
       `🌩 Tormenta eléctrica activa\n` +
       `💧 Humedad: ${Math.round(risk.humidity)}%\n` +
       `🌧 Lluvia última hora: ${risk.recentRainMm.toFixed(1)} mm\n\n` +
@@ -64,7 +77,21 @@ export async function GET(request: Request) {
       `—\nClara · AlertaForestal.org\n` +
       `<i>Datos: ${risk.source === "openweather" ? "OpenWeather" : "Open-Meteo"}</i>`;
 
-    await sendMessage(sub.chat_id, msg);
+    // Only record the dedup row if the send actually succeeded — otherwise a
+    // failed send would suppress re-alerting for 30 min. (M5: the SELECT-then-
+    // INSERT dedup still has a tiny race under overlapping cron runs; fully
+    // closing it needs a UNIQUE constraint — see audit doc.)
+    const sendResult = await sendMessage(sub.chat_id, msg);
+    if (!sendResult.ok) {
+      log.error({
+        event: "lightning_alerts.send_failed",
+        chatId: sub.chat_id,
+        status: sendResult.status,
+        blocked: sendResult.blocked,
+        err: sendResult.description,
+      });
+      continue;
+    }
 
     await db.from("lightning_alerted").insert({
       chat_id: sub.chat_id,

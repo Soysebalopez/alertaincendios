@@ -2,11 +2,12 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { getSupabase } from "@/lib/supabase";
 import { haversineKm } from "@/lib/geo";
-import { sendMessage } from "@/lib/telegram";
+import { sendMessage, escapeHtml } from "@/lib/telegram";
 import { findForestZone } from "@/lib/forest-zones-geo";
 import { isCronAuthorized } from "@/lib/cron-auth";
 import { pingHealthcheck } from "@/lib/healthcheck";
 import { buildFeedbackKeyboard } from "@/lib/feedback-keyboard";
+import { fetchAllRows } from "@/lib/paginate";
 import { log } from "@/lib/logger";
 
 /**
@@ -37,16 +38,34 @@ export async function GET(request: Request) {
     const db = getSupabase();
     const cutoff = new Date(Date.now() - LOOKBACK_MINUTES * 60_000).toISOString();
 
-    const { data: detections, error: detErr } = await db
-      .from("goes_preliminary")
-      .select(
-        "id, lat, lng, mask, mask_label, frp_mw, scan_start, detected_at, seen_in_scans"
-      )
-      .eq("high_confidence", true)
-      .gte("detected_at", cutoff)
-      .order("detected_at", { ascending: false });
-
-    if (detErr) {
+    // Paginated read (high-season fire events can exceed PostgREST's 1000-row
+    // cap in a 30-min lookback). Ordered by detected_at desc + id for stable
+    // pagination across pages.
+    type Detection = {
+      id: number;
+      lat: number;
+      lng: number;
+      mask: number;
+      mask_label: string | null;
+      frp_mw: number | null;
+      scan_start: string;
+      detected_at: string;
+      seen_in_scans?: number;
+    };
+    let detections: Detection[];
+    try {
+      detections = await fetchAllRows<Detection>(
+        db,
+        "goes_preliminary",
+        "id, lat, lng, mask, mask_label, frp_mw, scan_start, detected_at, seen_in_scans",
+        (q) =>
+          q
+            .eq("high_confidence", true)
+            .gte("detected_at", cutoff)
+            .order("detected_at", { ascending: false })
+            .order("id")
+      );
+    } catch (detErr) {
       console.error("goes-alerts read goes_preliminary failed:", detErr);
       return NextResponse.json({ error: "db_read_failed" }, { status: 500 });
     }
@@ -56,9 +75,21 @@ export async function GET(request: Request) {
       return NextResponse.json({ processed: 0, alerts: 0, reason: "no_recent_detections" });
     }
 
-    const { data: subscribers } = await db
-      .from("subscribers")
-      .select("chat_id, lat, lng, city_name, role, cuartel_name");
+    // Paginated — a plain select caps silently at 1000 rows (PostgREST).
+    type Subscriber = {
+      chat_id: number;
+      lat: number;
+      lng: number;
+      city_name: string;
+      role?: string;
+      cuartel_name?: string;
+    };
+    const subscribers = await fetchAllRows<Subscriber>(
+      db,
+      "subscribers",
+      "chat_id, lat, lng, city_name, role, cuartel_name",
+      (q) => q.order("chat_id")
+    );
 
     if (!subscribers || subscribers.length === 0) {
       await pingHealthcheck();
@@ -84,7 +115,14 @@ export async function GET(request: Request) {
       const zone = findForestZone(det.lat, det.lng);
 
       for (const sub of subscribers) {
-        const isFireman = (sub as { role?: string }).role === "fireman";
+        const role = sub.role ?? "civilian";
+        const isFireman = role === "fireman";
+        // M7 — unknown role falls back to civilian (forest-only) filtering.
+        // Surface it so a future role (e.g. institucional/B2G) isn't silently
+        // under-alerted by the string-equality check.
+        if (role !== "civilian" && role !== "fireman") {
+          log.warn({ event: "goes_alerts.unknown_role", chatId: sub.chat_id, role });
+        }
 
         // WHI-758: civilian solo recibe preliminares en zona forestal.
         // Fireman ve todo para coordinación general.
@@ -132,34 +170,38 @@ export async function GET(request: Request) {
         const message = isFireman
           ? formatFiremanPreliminary(det, sub.city_name, distKm, cuartel, zone?.name ?? null)
           : formatPreliminary(det, sub.city_name, distKm, zone?.name ?? null);
-        try {
-          // Feedback comunitario: teclado de validación solo a civilian.
-          // alert_id = "g:"+det.id (det.id = goes_preliminary.id).
-          await sendMessage(
-            sub.chat_id,
-            message,
-            isFireman
-              ? undefined
-              : { reply_markup: buildFeedbackKeyboard("g:" + det.id) }
-          );
-          log.info({
-            event: "goes_alerts.sent",
-            goesId: det.id,
-            chatId: sub.chat_id,
-            role: isFireman ? "fireman" : "civilian",
-            distKm: Math.round(distKm),
-            frp: det.frp_mw,
-            seenInScans,
-          });
-        } catch (sendErr) {
+        // Feedback comunitario: teclado de validación solo a civilian.
+        // alert_id = "g:"+det.id (det.id = goes_preliminary.id).
+        const sendResult = await sendMessage(
+          sub.chat_id,
+          message,
+          isFireman
+            ? undefined
+            : { reply_markup: buildFeedbackKeyboard("g:" + det.id) }
+        );
+        if (!sendResult.ok) {
           log.error({
             event: "goes_alerts.send_failed",
             goesId: det.id,
             chatId: sub.chat_id,
-            err: sendErr instanceof Error ? sendErr.message : String(sendErr),
+            status: sendResult.status,
+            blocked: sendResult.blocked,
+            err: sendResult.description,
           });
+          if (sendResult.blocked) {
+            log.warn({ event: "goes_alerts.subscriber_blocked", chatId: sub.chat_id });
+          }
           continue;
         }
+        log.info({
+          event: "goes_alerts.sent",
+          goesId: det.id,
+          chatId: sub.chat_id,
+          role: isFireman ? "fireman" : "civilian",
+          distKm: Math.round(distKm),
+          frp: det.frp_mw,
+          seenInScans,
+        });
 
         alertsSent++;
       }
@@ -214,17 +256,20 @@ function formatFiremanPreliminary(
   const ageMin = minutesSince(det.scan_start);
   const gMaps = `https://www.google.com/maps?q=${det.lat},${det.lng}&z=12`;
   const frp = det.frp_mw != null ? `${det.frp_mw.toFixed(1)} MW` : "—";
+  const city = escapeHtml(cityName);
+  const zone = zoneName ? escapeHtml(zoneName) : "fuera de zona forestal";
+  const cuartel = cuartelName ? ` · ${escapeHtml(cuartelName)}` : "";
 
   return (
     `⚠️ <b>Posible foco a ${dist}km — esperando confirmación</b>\n\n` +
-    `📍 ${dist} km (desde ${cityName})\n` +
+    `📍 ${dist} km (desde ${city})\n` +
     `🔥 FRP estimado: ${frp}\n` +
     `🛰️ NOAA GOES-19 · detección hace ~${ageMin} min\n` +
     `🧭 Coords: <code>${det.lat.toFixed(4)}, ${det.lng.toFixed(4)}</code>\n` +
-    `🌲 Zona: ${zoneName ?? "fuera de zona forestal"}\n` +
+    `🌲 Zona: ${zone}\n` +
     `📌 <a href="${gMaps}">Maps</a>\n\n` +
     `<i>Preliminar — NASA FIRMS confirma en 1-3 h. Validá visualmente antes de despachar.</i>` +
-    `\n—\nClara · AlertaForestal.org · Coordinación interna${cuartelName ? ` · ${cuartelName}` : ""}`
+    `\n—\nClara · AlertaForestal.org · Coordinación interna${cuartel}`
   );
 }
 
@@ -245,15 +290,17 @@ function formatPreliminary(
   const ageMin = minutesSince(det.scan_start);
   const gMaps = `https://www.google.com/maps?q=${det.lat},${det.lng}&z=12`;
   const frp = det.frp_mw != null ? `${det.frp_mw.toFixed(1)} MW` : "—";
+  const city = escapeHtml(cityName);
+  const zone = zoneName ? escapeHtml(zoneName) : null;
 
   // WHI-585 — header surfaces distance in Telegram's preview line
   return (
-    `⚠️ <b>Posible foco a ${dist}km de ${cityName}</b>\n\n` +
-    `📍 A <b>${dist} km</b> de ${cityName}\n` +
+    `⚠️ <b>Posible foco a ${dist}km de ${city}</b>\n\n` +
+    `📍 A <b>${dist} km</b> de ${city}\n` +
     `🛰️ Fuente: NOAA GOES-19 — escaneo cada 10 min\n` +
     `⏱️ Detectado hace ~${ageMin} min\n` +
     `🔥 Potencia estimada: ${frp}\n` +
-    (zoneName ? `🌲 Zona: ${zoneName}\n` : "") +
+    (zone ? `🌲 Zona: ${zone}\n` : "") +
     `\n<i>Esta detección viene de un satélite geoestacionario y es rápida, ` +
     `pero menos precisa. NASA FIRMS suele confirmar en 1-3 horas. ` +
     `Si vas a tomar acción, validá visualmente o esperá la confirmación.</i>\n\n` +

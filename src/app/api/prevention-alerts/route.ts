@@ -6,14 +6,11 @@ import { findDangerZone, type DangerZoneBox } from "@/lib/danger-zone-match";
 import { evaluatePreventionTrigger, type ForecastDay } from "@/lib/prevention-trigger";
 import { formatPreventionAlert, formatDailyBriefing } from "@/lib/prevention-messages";
 import { PREVENTION_PROVINCE_IDS, type DangerClass } from "@/lib/fire-danger";
+import { fetchAllRows } from "@/lib/paginate";
+import { artToday } from "@/lib/time";
 import { log } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
-
-function artToday(): string {
-  // Argentina is UTC-3, no DST. Shift now by -3h and take the date.
-  return new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
-}
 
 export async function GET(request: Request) {
   if (!isCronAuthorized(request)) {
@@ -56,12 +53,18 @@ export async function GET(request: Request) {
       byZone.get(r.zone_id)!.push({ target_date: r.target_date, danger_class: r.danger_class });
     }
 
-    // 3. opted-in subs
-    const { data: subData } = await db
-      .from("subscribers")
-      .select("chat_id, lat, lng, prevention_mode")
-      .in("prevention_mode", ["alerts", "daily"]);
-    const subs = (subData ?? []) as { chat_id: number; lat: number; lng: number; prevention_mode: "alerts" | "daily" }[];
+    // 3. opted-in subs. Paginated — a plain select caps silently at 1000 rows.
+    const subs = await fetchAllRows<{
+      chat_id: number;
+      lat: number;
+      lng: number;
+      prevention_mode: "alerts" | "daily";
+    }>(
+      db,
+      "subscribers",
+      "chat_id, lat, lng, prevention_mode",
+      (q) => q.in("prevention_mode", ["alerts", "daily"]).order("chat_id")
+    );
 
     let alerts = 0;
     let briefings = 0;
@@ -96,17 +99,40 @@ export async function GET(request: Request) {
             decision.peakDate,
             decision.action === "escalate" ? decision.from : null
           );
-          await sendMessage(sub.chat_id, message);
+          const sendResult = await sendMessage(sub.chat_id, message);
+          if (!sendResult.ok) {
+            // Don't mark as alerted — let the next run retry this hazard alert.
+            log.error({
+              event: "prevention_alerts.alert_send_failed",
+              chatId: sub.chat_id,
+              status: sendResult.status,
+              blocked: sendResult.blocked,
+              err: sendResult.description,
+            });
+            continue;
+          }
           // mark AFTER a successful send (prioritise not-losing a hazard alert)
-          await db.from("prevention_alerted").upsert({
+          const { error: markErr } = await db.from("prevention_alerted").upsert({
             zone_id: zone.id,
             chat_id: sub.chat_id,
             alerted_class: decision.peak,
             alerted_at: new Date().toISOString(),
           });
+          if (markErr) {
+            // M9 — send succeeded but the dedup mark didn't persist: surface it
+            // so a re-alert next run is traceable (not a silent duplicate).
+            log.error({
+              event: "prevention_alerts.mark_failed",
+              chatId: sub.chat_id,
+              zoneId: zone.id,
+              err: markErr.message,
+            });
+          }
           alerts++;
         } else {
-          // daily: idempotency claim BEFORE sending (prioritise not-duplicating)
+          // daily: idempotency claim BEFORE sending (prioritise not-duplicating),
+          // but RELEASE the claim if the send fails so the briefing isn't lost
+          // for the whole day on a transient Telegram error (A4).
           const { error: claimErr } = await db
             .from("prevention_briefing_sent")
             .insert({ chat_id: sub.chat_id, sent_date: today })
@@ -114,7 +140,22 @@ export async function GET(request: Request) {
             .single();
           if (claimErr) continue; // 23505 = already sent today
           const message = formatDailyBriefing(zone.name, today, forecast);
-          await sendMessage(sub.chat_id, message);
+          const sendResult = await sendMessage(sub.chat_id, message);
+          if (!sendResult.ok) {
+            await db
+              .from("prevention_briefing_sent")
+              .delete()
+              .eq("chat_id", sub.chat_id)
+              .eq("sent_date", today);
+            log.error({
+              event: "prevention_alerts.briefing_send_failed",
+              chatId: sub.chat_id,
+              status: sendResult.status,
+              blocked: sendResult.blocked,
+              err: sendResult.description,
+            });
+            continue;
+          }
           briefings++;
         }
       } catch (e) {
