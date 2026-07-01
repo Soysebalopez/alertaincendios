@@ -403,3 +403,59 @@ La fatiga es una falla de prevención encubierta: si silencian el bot, se pierde
 2. **Motor de adopción:** F4 (briefing cuarteles) — apalanca tu go-to-market.
 3. **Diferenciación:** F3 (pre-alerta a sotavento) y F5 (pronóstico de rayo) — valor sanitario y de ignición.
 4. **Estratégicas/más grandes:** F2 (crowdsourcing), F9 (transparencia), F10 (anti-fatiga), F8 (áreas, la más grande).
+
+---
+
+## 9. Estado de remediación (rama `fix/audit-2026-06-30`, mergeada a `main` 2026-06-30)
+
+Todos los hallazgos fueron encarados. Clasificación: **✅ arreglado en código** · **📄 documentado / decisión consciente** · **🗄️ requiere migración DB (SQL provisto, aplicás vos)** · **⚙️ requiere acción tuya (env/validación)**.
+
+| Hallazgo | Estado | Nota |
+|---|---|---|
+| C1 sendMessage ciego a errores | ✅ | Devuelve `SendResult`, timeouts; rutas chequean `.ok`, loguean bloqueados |
+| C2 "Top provincias" = ciudades | ✅ | Provincia derivada por ciudad más cercana (lat/lng) |
+| A1 subscribers sin paginar (1000) | ✅ | `fetchAllRows` en las 4 rutas + goes_preliminary |
+| A2 city/cuartel/zone sin escapar | ✅ | `escapeHtml` en todos los sitios HTML |
+| A3 fetches sin timeout / viento N×M | ✅ | AbortSignal en todos + cache de viento por foco |
+| A4 briefing claim-antes-de-enviar | ✅ | claim → send → release si falla |
+| A5 `/ciudad` sin argumento | ✅ | Llega al prompt de ayuda |
+| A6 FireCounter "0" en SSR | ✅ | Renderiza el valor real en SSR |
+| A7 LiveCityGrid hidratación | ✅ | Selección tras montar |
+| A8 dispersión (ráfaga/ETA, geometría) | ✅ | Velocidad consistente + bearing esférico + test |
+| A9 curva de crecimiento arranca en 0 | ✅ | Suma la base previa |
+| A10 fwi.py crash viento negativo | ✅ | Clamp wind/rh (42 tests OK) |
+| M1 webhook secret fail-open | ⚙️ | Setear `TELEGRAM_WEBHOOK_SECRET` en Vercel |
+| M2 webhook JSON sin try/catch | ✅ | Ack 200 ante body inválido |
+| M3 /simulate sin rate-limit | ✅ | Rate-limit + header interno + timeout |
+| M4 /fires 200 en fallo | ✅ | 502 (body conservado para clientes) |
+| M5 lightning dedup race | 🗄️ | `whi-audit-2026-06-30-optional.sql` (constraint único) |
+| M6 buildFireKey sin acqTime | 📄 | Comentado como diseño (1 alerta/foco/día) |
+| M7 rol catch-all | ✅ | Rol desconocido se loguea |
+| M8 toggle rayos read-modify-write | 🗄️ | `whi-audit-2026-06-30-optional.sql` (RPC atómica) |
+| M9 upsert prevention post-send | ✅ | Loguea si falla + no marca envíos fallidos |
+| M10 city-map radio/forestal | ✅ | haversine 100 km real + filtro forestal |
+| M11 sin prefers-reduced-motion | ✅ | Media query agregado |
+| M12 live-status.tsx muerto | ✅ | Borrado |
+| M13 repintado frágil del mapa | ✅ | Señal `firesVersion` explícita |
+| M14 findForestZone sin guard NaN | ✅ | Guard `Number.isFinite` |
+| M15 pointInRing sin epsilon | ✅ | `+1e-12` (consistente) |
+| M16 engagement denominador | ✅ | Universo = todos los subs |
+| M17 percentil sesgado | ✅ | Interpolación lineal |
+| M18 cobertura VIIRS por SSP | ✅ | Distancia cross-track al segmento |
+| M19 SupportWidget muerto | 📄 | Untracked/no montado; no lo borré (no es mío). Si se cablea, sumar su origen al CSP |
+| M20 sin CSP | ✅ | CSP baseline (verificado en prod, no rompe el mapa) |
+| M21 Open-Meteo sin retry 429 | ✅ | Backoff exponencial |
+| M22 4 zonas yungas/sierra CEMS bajo | ⚙️ | Calibración: requiere validación tuya (provincia sigue oculta) |
+| M23 bboxes aproximados | ⚙️ | Requiere validación tuya (provincia sigue oculta) |
+| B1 AppleDouble trackeados | ✅ | 25 archivos removidos |
+| B2 gitignore incompleto | ✅ | `__pycache__`/`*.pyc`/`.playwright-mcp` |
+| B3 ratelimit off-by-one | 📄 | Revisado: el límite es correcto (inclusivo), sin cambio |
+| B5 clientIp XFF spoofeable | ✅ | Prefiere x-real-ip / último hop |
+| B6 cuarteles rate-limit orden | ✅ | Antes de validar |
+| B7 hora ART ad-hoc | ✅ | Helper `time.ts` centralizado |
+| B8 ETA mágico 999 | ✅ | `null` = sin dispersión |
+| B9/B12/B13/B14/B15 docs/comentarios | ✅ | Corregidos |
+| B17 nav menú `!important` | 📄 | Revisado: funciona; refactor a Tailwind diferido (evitar romper el breakpoint 820px sin QA visual) |
+| B19/B20 fetch doble / cleanup interval | ✅ | Corregidos |
+
+**Verificación:** tsc limpio · 71 tests TS + 42 Python verdes · build de producción OK · `/mapa` verificado en runtime bajo el nuevo CSP (Playwright) · revisión adversarial del diff sin hallazgos · deploy en producción confirmado live (header CSP presente en `alertaforestal.org`).
