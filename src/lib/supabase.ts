@@ -2,7 +2,7 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 /**
  * Lazy-initialized Supabase client.
- * MUST be lazy — Netlify evaluates API routes at build time
+ * MUST be lazy — Vercel evaluates API routes at build time
  * when env vars are absent, so module-scope init crashes the build.
  */
 let _client: SupabaseClient | null = null;
