@@ -22,12 +22,19 @@ export async function GET() {
     });
   } catch (error) {
     console.error("Fires API error:", error);
-    return NextResponse.json({
-      source: "nasa-firms",
-      updated: new Date().toISOString(),
-      fires: [],
-      count: 0,
-      note: "Error al consultar NASA FIRMS",
-    });
+    // M4 — honest status code on upstream failure so monitoring/health (and any
+    // status-aware client) can tell "no fires" apart from "FIRMS failed". Body
+    // keeps the same shape (fires:[]) so existing clients that only read JSON
+    // still degrade gracefully instead of crashing.
+    return NextResponse.json(
+      {
+        source: "nasa-firms",
+        updated: new Date().toISOString(),
+        fires: [],
+        count: 0,
+        error: "Error al consultar NASA FIRMS",
+      },
+      { status: 502 },
+    );
   }
 }

@@ -1,4 +1,9 @@
-/** WHO Air Quality Guidelines (µg/m³, 24h average) */
+/**
+ * WHO Air Quality Guideline reference levels (µg/m³). Mixed averaging windows:
+ * most are 24h means, but O3 has no 24h guideline (WHO defines it as an 8h /
+ * peak-season mean), so its thresholds approximate short-term exposure rather
+ * than a true 24h average.
+ */
 export const AQI_THRESHOLDS = {
   NO2: { good: 25, moderate: 50, bad: 100, dangerous: 200 },
   SO2: { good: 40, moderate: 80, bad: 250, dangerous: 500 },

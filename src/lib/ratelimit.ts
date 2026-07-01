@@ -147,18 +147,29 @@ function memoryCheck(opts: RateLimitOptions): RateLimitResult {
 /* ─── Helpers de HTTP ─── */
 
 /**
- * Extrae el IP del cliente. En Vercel viene en `x-forwarded-for`; el primero
- * de la lista es el real. Si está vacío o es "::1"/"127.0.0.1" devuelve
- * "anon" para no agrupar todo el local-dev en un solo bucket.
+ * Extrae el IP del cliente. Prioriza los headers que SETEA Vercel
+ * (`x-real-ip` / `x-vercel-forwarded-for`), que no son spoofeables por el
+ * cliente. El `x-forwarded-for` se usa como último recurso, y se toma su
+ * ÚLTIMO segmento (el hop más cercano = el más confiable), no el primero
+ * (que es provisto por el cliente y se puede falsificar para evadir el
+ * rate-limit). Devuelve "anon" si no hay nada.
  */
 export function clientIp(request: Request): string {
-  const xff = request.headers.get("x-forwarded-for");
-  if (xff) {
-    const first = xff.split(",")[0]?.trim();
+  const real = request.headers.get("x-real-ip");
+  if (real?.trim()) return real.trim();
+
+  const vercel = request.headers.get("x-vercel-forwarded-for");
+  if (vercel) {
+    const first = vercel.split(",")[0]?.trim();
     if (first) return first;
   }
-  const real = request.headers.get("x-real-ip");
-  if (real) return real;
+
+  const xff = request.headers.get("x-forwarded-for");
+  if (xff) {
+    const parts = xff.split(",").map((s) => s.trim()).filter(Boolean);
+    const last = parts[parts.length - 1];
+    if (last) return last;
+  }
   return "anon";
 }
 

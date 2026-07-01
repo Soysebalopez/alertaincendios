@@ -156,6 +156,10 @@ export function ArgentinaMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
   // activar "ver no-forestal" para sumar quemas agrícolas/flaring (visual más bajo).
   const [showNonForest, setShowNonForest] = useState(false);
   const [nonForestCount, setNonForestCount] = useState(0);
+  // M13 — explicit "fires loaded" signal for the repaint effect. Bumped once
+  // fires land in allFires.current, so the layer repaints even when there are
+  // zero forest fires (where intensityCounts wouldn't change from its initial).
+  const [firesVersion, setFiresVersion] = useState(0);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ fires: 0, cities: 0 });
   // Datos para el side panel del diseño: lista de focos forestales recientes
@@ -228,6 +232,7 @@ export function ArgentinaMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
         const data = await fetch("/api/fires").then((r) => r.json());
         const fires: FirePoint[] = data.fires || [];
         allFires.current = fires;
+        setFiresVersion((v) => v + 1);
         const c: Record<Intensity, number> = { high: 0, moderate: 0, low: 0 };
         let nonForest = 0;
         for (const f of fires) {
@@ -457,7 +462,7 @@ export function ArgentinaMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
         }).addTo(group);
       }
     }
-  }, [intensities, intensityCounts, showNonForest]);
+  }, [intensities, showNonForest, firesVersion]);
 
   return (
     <div className="clara-map-shell">

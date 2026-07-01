@@ -1,6 +1,8 @@
 // WHI-587 — server-side metric queries for the dashboard.
 // All use SERVICE_ROLE to bypass RLS and return aggregated data only.
 import { getSupabase } from "@/lib/supabase";
+import { haversineKm } from "@/lib/geo";
+import { PROVINCES } from "@/lib/argentina-cities";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -38,20 +40,24 @@ export async function getSubscriberCount(): Promise<{ total: number; last7d: num
 export async function getSubscribersGrowth(daysBack = 30): Promise<{ date: string; value: number }[]> {
   const db = getSupabase();
   const since = new Date(Date.now() - daysBack * DAY).toISOString();
-  const { data } = await db
-    .from("subscribers")
-    .select("created_at")
-    .gte("created_at", since);
+  const [{ data }, { count: priorCount }] = await Promise.all([
+    db.from("subscribers").select("created_at").gte("created_at", since),
+    // Base of subscribers that already existed before the window, so the
+    // cumulative curve reflects the real running total instead of starting at 0.
+    db
+      .from("subscribers")
+      .select("*", { count: "exact", head: true })
+      .lt("created_at", since),
+  ]);
   // Bucket by day
   const map = new Map<string, number>();
   for (const r of data ?? []) {
     const day = (r.created_at as string).slice(0, 10);
     map.set(day, (map.get(day) ?? 0) + 1);
   }
-  // Cumulative count, then fill missing days
-  const sortedDays = Array.from(map.keys()).sort();
+  // Cumulative count seeded with the pre-window base, then fill missing days
   const points: { day: string; count: number }[] = [];
-  let cumulative = 0;
+  let cumulative = priorCount ?? 0;
   for (let i = daysBack - 1; i >= 0; i--) {
     const d = new Date(Date.now() - i * DAY);
     const key = dateKey(d);
@@ -74,13 +80,27 @@ export async function getAlertsByDay(daysBack = 7): Promise<AlertsByDay[]> {
   const db = getSupabase();
   const since = new Date(Date.now() - daysBack * DAY).toISOString();
 
-  const [firms, goesAlerted, lightning] = await Promise.all([
-    db.from("ai_alerted_fires").select("alerted_at").gte("alerted_at", since),
-    db.from("goes_alerted")
-      .select("preliminary_sent_at, confirmed_sent_at, dismissed_at")
-      .gte("preliminary_sent_at", since),
-    db.from("lightning_alerted").select("alerted_at").gte("alerted_at", since),
-  ]);
+  // Each GOES event metric is queried by its OWN timestamp window to avoid an
+  // edge-bias: a row whose preliminary_sent_at is inside the window but whose
+  // confirmed_sent_at/dismissed_at falls just outside (or vice-versa) was being
+  // mis-bucketed when everything was filtered by preliminary_sent_at alone.
+  const [firms, goesPreliminary, goesConfirmed, goesDismissed, lightning] =
+    await Promise.all([
+      db.from("ai_alerted_fires").select("alerted_at").gte("alerted_at", since),
+      db
+        .from("goes_alerted")
+        .select("preliminary_sent_at")
+        .gte("preliminary_sent_at", since),
+      db
+        .from("goes_alerted")
+        .select("confirmed_sent_at")
+        .gte("confirmed_sent_at", since),
+      db
+        .from("goes_alerted")
+        .select("dismissed_at")
+        .gte("dismissed_at", since),
+      db.from("lightning_alerted").select("alerted_at").gte("alerted_at", since),
+    ]);
 
   const days = new Map<string, AlertsByDay>();
   const blank = (date: string): AlertsByDay => ({
@@ -102,17 +122,19 @@ export async function getAlertsByDay(daysBack = 7): Promise<AlertsByDay[]> {
     const d = (r.alerted_at as string).slice(0, 10);
     if (days.has(d)) days.get(d)!.firms++;
   }
-  for (const r of goesAlerted.data ?? []) {
+  for (const r of goesPreliminary.data ?? []) {
     const prelDay = (r.preliminary_sent_at as string).slice(0, 10);
     if (days.has(prelDay)) days.get(prelDay)!.goes_preliminary++;
-    if (r.confirmed_sent_at) {
-      const confDay = (r.confirmed_sent_at as string).slice(0, 10);
-      if (days.has(confDay)) days.get(confDay)!.goes_confirmed++;
-    }
-    if (r.dismissed_at) {
-      const dismDay = (r.dismissed_at as string).slice(0, 10);
-      if (days.has(dismDay)) days.get(dismDay)!.goes_dismissed++;
-    }
+  }
+  for (const r of goesConfirmed.data ?? []) {
+    if (!r.confirmed_sent_at) continue;
+    const confDay = (r.confirmed_sent_at as string).slice(0, 10);
+    if (days.has(confDay)) days.get(confDay)!.goes_confirmed++;
+  }
+  for (const r of goesDismissed.data ?? []) {
+    if (!r.dismissed_at) continue;
+    const dismDay = (r.dismissed_at as string).slice(0, 10);
+    if (days.has(dismDay)) days.get(dismDay)!.goes_dismissed++;
   }
   for (const r of lightning.data ?? []) {
     const d = (r.alerted_at as string).slice(0, 10);
@@ -175,14 +197,39 @@ export async function getGoesQuality(): Promise<{
   };
 }
 
+// Flattened (lat, lng) -> province lookup built once from the cities dataset.
+// `subscribers.city_name` only stores the city (no province), so we derive the
+// province from each subscriber's coords by nearest-city match instead.
+const CITY_PROVINCE_INDEX: { lat: number; lng: number; province: string }[] =
+  PROVINCES.flatMap((p) =>
+    p.cities.map((c) => ({ lat: c.lat, lng: c.lng, province: p.name }))
+  );
+
+function provinceForCoords(lat: number, lng: number): string {
+  let best = "Desconocida";
+  let bestDist = Number.POSITIVE_INFINITY;
+  for (const c of CITY_PROVINCE_INDEX) {
+    const d = haversineKm(lat, lng, c.lat, c.lng);
+    if (d < bestDist) {
+      bestDist = d;
+      best = c.province;
+    }
+  }
+  return best;
+}
+
 export async function getTopProvinces(): Promise<{ name: string; subs: number }[]> {
   const db = getSupabase();
-  const { data } = await db.from("subscribers").select("city_name");
+  const { data } = await db.from("subscribers").select("lat, lng");
+  const rows = (data ?? []) as Array<{ lat: number | null; lng: number | null }>;
   const counts = new Map<string, number>();
-  for (const r of data ?? []) {
-    const key = (r.city_name as string) ?? "—";
-    // Best effort province name from city_name (some are "City, Province" format)
-    const province = key.includes(",") ? key.split(",").slice(-1)[0].trim() : key;
+  for (const r of rows) {
+    const lat = r.lat;
+    const lng = r.lng;
+    const province =
+      lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)
+        ? provinceForCoords(lat, lng)
+        : "Desconocida";
     counts.set(province, (counts.get(province) ?? 0) + 1);
   }
   return Array.from(counts.entries())

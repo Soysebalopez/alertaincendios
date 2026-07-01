@@ -4,10 +4,11 @@ import { getSupabase } from "@/lib/supabase";
 import { fetchFires, FirePoint } from "@/lib/firms";
 import { fetchWind, degreesToCardinal } from "@/lib/wind";
 import { haversineKm, isUpwind, smokeEtaMinutes } from "@/lib/geo";
-import { sendMessage } from "@/lib/telegram";
+import { sendMessage, escapeHtml } from "@/lib/telegram";
 import { buildFeedbackKeyboard } from "@/lib/feedback-keyboard";
 import { forestZoneName } from "@/lib/forest-zones";
 import { isCronAuthorized } from "@/lib/cron-auth";
+import { fetchAllRows } from "@/lib/paginate";
 import { log } from "@/lib/logger";
 
 /**
@@ -34,14 +35,31 @@ export async function GET(request: Request) {
 
     const db = getSupabase();
 
-    // Get all subscribers
-    const { data: subscribers } = await db
-      .from("subscribers")
-      .select("chat_id, lat, lng, city_name, role, cuartel_name");
+    // Get all subscribers. Paginated — a plain select caps silently at 1000
+    // rows (PostgREST max-rows), which would drop every subscriber past 1000.
+    type Subscriber = {
+      chat_id: number;
+      lat: number;
+      lng: number;
+      city_name: string;
+      role?: string;
+      cuartel_name?: string;
+    };
+    const subscribers = await fetchAllRows<Subscriber>(
+      db,
+      "subscribers",
+      "chat_id, lat, lng, city_name, role, cuartel_name",
+      (q) => q.order("chat_id")
+    );
 
     if (!subscribers || subscribers.length === 0) {
       return NextResponse.json({ processed: fires.length, alerts: 0, reason: "no subscribers" });
     }
+
+    // WHI — wind is a property of the fire, not the subscriber. Cache it per
+    // fireKey so we fetch Open-Meteo once per fire instead of once per
+    // (fire × subscriber) pair (N×M → N external calls per cron run).
+    const windCache = new Map<string, Awaited<ReturnType<typeof fetchWind>>>();
 
     let alertsSent = 0;
     let confirmations = 0;
@@ -55,7 +73,14 @@ export async function GET(request: Request) {
       const zoneName = forestZoneName(fire.forestZone);
 
       for (const sub of subscribers) {
-        const isFireman = (sub as { role?: string }).role === "fireman";
+        const role = sub.role ?? "civilian";
+        const isFireman = role === "fireman";
+        // M7 — unknown role falls back to civilian (forest-only) filtering.
+        // Surface it so a future role (e.g. institucional/B2G) isn't silently
+        // under-alerted by the string-equality check.
+        if (role !== "civilian" && role !== "fireman") {
+          log.warn({ event: "alerts.unknown_role", chatId: sub.chat_id, role });
+        }
 
         // WHI-758: civilian recibe solo alertas en zona forestal. Fireman
         // recibe todo — los cuarteles necesitan vista completa para
@@ -80,8 +105,12 @@ export async function GET(request: Request) {
         const distKm = haversineKm(sub.lat, sub.lng, fire.latitude, fire.longitude);
         if (distKm > 100) continue; // Skip fires > 100km away
 
-        // Get wind at fire location
-        const wind = await fetchWind(fire.latitude, fire.longitude);
+        // Get wind at fire location (cached per fire — see windCache above)
+        let wind = windCache.get(fireKey);
+        if (!wind) {
+          wind = await fetchWind(fire.latitude, fire.longitude);
+          windCache.set(fireKey, wind);
+        }
         const upwind = isUpwind(sub.lat, sub.lng, fire.latitude, fire.longitude, wind.windDirection);
         const eta = smokeEtaMinutes(distKm, wind.windSpeed, upwind.isUpwind);
 
@@ -137,34 +166,42 @@ export async function GET(request: Request) {
         // contexto suficiente (chat_id, fire_key) para reenvío manual desde
         // /dashboard si fuera necesario. Alternativa rechazada: revertir el
         // INSERT — abre una ventana de race nueva entre el delete y otro cron.
-        try {
-          // Feedback comunitario: teclado de validación solo a civilian (el
-          // fireman valida despachando, no votando). alert_id = "f:"+fireKey.
-          await sendMessage(
-            sub.chat_id,
-            message,
-            isFireman
-              ? undefined
-              : { reply_markup: buildFeedbackKeyboard("f:" + fireKey) }
-          );
-          log.info({
-            event: "alerts.sent",
-            fireKey,
-            chatId: sub.chat_id,
-            role: isFireman ? "fireman" : "civilian",
-            distKm: Math.round(distKm),
-            level,
-            isConfirmation: match != null,
-          });
-        } catch (sendErr) {
+        // Feedback comunitario: teclado de validación solo a civilian (el
+        // fireman valida despachando, no votando). alert_id = "f:"+fireKey.
+        const sendResult = await sendMessage(
+          sub.chat_id,
+          message,
+          isFireman
+            ? undefined
+            : { reply_markup: buildFeedbackKeyboard("f:" + fireKey) }
+        );
+        if (!sendResult.ok) {
+          // Telegram rejected the send (403 block, 400 bad HTML, 429, timeout).
+          // Do NOT count it as sent. The dedup row stays (documented tradeoff).
           log.error({
             event: "alerts.send_failed",
             fireKey,
             chatId: sub.chat_id,
-            err: sendErr instanceof Error ? sendErr.message : String(sendErr),
+            status: sendResult.status,
+            blocked: sendResult.blocked,
+            err: sendResult.description,
           });
+          if (sendResult.blocked) {
+            // User blocked/deactivated the bot — surface for cleanup. (Removal
+            // needs a soft-delete column + explicit OK, so we only log here.)
+            log.warn({ event: "alerts.subscriber_blocked", chatId: sub.chat_id });
+          }
           continue;
         }
+        log.info({
+          event: "alerts.sent",
+          fireKey,
+          chatId: sub.chat_id,
+          role: isFireman ? "fireman" : "civilian",
+          distKm: Math.round(distKm),
+          level,
+          isConfirmation: match != null,
+        });
 
         if (match) {
           await db
@@ -207,6 +244,12 @@ export async function GET(request: Request) {
   }
 }
 
+// Dedup granularity is INTENTIONAL: lat/lng rounded to 3 decimals (~111 m) +
+// acquisition date, deliberately WITHOUT acqTime. This collapses every FIRMS
+// detection of the same ~point on the same day into a single alert per
+// subscriber (one fire = one notification/day), trading "the fire escalated
+// later that day" re-alerts for not spamming. If per-escalation re-alerts are
+// ever wanted, add `level`/upwind state or a time window to the key.
 function buildFireKey(fire: FirePoint): string {
   return `${fire.latitude.toFixed(3)}_${fire.longitude.toFixed(3)}_${fire.acqDate}`;
 }
@@ -291,7 +334,7 @@ async function formatAlert(
   // WHI-585 — header with immediate value so Telegram notification preview is actionable
   const headerLine = headerFor(level, dist, etaMinutes, windToward);
   let msg = `${emoji} <b>${headerLine}</b>\n\n`;
-  msg += `📍 A <b>${dist} km</b> de ${sub.city_name}\n`;
+  msg += `📍 A <b>${dist} km</b> de ${escapeHtml(sub.city_name)}\n`;
   msg += `🧭 Dirección: ${cardinal}\n`;
   msg += `💨 Viento: ${windToward ? "<b>hacia tu posición</b>" : "fuera de tu posición"}`;
   if (windToward) msg += ` (ETA humo ~${etaMinutes} min)`;
@@ -299,10 +342,10 @@ async function formatAlert(
   msg += `${frpBars(fire.frp)} ${fire.frp} MW — ${frpLabel(fire.frp).split(" (")[0]}\n`;
   msg += `🛰️ Fuente: NASA FIRMS\n`;
   msg += `⏱️ Detectado hace ${ageMin} min\n`;
-  if (zoneName) msg += `🌲 Zona: ${zoneName}\n`;
+  if (zoneName) msg += `🌲 Zona: ${escapeHtml(zoneName)}\n`;
 
   if (interpretation) {
-    msg += `\n<i>${interpretation}</i>\n`;
+    msg += `\n<i>${escapeHtml(interpretation)}</i>\n`;
   }
 
   msg += `\n📌 <a href="${gMapsUrl}">Ver en Google Maps</a>`;
@@ -442,10 +485,10 @@ function formatFiremanAlert(
   msg += `💨 Viento: ${windToward ? `<b>hacia el suscriptor</b> (ETA humo ~${etaMinutes} min)` : "fuera del suscriptor"}\n`;
   msg += `🛰️ ${wasPreliminary ? "GOES preliminar + " : ""}FIRMS VIIRS · detección hace ${ageMin} min\n`;
   msg += `🧭 Coords: <code>${fire.latitude.toFixed(4)}, ${fire.longitude.toFixed(4)}</code>\n`;
-  msg += `🌲 Zona: ${zoneName ?? "fuera de zona forestal"}\n`;
+  msg += `🌲 Zona: ${zoneName ? escapeHtml(zoneName) : "fuera de zona forestal"}\n`;
   msg += `📌 <a href="${gMapsUrl}">Maps</a>\n\n`;
   msg += `<i>Mensaje operativo — sin interpretación AI, datos crudos.</i>`;
-  msg += `\n—\nClara · AlertaForestal.org · Coordinación interna${cuartelName ? ` · ${cuartelName}` : ""}`;
+  msg += `\n—\nClara · AlertaForestal.org · Coordinación interna${cuartelName ? ` · ${escapeHtml(cuartelName)}` : ""}`;
   return msg;
 }
 
@@ -470,9 +513,9 @@ async function formatConfirmedFromPreliminary(
   // WHI-585 — header with immediate value
   const headerLine = windToward
     ? `Foco confirmado a ${dist}km — humo en ~${etaMinutes} min`
-    : `Foco confirmado a ${dist}km de ${sub.city_name}`;
+    : `Foco confirmado a ${dist}km de ${escapeHtml(sub.city_name)}`;
   let msg = `✅ <b>${headerLine}</b>\n\n`;
-  msg += `📍 A <b>${dist} km</b> de ${sub.city_name}\n`;
+  msg += `📍 A <b>${dist} km</b> de ${escapeHtml(sub.city_name)}\n`;
   msg += `🧭 Dirección: ${cardinal}\n`;
   msg += `💨 Viento: ${windToward ? "<b>hacia tu posición</b>" : "fuera de tu posición"}`;
   if (windToward) msg += ` (ETA humo ~${etaMinutes} min)`;
@@ -480,7 +523,7 @@ async function formatConfirmedFromPreliminary(
   msg += `${frpBars(fire.frp)} ${fire.frp} MW — ${frpLabel(fire.frp).split(" (")[0]}\n`;
   msg += `🛰️ Validado por NASA FIRMS (VIIRS 375m)\n`;
   msg += `⏱️ Alerta preliminar hace ${sinceMin} min, confirmada ahora\n`;
-  if (zoneName) msg += `🌲 Zona: ${zoneName}\n`;
+  if (zoneName) msg += `🌲 Zona: ${escapeHtml(zoneName)}\n`;
   msg += `\n<i>El foco preliminar GOES que te avisamos antes acaba de ser ` +
     `confirmado por la pasada de VIIRS. La detección era real, no falsa alarma. ` +
     (level === "danger"

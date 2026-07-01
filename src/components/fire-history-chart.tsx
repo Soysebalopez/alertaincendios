@@ -20,32 +20,44 @@ interface HistoryPoint {
 
 interface FireHistoryChartProps {
   months: number;
+  // When the parent already has the data for `months`, it can pass it down to
+  // avoid a redundant fetch to the same endpoint. If omitted, the chart
+  // self-fetches (kept for standalone use).
+  data?: HistoryPoint[];
+  loading?: boolean;
 }
 
 const FireHistoryChart = React.memo(function FireHistoryChart({
   months,
+  data: dataProp,
+  loading: loadingProp,
 }: FireHistoryChartProps) {
-  const [data, setData] = useState<HistoryPoint[]>([]);
-  const [loading, setLoading] = useState(true);
+  const controlled = dataProp !== undefined;
+  const [fetchedData, setFetchedData] = useState<HistoryPoint[]>([]);
+  const [fetchedLoading, setFetchedLoading] = useState(true);
 
   useEffect(() => {
+    if (controlled) return;
     let cancelled = false;
-    const id = setTimeout(() => !cancelled && setLoading(true), 0);
+    const id = setTimeout(() => !cancelled && setFetchedLoading(true), 0);
     fetch(`/api/fires/history?months=${months}`)
       .then((r) => r.json())
       .then((res) => {
         if (cancelled) return;
-        setData(res.data || []);
-        setLoading(false);
+        setFetchedData(res.data || []);
+        setFetchedLoading(false);
       })
       .catch(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setFetchedLoading(false);
       });
     return () => {
       cancelled = true;
       clearTimeout(id);
     };
-  }, [months]);
+  }, [months, controlled]);
+
+  const data = controlled ? dataProp : fetchedData;
+  const loading = controlled ? loadingProp ?? false : fetchedLoading;
 
   if (loading) {
     return (

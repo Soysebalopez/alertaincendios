@@ -14,8 +14,15 @@ function dateKey(d: Date): string {
 
 function percentile(sorted: number[], p: number): number | null {
   if (sorted.length === 0) return null;
-  const idx = Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * p));
-  return sorted[idx];
+  if (sorted.length === 1) return sorted[0];
+  // Linear interpolation between the two neighbouring ranks. Avoids the bias of
+  // plain Math.floor on small samples (e.g. p95 with few points snapping low).
+  const rank = (sorted.length - 1) * p;
+  const lo = Math.floor(rank);
+  const hi = Math.ceil(rank);
+  if (lo === hi) return sorted[lo];
+  const frac = rank - lo;
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * frac;
 }
 
 // ─── Suscriptores ────────────────────────────────────────────────────────
@@ -145,10 +152,15 @@ export async function getEngagement(): Promise<{
     Date.now() - SUPERADMIN_CONFIG.ZOMBIE_AFTER_DAYS * DAY
   ).toISOString();
 
-  // Last command per chat_id
-  const { data } = await db
-    .from("bot_commands_log")
-    .select("chat_id, command, created_at");
+  // Universe = ALL subscribers, left-joined with their last command. A sub that
+  // never issued a command is inactive (and a zombie), not invisible.
+  const [{ data: subsData }, { data }] = await Promise.all([
+    db.from("subscribers").select("chat_id"),
+    db.from("bot_commands_log").select("chat_id, command, created_at"),
+  ]);
+  const subChatIds = ((subsData ?? []) as Array<{ chat_id: number }>).map(
+    (s) => s.chat_id
+  );
   const rows = (data ?? []) as Array<{
     chat_id: number;
     command: string;
@@ -167,10 +179,12 @@ export async function getEngagement(): Promise<{
   let active7 = 0;
   let active30 = 0;
   let zombies = 0;
-  for (const lastAt of lastByChat.values()) {
-    if (lastAt >= since7d) active7++;
-    if (lastAt >= sinceActive) active30++;
-    if (lastAt < sinceZombie) zombies++;
+  for (const chatId of subChatIds) {
+    const lastAt = lastByChat.get(chatId);
+    if (lastAt && lastAt >= since7d) active7++;
+    if (lastAt && lastAt >= sinceActive) active30++;
+    // No commands, or last command older than the zombie threshold.
+    if (!lastAt || lastAt < sinceZombie) zombies++;
   }
 
   return {
@@ -205,6 +219,8 @@ export async function getGoesFunnelTrend(daysBack = 14): Promise<FunnelDay[]> {
     )
     .gte("scan_start", since);
 
+  // Key by the full YYYY-MM-DD date to avoid cross-year collisions on the
+  // MM-DD short form; only slice to MM-DD when building the output label.
   const buckets = new Map<string, FunnelDay>();
   for (let i = daysBack - 1; i >= 0; i--) {
     const key = dateKey(new Date(Date.now() - i * DAY));
@@ -221,8 +237,7 @@ export async function getGoesFunnelTrend(daysBack = 14): Promise<FunnelDay[]> {
   }
   for (const r of (data ?? []) as Array<FunnelDay & { scan_start: string }>) {
     const k = (r.scan_start as string).slice(0, 10);
-    const dayKeyShort = k.slice(5);
-    const b = buckets.get(dayKeyShort);
+    const b = buckets.get(k);
     if (!b) continue;
     b.fire_pixels_global += r.fire_pixels_global ?? 0;
     b.after_mask += r.after_mask ?? 0;

@@ -59,8 +59,15 @@ export const LiveCityGrid = React.memo(function LiveCityGrid({
 }: {
   count?: number;
 }) {
-  const [cities] = useState(() => pickRandomCities(count));
+  // Start empty (deterministic SSR markup) and pick the random cities after
+  // mount — calling Math.random() in useState would cause a hydration mismatch
+  // since this client component is rendered server-side on the landing page.
+  const [cities, setCities] = useState<CitySlot[]>([]);
   const [data, setData] = useState<Map<number, CityMetrics>>(new Map());
+
+  useEffect(() => {
+    setCities(pickRandomCities(count));
+  }, [count]);
 
   const fetchCity = useCallback((idx: number, c: CitySlot) => {
     Promise.all([

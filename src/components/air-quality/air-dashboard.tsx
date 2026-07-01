@@ -32,7 +32,7 @@ export function AirDashboard() {
       <section
         className="clara-sticky-filter sticky z-10 border-b border-border"
         style={{
-          top: 57,
+          top: "var(--nav-h, 57px)",
           padding: "16px 32px",
           background:
             "color-mix(in oklab, var(--background) 90%, transparent)",

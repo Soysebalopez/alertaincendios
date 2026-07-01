@@ -3,6 +3,7 @@ noon-local temp/RH/wind and the 24h precipitation sum — the inputs the FWI
 expects. Forecast and historical (archive) endpoints share `parse_daily`."""
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 
 import requests
@@ -11,6 +12,33 @@ FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 TZ = "America/Argentina/Ushuaia"
 _HOURLY = "temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation"
+
+# Retry budget for Open-Meteo quota (HTTP 429) and transient network errors.
+_MAX_RETRIES = 3
+_BACKOFF_SECONDS = (1.0, 2.0, 4.0)
+
+
+def _request_with_retry(url: str, params: dict, timeout: float) -> requests.Response:
+    """GET with short exponential backoff on HTTP 429 and transient network
+    errors. The happy path is unchanged: a 2xx response returns immediately.
+    After exhausting retries, the last error is propagated as before."""
+    for attempt in range(_MAX_RETRIES):
+        last_attempt = attempt == _MAX_RETRIES - 1
+        try:
+            resp = requests.get(url, params=params, timeout=timeout)
+        except (requests.ConnectionError, requests.Timeout):
+            if last_attempt:
+                raise
+            time.sleep(_BACKOFF_SECONDS[attempt])
+            continue
+        if getattr(resp, "status_code", None) == 429 and not last_attempt:
+            time.sleep(_BACKOFF_SECONDS[attempt])
+            continue
+        resp.raise_for_status()
+        return resp
+    # Unreachable: the loop either returns or raises on the last attempt.
+    resp.raise_for_status()
+    return resp
 
 
 @dataclass(frozen=True)
@@ -54,8 +82,7 @@ def parse_daily(raw: dict, noon_hour: int = 12) -> list[DayWeather]:
 
 
 def _get(url: str, params: dict) -> dict:
-    resp = requests.get(url, params=params, timeout=20)
-    resp.raise_for_status()
+    resp = _request_with_retry(url, params, timeout=30)
     return resp.json()
 
 
@@ -77,8 +104,7 @@ def fetch_history(lat: float, lng: float, start_date: str, end_date: str) -> lis
 
 
 def _get_multi(url: str, params: dict) -> list[dict]:
-    resp = requests.get(url, params=params, timeout=60)
-    resp.raise_for_status()
+    resp = _request_with_retry(url, params, timeout=60)
     data = resp.json()
     # Open-Meteo returns a bare object for one location, a list for many.
     return data if isinstance(data, list) else [data]

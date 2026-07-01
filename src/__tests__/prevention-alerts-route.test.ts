@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const sendMessage = vi.fn();
-vi.mock("@/lib/telegram", () => ({ sendMessage: (...a: unknown[]) => sendMessage(...a) }));
+// sendMessage now returns a SendResult ({ ok }) — the route checks it.
+vi.mock("@/lib/telegram", () => ({
+  sendMessage: (...a: unknown[]) => {
+    sendMessage(...a);
+    return Promise.resolve({ ok: true, status: 200, blocked: false });
+  },
+}));
 
 // minimal chainable supabase stub
 const state = {
@@ -28,6 +34,7 @@ function buildQuery(table: string): any {
     in(col: string, vals: unknown[]) { q._inFilters[col] = vals; return q; },
     order() { return q; },
     limit() { return q; },
+    range() { return q; }, // paginated reads (fetchAllRows) — no-op in the stub
     gte() { return q; },
     async single() {
       if (table === "fire_danger") return { data: { computed_at: "2026-06-23" } };

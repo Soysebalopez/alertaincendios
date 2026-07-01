@@ -103,7 +103,7 @@ Autorización vía `isCronAuthorized()` en `src/lib/cron-auth.ts`: acepta el sec
 ### Prevención (FWI)
 - `danger_zones` (id text PK, province, name, lat, lng, bbox double precision[], geometry jsonb nullable) — definición de zonas de peligro
 - `fire_danger_state` (zone_id, date, ffmc, dmc, dc; PK (zone_id, date)) — estado de humedad llevado día a día para encadenar el FWI
-- `fire_danger` (id, zone_id, computed_at, target_date, fwi, danger_class, isi, bui, temp, rh, wind, precip; UNIQUE (zone_id, computed_at, target_date)) — forecast de peligro legible por zona
+- `fire_danger` (id, zone_id, computed_at `date` (una corrida diaria — es date, no timestamp), target_date, fwi, danger_class, isi, bui, temp, rh, wind, precip; UNIQUE (zone_id, computed_at, target_date)) — forecast de peligro legible por zona
 
 ### Lightning
 - `lightning_alerted` (id bigserial PK, chat_id, alerted_at) — rate-limit 30 min/sub

@@ -13,7 +13,7 @@ import tierraDelFuego from "./forest-polygons/tierra-del-fuego.json";
 /**
  * Polígonos forestales argentinos derivados de MapBiomas Colección 2 (2024),
  * clase "Formación Forestal". Server-only para mantener el bundle del cliente
- * chico (los 6 polígonos pesan ~170 KB combined).
+ * chico (los 7 polígonos pesan ~205 KB combined).
  *
  * Pipeline de generación:
  *   gdal_translate -projwin → crop por zona
@@ -74,8 +74,11 @@ function pointInRing(lng: number, lat: number, ring: Polygon): boolean {
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
     const [xi, yi] = ring[i];
     const [xj, yj] = ring[j];
+    // +1e-12 epsilon avoids div/0 on horizontal edges (yj === yi), matching
+    // the ray-casting in argentina-polygon.ts for cross-classifier consistency.
     const intersect =
-      yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
+      yi > lat !== yj > lat &&
+      lng < ((xj - xi) * (lat - yi)) / (yj - yi + 1e-12) + xi;
     if (intersect) inside = !inside;
   }
   return inside;
@@ -181,6 +184,9 @@ function minDistanceKmToMultiPolygon(
  *    mínima al borde y devolver la zona si está dentro del buffer.
  */
 export function findForestZone(lat: number, lng: number): ForestZone | null {
+  // Reject NaN / non-finite inputs early — they pass numeric comparisons in
+  // unpredictable ways and would corrupt the bbox/point-in-polygon checks.
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   // Fast path: punto adentro de algún polígono (post bbox filter).
   for (const zone of FOREST_ZONES) {
     const bbox = BBOXES[zone.id];
