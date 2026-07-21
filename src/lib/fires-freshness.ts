@@ -15,3 +15,38 @@ export function decideFreshnessAction(input: {
   if (!stale && input.alerted) return "alert_recovered";
   return "none";
 }
+
+/**
+ * Key-invalidation alert transitions. `hasError` mirrors the presence of the
+ * `_clara_config.firms_sync_error` flag written by the SQL body guard;
+ * `alerted` mirrors `firms_key_alerted_at` (anti-spam).
+ */
+export type KeyAction = "none" | "alert_key_invalid" | "alert_key_recovered";
+
+/**
+ * Combined monitor decision. While a key error is active the specific key
+ * alert supersedes the generic staleness alert: the guard stops `fetched_at`
+ * from advancing during a key incident, so without this precedence the
+ * monitor would fire a redundant "FIRMS sin actualizar" 60 min later.
+ */
+export function decideMonitorActions(input: {
+  ageMinutes: number;
+  thresholdMinutes: number;
+  staleAlerted: boolean;
+  hasKeyError: boolean;
+  keyAlerted: boolean;
+}): { freshness: FreshnessAction; key: KeyAction } {
+  let key: KeyAction = "none";
+  if (input.hasKeyError && !input.keyAlerted) key = "alert_key_invalid";
+  else if (!input.hasKeyError && input.keyAlerted) key = "alert_key_recovered";
+
+  const freshness = input.hasKeyError
+    ? "none"
+    : decideFreshnessAction({
+        ageMinutes: input.ageMinutes,
+        thresholdMinutes: input.thresholdMinutes,
+        alerted: input.staleAlerted,
+      });
+
+  return { freshness, key };
+}
