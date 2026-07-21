@@ -311,8 +311,11 @@ Desde el chat admin del bot:
 
 - `/rotarkey` (sin argumento) → mensaje de uso.
 - `/rotarkey basura123` → "❌ NASA rechazó esa key" con `Invalid MAP_KEY.`.
-- `/rotarkey <key actual válida>` → "✅ Key validada y rotada" (rotación no-op),
-  borra el mensaje con la key y limpia los flags.
+- `/rotarkey <key actual válida>` → "✅ Key validada contra NASA y rotada." (rotación
+  no-op), borra el mensaje con la key (si `deleteMessage` tuvo éxito) y borra
+  `firms_sync_error`. La confirmación "✅ MAP_KEY de FIRMS operativa" **no** la manda
+  `/rotarkey` — llega del monitor tras el próximo sync exitoso, solo si había una alerta
+  previa (`firms_key_alerted_at` presente).
 - Desde un chat NO admin → "Comando no reconocido".
 
 Verificar que `bot_commands_log` registró `/rotarkey` SIN el argumento:

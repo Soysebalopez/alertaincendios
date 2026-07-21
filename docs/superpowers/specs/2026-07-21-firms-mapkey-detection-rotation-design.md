@@ -4,6 +4,13 @@
 **Estado:** aprobado (diseño validado en conversación con Seba)
 **Rama:** `feat/firms-mapkey-guard`
 
+> **Nota de revisión final (post-rotation race):** la revisión final de la rama detectó que
+> `/rotarkey` borrando `firms_key_alerted_at` (además de `firms_sync_error`) abría dos races
+> de alertas espurias post-rotación. El diseño en §3 paso 5, la tabla de flags en §4 y el
+> manejo de errores de red se actualizaron para reflejar el comportamiento corregido:
+> `/rotarkey` borra solo `firms_sync_error`, deja `firms_key_alerted_at` exclusivamente al
+> recovery del monitor, y pre-arma `fires_freshness_alerted_at` condicionalmente.
+
 ## Problema
 
 Incidente recurrente (~cada 28 días: 2026-06-19 y 2026-07-17). NASA invalida la MAP_KEY de
@@ -91,8 +98,17 @@ En `src/app/api/bot/telegram/route.ts`, rama nueva del dispatch:
      mensaje de NASA. Una key con typo nunca llega a la DB.
   4. Upsert `_clara_config.firms_map_key` (la app ya escribe en `_clara_config` con
      service_role — sin SQL manual).
-  5. DELETE de `firms_sync_error` y `firms_key_alerted_at`.
-  6. `deleteMessage` del mensaje del admin (la key no queda en el historial del chat).
+  5. DELETE de **solo** `firms_sync_error`. `firms_key_alerted_at` **no** se borra acá —
+     la limpia exclusivamente la transición de recovery del monitor, una vez que
+     `fires_cache` efectivamente vuelve a estar fresco (ver nota de revisión final abajo).
+     Además, `/rotarkey` pre-arma **condicionalmente** `fires_freshness_alerted_at`: si
+     `fires_cache.fetched_at` ya está stale (o ausente) al momento de rotar, la setea ahora
+     mismo, para que el próximo sync exitoso dispare un único "✅ FIRMS se recuperó" en vez
+     de una alerta genérica de staleness engañosa. Si el cache ya está fresco (rotación
+     proactiva), NO la setea — evita un "recuperó" espurio sin alerta previa.
+  6. `deleteMessage` del mensaje del admin (la key no queda en el historial del chat). La
+     confirmación solo dice "borré tu mensaje" si `deleteMessage` efectivamente devolvió
+     éxito.
   7. Respuesta: ✅ key validada y rotada, próximo sync ≤15 min, recordatorio de los 2 lugares
      secundarios (Vercel env `FIRMS_API_KEY` — solo ruta manual de sync — y
      `scripts/backfill.env` local).
@@ -108,12 +124,16 @@ Sin migraciones de tablas. Keys nuevas en `_clara_config`:
 | Key | Escribe | Borra | Significado |
 |---|---|---|---|
 | `firms_sync_error` | step2 SQL (guard) | step2 SQL (recovery), `/rotarkey` | Último body no-CSV + timestamp |
-| `firms_key_alerted_at` | monitor (al alertar) | monitor (recovery), `/rotarkey` | Anti-spam de la alerta de key |
+| `firms_key_alerted_at` | monitor (al alertar) | **solo** monitor (recovery) | Anti-spam de la alerta de key — `/rotarkey` deliberadamente NO la toca (ver revisión final) |
+| `fires_freshness_alerted_at` | monitor (al alertar), `/rotarkey` (pre-arm condicional si el cache ya está stale al rotar) | monitor (recovery) | Anti-spam de la alerta genérica de staleness |
 
 ## Manejo de errores
 
-- NASA caída / timeout en la validación de `/rotarkey` → responder "no pude validar contra
-  NASA, probá de nuevo en unos minutos"; **no** rotar sin validar.
+- NASA caída / timeout en la validación de `/rotarkey` → `validateMapKey` distingue esto
+  (`reason: "network"`) de un rechazo real (`reason: "rejected"`). Responde "⚠️ No pude
+  validar la key contra NASA (problema de red o NASA caída). No la guardé — probá de nuevo
+  en unos minutos" — sin acusar "NASA rechazó" (sería falso: NASA nunca contestó) y sin
+  filtrar el error de red crudo; **no** rotar sin validar.
 - `mapkey_status` inaccesible en el monitor → alertar igual con el snippet del flag (señal
   primaria); el chequeo activo solo enriquece.
 - `deleteMessage` falla (>48h, permisos) → ignorar; la rotación ya ocurrió y el chat es
