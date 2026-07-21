@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { sendMessage, answerCallbackQuery, editMessageText, escapeHtml } from "@/lib/telegram";
+import { sendMessage, answerCallbackQuery, editMessageText, escapeHtml, deleteMessage } from "@/lib/telegram";
 import { parseFeedbackCallback } from "@/lib/feedback-keyboard";
 import { buildPreferencesKeyboard, parsePreferencesCallback } from "@/lib/preferences-keyboard";
 import { findDangerZone } from "@/lib/danger-zone-match";
@@ -10,6 +10,7 @@ import { fetchFires } from "@/lib/firms";
 import { haversineKm } from "@/lib/geo";
 import { artHour } from "@/lib/time";
 import { log } from "@/lib/logger";
+import { validateMapKey, FIRMS_MAP_KEY_FORM_URL } from "@/lib/firms-key";
 
 /**
  * POST /api/bot/telegram
@@ -22,6 +23,7 @@ import { log } from "@/lib/logger";
 
 interface TelegramUpdate {
   message?: {
+    message_id?: number;
     chat: { id: number };
     text?: string;
     location?: { latitude: number; longitude: number };
@@ -144,6 +146,11 @@ export async function POST(request: NextRequest) {
       const arg = text.replace("/soybombero", "").trim();
       await logBotCommand(chatId, "/soybombero", arg ? "<code>" : "");
       await handleSoyBombero(chatId, arg);
+    } else if (text === "/rotarkey" || text.startsWith("/rotarkey ")) {
+      // Admin-only, hidden. NEVER log the argument — it is the FIRMS secret.
+      await logBotCommand(chatId, "/rotarkey");
+      const arg = text === "/rotarkey" ? "" : text.slice("/rotarkey ".length);
+      await handleRotarKey(chatId, arg, update.message?.message_id);
     } else {
       await logBotCommand(chatId, "<unknown>", text.slice(0, 32));
       await sendMessage(
@@ -957,5 +964,76 @@ async function handleSoyBombero(chatId: number, code: string) {
       "Si querés volver a alertas de vecino, usá <code>/dejarcuartel</code> " +
       "(seguís suscripto, sin perder tu ubicación)." +
       FOOTER
+  );
+}
+
+/**
+ * /rotarkey <key> — rotación de la MAP_KEY de FIRMS (WHI: incidente recurrente
+ * de key invalidada). Solo responde al admin (_clara_config.admin_chat_id);
+ * para cualquier otro chat se comporta como comando desconocido. Valida la key
+ * contra NASA EN VIVO antes de escribirla — un typo nunca llega a la DB.
+ */
+async function handleRotarKey(chatId: number, arg: string, messageId?: number) {
+  const db = getSupabase();
+
+  const { data: adminRow } = await db
+    .from("_clara_config")
+    .select("value")
+    .eq("key", "admin_chat_id")
+    .maybeSingle();
+  const adminChatId = adminRow?.value ? Number(adminRow.value) : null;
+
+  if (!adminChatId || chatId !== adminChatId) {
+    // No revelar que el comando existe.
+    await sendMessage(chatId, "Comando no reconocido. Usa /help para ver los comandos.");
+    return;
+  }
+
+  const key = arg.trim();
+  if (!key) {
+    await sendMessage(
+      chatId,
+      `Uso: <code>/rotarkey LA_KEY</code>\n\n` +
+        `Pedí una key nueva en ${FIRMS_MAP_KEY_FORM_URL} (llega por mail) y mandámela con el comando.`
+    );
+    return;
+  }
+
+  const result = await validateMapKey(key);
+  if (!result.valid) {
+    await sendMessage(
+      chatId,
+      `❌ NASA rechazó esa key, no la guardé.\n\n` +
+        `Respuesta: <code>${escapeHtml(result.message)}</code>\n\n` +
+        `Si acabás de pedirla puede tardar unos minutos en activarse — probá de nuevo en un rato.`
+    );
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const { error } = await db.from("_clara_config").upsert({
+    key: "firms_map_key",
+    value: key,
+    updated_at: now,
+  });
+  if (error) {
+    await sendMessage(chatId, `❌ La key es válida pero no pude guardarla: <code>${escapeHtml(error.message)}</code>`);
+    return;
+  }
+
+  await db.from("_clara_config").delete().in("key", ["firms_sync_error", "firms_key_alerted_at"]);
+
+  // Best-effort: que la key no quede en el historial del chat.
+  if (messageId) await deleteMessage(chatId, messageId);
+
+  await sendMessage(
+    chatId,
+    `✅ <b>Key validada contra NASA y rotada.</b>\n\n` +
+      `El próximo sync corre en ≤15 min.\n` +
+      `Borré tu mensaje para que la key no quede en el historial.\n\n` +
+      `Pendiente (no crítico, cuando puedas):\n` +
+      `• Vercel env <code>FIRMS_API_KEY</code> (solo la ruta manual de sync)\n` +
+      `• <code>scripts/backfill.env</code> local\n\n` +
+      `Anotá la fecha: si la key muere de nuevo en ~28 días, es política de NASA — ver spec 2026-07-21.`
   );
 }
