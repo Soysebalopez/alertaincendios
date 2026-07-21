@@ -272,6 +272,63 @@ Estado llevado (una fila por zona, fecha de hoy):
 SELECT zone_id, date, ffmc, dmc, dc FROM public.fire_danger_state;
 ```
 
+## 8. MAP_KEY inválida — guard + alerta + /rotarkey
+
+Simula el incidente recurrente de key FIRMS invalidada (spec
+`docs/superpowers/specs/2026-07-21-firms-mapkey-detection-rotation-design.md`)
+sin tocar la key real.
+
+### 8.1 — Alerta del monitor
+
+En Supabase SQL Editor:
+
+```sql
+INSERT INTO _clara_config (key, value, updated_at)
+VALUES ('firms_sync_error', now()::text || ' | Invalid MAP_KEY. (test)', now())
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now();
+```
+
+Disparar el monitor (o esperar ≤15 min al pg_cron):
+
+```bash
+curl "https://alertaforestal.org/api/monitor/fires-freshness?secret=$CRON_SECRET"
+# → {"key":"alert_key_invalid","notified":true,...}
+```
+
+Debe llegar el Telegram "🔑 MAP_KEY de FIRMS inválida" al admin. Una segunda
+corrida devuelve `"key":"none"` (anti-spam). Limpiar el flag:
+
+```sql
+DELETE FROM _clara_config WHERE key = 'firms_sync_error';
+```
+
+La corrida siguiente manda el "✅ operativa" (recovery) y borra
+`firms_key_alerted_at`.
+
+### 8.2 — /rotarkey
+
+Desde el chat admin del bot:
+
+- `/rotarkey` (sin argumento) → mensaje de uso.
+- `/rotarkey basura123` → "❌ NASA rechazó esa key" con `Invalid MAP_KEY.`.
+- `/rotarkey <key actual válida>` → "✅ Key validada y rotada" (rotación no-op),
+  borra el mensaje con la key y limpia los flags.
+- Desde un chat NO admin → "Comando no reconocido".
+
+Verificar que `bot_commands_log` registró `/rotarkey` SIN el argumento:
+
+```sql
+SELECT command, args FROM bot_commands_log
+WHERE command = '/rotarkey' ORDER BY created_at DESC LIMIT 3;
+-- args debe ser NULL en todas
+```
+
+### 8.3 — Guard SQL (destructivo suave — opcional)
+
+Con el guard aplicado, un body no-CSV no pisa el cache. Verificable solo en un
+incidente real; mientras tanto alcanza con la verificación post-aplicación del
+archivo `scripts/sql/whi-firms-body-guard.sql`.
+
 ## Tabla resumen — qué SQL pegar para qué pregunta
 
 | Pregunta | SQL |
