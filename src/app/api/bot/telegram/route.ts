@@ -146,10 +146,13 @@ export async function POST(request: NextRequest) {
       const arg = text.replace("/soybombero", "").trim();
       await logBotCommand(chatId, "/soybombero", arg ? "<code>" : "");
       await handleSoyBombero(chatId, arg);
-    } else if (text === "/rotarkey" || text.startsWith("/rotarkey ")) {
+    } else if (text.toLowerCase().startsWith("/rotarkey")) {
       // Admin-only, hidden. NEVER log the argument — it is the FIRMS secret.
+      // Prefix match (not exact/space-anchored): a paste typo like
+      // "/rotarkeyABC..." must land here, not in the <unknown> branch that
+      // logs a slice of the text.
       await logBotCommand(chatId, "/rotarkey");
-      const arg = text === "/rotarkey" ? "" : text.slice("/rotarkey ".length);
+      const arg = text.slice("/rotarkey".length);
       await handleRotarKey(chatId, arg, update.message?.message_id);
     } else {
       await logBotCommand(chatId, "<unknown>", text.slice(0, 32));
@@ -976,11 +979,22 @@ async function handleSoyBombero(chatId: number, code: string) {
 async function handleRotarKey(chatId: number, arg: string, messageId?: number) {
   const db = getSupabase();
 
-  const { data: adminRow } = await db
+  const { data: adminRow, error: adminError } = await db
     .from("_clara_config")
     .select("value")
     .eq("key", "admin_chat_id")
     .maybeSingle();
+
+  if (adminError) {
+    log.error({
+      event: "bot.rotarkey_admin_check_failed",
+      chatId,
+      err: adminError.message,
+    });
+    await sendMessage(chatId, "Error interno. Intenta de nuevo en unos minutos.");
+    return;
+  }
+
   const adminChatId = adminRow?.value ? Number(adminRow.value) : null;
 
   if (!adminChatId || chatId !== adminChatId) {
@@ -1021,7 +1035,17 @@ async function handleRotarKey(chatId: number, arg: string, messageId?: number) {
     return;
   }
 
-  await db.from("_clara_config").delete().in("key", ["firms_sync_error", "firms_key_alerted_at"]);
+  const { error: cleanupError } = await db
+    .from("_clara_config")
+    .delete()
+    .in("key", ["firms_sync_error", "firms_key_alerted_at"]);
+  if (cleanupError) {
+    log.error({
+      event: "bot.rotarkey_cleanup_failed",
+      chatId,
+      err: cleanupError.message,
+    });
+  }
 
   // Best-effort: que la key no quede en el historial del chat.
   if (messageId) await deleteMessage(chatId, messageId);
@@ -1034,6 +1058,9 @@ async function handleRotarKey(chatId: number, arg: string, messageId?: number) {
       `Pendiente (no crítico, cuando puedas):\n` +
       `• Vercel env <code>FIRMS_API_KEY</code> (solo la ruta manual de sync)\n` +
       `• <code>scripts/backfill.env</code> local\n\n` +
-      `Anotá la fecha: si la key muere de nuevo en ~28 días, es política de NASA — ver spec 2026-07-21.`
+      `Anotá la fecha: si la key muere de nuevo en ~28 días, es política de NASA — ver spec 2026-07-21.` +
+      (cleanupError
+        ? "\n\n⚠️ No pude limpiar los flags de alerta — puede llegar un aviso viejo del monitor. Se limpian solos con el próximo sync exitoso."
+        : "")
   );
 }
