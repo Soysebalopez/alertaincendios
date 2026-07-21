@@ -49,7 +49,11 @@ resolver la causa raíz del lado NASA (queda como seguimiento).
 ### 1. Guard en SQL — `fires_sync_step2_process()` (aplicación manual)
 
 Archivo versionado nuevo: `scripts/sql/whi-firms-body-guard.sql` (CREATE OR REPLACE de la
-función completa, basada en la versión de `whi-378-fix-fires-sync-step2.sql`).
+función completa). **Nota de aplicación (2026-07-21):** al aplicar se descubrió que la
+función real de prod difería del baseline versionado (`RETURNS void`, `search_path` fijado,
+columna 15 como type, DELETE de `net._http_response`); el archivo versionado se re-sincronizó
+con el cuerpo real de prod y el guard se integró sobre esa versión. Aplicado y verificado
+en prod el 2026-07-21.
 
 El CSV del area API de FIRMS siempre empieza con el header `latitude,longitude,…`. Guard
 después del chequeo de `status_code`:
@@ -59,7 +63,9 @@ después del chequeo de `status_code`:
   - **No tocar `fires_cache`** (los últimos focos buenos quedan visibles).
   - Upsert en `_clara_config`: key `firms_sync_error`, value = `<ISO timestamp> | <primeros
     200 chars del body>`.
-  - Limpiar `request_id` en `_fires_sync_state` y devolver `(0, 'firms_body_error')`.
+  - Limpiar `request_id` en `_fires_sync_state` (y la fila de `net._http_response`, como el
+    camino normal de prod) y salir sin tocar el cache. La función de prod es `RETURNS void`:
+    no devuelve status; el marcador verificable es `firms_sync_error` en `_clara_config`.
 - Camino feliz (body CSV, incluso con 0 filas de datos): igual que hoy, **más** un DELETE del
   flag `firms_sync_error` si existe (recovery automático).
 

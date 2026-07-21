@@ -127,7 +127,7 @@ Autorización vía `isCronAuthorized()` en `src/lib/cron-auth.ts`: acepta el sec
 
 ## Supabase Functions / RPC
 - `fires_sync_step1_fetch()` — HTTP GET a FIRMS via pg_net
-- `fires_sync_step2_process()` — parsea CSV, REEMPLAZA fires_cache (WHI-378 fix)
+- `fires_sync_step2_process()` — parsea CSV, REEMPLAZA fires_cache (WHI-378 fix) + guard de body no-CSV (aplicado 2026-07-21, ver Key Patterns). ⚠️ La función real de prod es RETURNS void — el archivo canónico sincronizado con prod es `scripts/sql/whi-firms-body-guard.sql`; inspeccionar prod antes de tocarla
 - `clara_cron_secret()` SECURITY DEFINER — devuelve CRON_SECRET desde `_clara_config`, usado por pg_cron jobs así no queda literal en cron.job.command
 - `clara_cron_health()` SECURITY DEFINER — lectura de cron.job_run_details para el dashboard /health
 

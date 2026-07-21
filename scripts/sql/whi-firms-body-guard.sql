@@ -1,149 +1,114 @@
 -- scripts/sql/whi-firms-body-guard.sql
 -- Guard de body no-CSV en fires_sync_step2_process().
 --
--- Incidente recurrente (2026-06-19, 2026-07-17): NASA invalida la MAP_KEY y
--- responde el texto "Invalid MAP_KEY." con HTTP 200. El chequeo de status_code
--- nunca lo ve; el parser CSV lo convierte en 0 filas y REEMPLAZA fires_cache
--- con [] cada 15 min — el sitio queda "sin focos" en silencio.
+-- APLICADO A PROD (qmzuwnilehldvobjsbcs) el 2026-07-21. Este archivo refleja
+-- la función REAL desplegada — verificada con pg_get_functiondef durante la
+-- aplicación. La versión de prod difiere del viejo baseline versionado
+-- (whi-378-fix-fires-sync-step2.sql): RETURNS void (no TABLE), SET search_path
+-- fijado, parsea la columna 15 como type, borra la fila de net._http_response
+-- al terminar, y usa UPDATE (no INSERT ON CONFLICT) sobre fires_cache.
+-- Lección: ante cualquier cambio futuro, inspeccionar SIEMPRE la función real
+-- primero (scripts/sql/whi-378-inspect-fires-sync.sql).
 --
--- Este patch: si el body NO empieza con el header CSV ("latitude,..."), NO
+-- Incidente que resuelve (recurrente: 2026-06-19, 2026-07-17): NASA invalida
+-- la MAP_KEY y responde "Invalid MAP_KEY." con HTTP 200. El parser CSV lo
+-- convertía en 0 filas y REEMPLAZABA fires_cache con [] cada 15 min — el
+-- sitio quedaba "sin focos" en silencio.
+--
+-- Este guard: si el body NO empieza con el header CSV ("latitude,..."), NO
 -- toca fires_cache (los últimos focos buenos quedan visibles), marca
 -- _clara_config.firms_sync_error (el monitor /api/monitor/fires-freshness lo
--- convierte en alerta Telegram) y devuelve 'firms_body_error'. En el camino
--- feliz borra el flag (recovery automático).
---
--- Baseline: la versión WHI-378 (scripts/sql/whi-378-fix-fires-sync-step2.sql).
--- Antes de aplicar, verificar la versión actual con
--- scripts/sql/whi-378-inspect-fires-sync.sql.
+-- convierte en alerta Telegram) y limpia el estado de la request. En el
+-- camino feliz borra el flag (recovery automático).
 --
 -- Uso: pegar en Supabase SQL Editor (proyecto qmzuwnilehldvobjsbcs).
 
-CREATE OR REPLACE FUNCTION fires_sync_step2_process()
-RETURNS TABLE (count INTEGER, status TEXT)
-LANGUAGE plpgsql
-AS $$
-DECLARE
-  v_request_id BIGINT;
-  v_status_code INT;
-  v_body TEXT;
-  v_fires JSONB;
-  v_count INT;
-BEGIN
-  SELECT request_id INTO v_request_id
-  FROM _fires_sync_state
-  WHERE id = 1;
+CREATE OR REPLACE FUNCTION public.fires_sync_step2_process()
+ RETURNS void
+ LANGUAGE plpgsql
+ SET search_path TO 'pg_catalog', 'public'
+AS $function$
+    DECLARE
+      _req_id bigint;
+      _content text;
+    BEGIN
+      SELECT request_id INTO _req_id FROM _fires_sync_state WHERE id = 1;
+      IF _req_id IS NULL THEN RETURN; END IF;
 
-  IF v_request_id IS NULL THEN
-    RETURN QUERY SELECT 0, 'no_pending_request';
-    RETURN;
-  END IF;
+      SELECT content INTO _content
+      FROM net._http_response
+      WHERE id = _req_id AND status_code = 200;
 
-  SELECT r.status_code, r.content
-  INTO v_status_code, v_body
-  FROM net._http_response r
-  WHERE r.id = v_request_id;
+      IF _content IS NULL THEN RETURN; END IF;
 
-  IF v_status_code IS NULL THEN
-    RETURN QUERY SELECT 0, 'response_not_ready';
-    RETURN;
-  END IF;
+      -- GUARD (2026-07-21): NASA devuelve errores de aplicación ("Invalid
+      -- MAP_KEY.", rate limit, HTML de mantenimiento) con HTTP 200. El CSV
+      -- real del area API SIEMPRE empieza con el header "latitude,...".
+      -- Cualquier otra cosa NO debe pisar fires_cache: se marca el flag
+      -- firms_sync_error (el monitor lo convierte en alerta Telegram) y se
+      -- limpia el estado de la request como en el camino normal.
+      IF ltrim(_content, E' \t\r\n') NOT LIKE 'latitude%' THEN
+        INSERT INTO _clara_config (key, value, updated_at)
+        VALUES (
+          'firms_sync_error',
+          now()::text || ' | ' || left(_content, 200),
+          now()
+        )
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now();
 
-  IF v_status_code <> 200 THEN
-    RETURN QUERY SELECT 0, format('firms_status_%s', v_status_code);
-    RETURN;
-  END IF;
+        DELETE FROM net._http_response WHERE id = _req_id;
+        UPDATE _fires_sync_state SET request_id = NULL WHERE id = 1;
+        RETURN;
+      END IF;
 
-  -- GUARD: los errores de aplicación de NASA llegan con HTTP 200 y un body de
-  -- texto plano ("Invalid MAP_KEY.", rate limit, HTML de mantenimiento). El
-  -- CSV real del area API SIEMPRE empieza con el header "latitude,...".
-  -- Cualquier otra cosa NO debe pisar fires_cache.
-  IF v_body IS NULL OR ltrim(v_body, E' \t\r\n') NOT LIKE 'latitude%' THEN
-    INSERT INTO _clara_config (key, value, updated_at)
-    VALUES (
-      'firms_sync_error',
-      now()::text || ' | ' || left(coalesce(v_body, '<empty body>'), 200),
-      now()
-    )
-    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now();
+      WITH lines AS (
+        SELECT unnest(string_to_array(_content, E'\n')) AS line,
+               generate_subscripts(string_to_array(_content, E'\n'), 1) AS line_num
+      ),
+      parsed AS (
+        SELECT
+          (string_to_array(line, ','))[1]::double precision AS latitude,
+          (string_to_array(line, ','))[2]::double precision AS longitude,
+          (string_to_array(line, ','))[3]::double precision AS brightness,
+          (string_to_array(line, ','))[10] AS confidence,
+          (string_to_array(line, ','))[6] AS acq_date,
+          (string_to_array(line, ','))[7] AS acq_time,
+          (string_to_array(line, ','))[13]::double precision AS frp,
+          (string_to_array(line, ','))[15]::int AS fire_type
+        FROM lines
+        WHERE line_num > 1 AND length(line) > 10
+      ),
+      filtered AS (
+        SELECT jsonb_agg(
+          jsonb_build_object(
+            'latitude', latitude, 'longitude', longitude,
+            'brightness', brightness, 'confidence', confidence,
+            'acqDate', acq_date, 'acqTime', acq_time, 'frp', frp,
+            'type', COALESCE(fire_type, 0)
+          )
+        ) AS fires, COUNT(*)::int AS cnt
+        FROM parsed
+        WHERE latitude IS NOT NULL AND confidence NOT IN ('low', 'l')
+      )
+      UPDATE fires_cache
+      SET fires = COALESCE(filtered.fires, '[]'::jsonb),
+          count = filtered.cnt,
+          fetched_at = now()
+      FROM filtered
+      WHERE fires_cache.id = 1;
 
-    UPDATE _fires_sync_state SET request_id = NULL WHERE id = 1;
-    RETURN QUERY SELECT 0, 'firms_body_error';
-    RETURN;
-  END IF;
+      -- Recovery: un body CSV válido borra el flag de error (si existía).
+      DELETE FROM _clara_config WHERE key = 'firms_sync_error';
 
-  -- Parse CSV: header is the first line, descartar baja confianza
-  WITH lines AS (
-    SELECT
-      regexp_split_to_table(v_body, E'\\n') AS line,
-      generate_series(1, regexp_count(v_body, E'\\n') + 1) AS rn
-  ),
-  data_lines AS (
-    SELECT line FROM lines WHERE rn > 1 AND length(trim(line)) > 0
-  ),
-  parsed AS (
-    SELECT string_to_array(line, ',') AS c
-    FROM data_lines
-  ),
-  filtered AS (
-    SELECT
-      c[1]::float8                         AS latitude,
-      c[2]::float8                         AS longitude,
-      COALESCE(c[3]::float8, 0)            AS brightness,
-      COALESCE(c[10], 'unknown')           AS confidence,
-      COALESCE(c[6], '')                   AS acq_date,
-      COALESCE(c[7], '')                   AS acq_time,
-      COALESCE(c[13]::float8, 0)           AS frp,
-      COALESCE(NULLIF(c[14], '')::int, 0)  AS type
-    FROM parsed
-    WHERE array_length(c, 1) >= 13
-      AND lower(COALESCE(c[10], '')) NOT IN ('low', 'l')
-  ),
-  -- Dedup por unique key natural (lat, lng, acq_date, acq_time)
-  deduped AS (
-    SELECT DISTINCT ON (latitude, longitude, acq_date, acq_time)
-      latitude, longitude, brightness, confidence, acq_date, acq_time, frp, type
-    FROM filtered
-  )
-  SELECT
-    COALESCE(jsonb_agg(jsonb_build_object(
-      'latitude',   latitude,
-      'longitude',  longitude,
-      'brightness', brightness,
-      'confidence', confidence,
-      'acqDate',    acq_date,
-      'acqTime',    acq_time,
-      'frp',        frp,
-      'type',       type
-    )), '[]'::jsonb)
-  INTO v_fires
-  FROM deduped;
+      -- Cleanup
+      DELETE FROM net._http_response WHERE id = _req_id;
+      UPDATE _fires_sync_state SET request_id = NULL WHERE id = 1;
+    END;
+    $function$;
 
-  v_count := jsonb_array_length(v_fires);
-
-  -- REEMPLAZA, no concatena (WHI-378)
-  INSERT INTO fires_cache (id, fires, count, fetched_at)
-  VALUES (1, v_fires, v_count, now())
-  ON CONFLICT (id) DO UPDATE
-    SET fires = EXCLUDED.fires,
-        count = EXCLUDED.count,
-        fetched_at = EXCLUDED.fetched_at;
-
-  -- Recovery: un body CSV válido borra el flag de error (si existía).
-  DELETE FROM _clara_config WHERE key = 'firms_sync_error';
-
-  -- Limpiar estado de la request
-  UPDATE _fires_sync_state SET request_id = NULL WHERE id = 1;
-
-  RETURN QUERY SELECT v_count, 'ok';
-END;
-$$;
-
--- Verificación post-aplicación:
+-- Verificación post-aplicación (ejecutada OK el 2026-07-21: true / count 145):
 -- 1. El guard está en la función desplegada:
---    SELECT pg_get_functiondef('fires_sync_step2_process'::regproc) LIKE '%firms_body_error%';
+--    SELECT pg_get_functiondef('fires_sync_step2_process'::regproc) LIKE '%firms_sync_error%';
 --    → true
--- 2. El camino feliz sigue funcionando (esperar al próximo ciclo o correr a mano):
---    SELECT * FROM fires_sync_step2_process();
---    → (N, 'ok') o (0, 'no_pending_request') — nunca 'firms_body_error' con key sana.
--- 3. fires_cache sigue actualizándose:
+-- 2. fires_cache sigue actualizándose (próximo ciclo ≤15 min):
 --    SELECT count, fetched_at FROM fires_cache WHERE id = 1;
