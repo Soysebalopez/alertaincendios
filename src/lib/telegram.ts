@@ -145,3 +145,15 @@ export async function answerCallbackQuery(
     show_alert: showAlert,
   });
 }
+
+/**
+ * Borra un mensaje del chat. Usado por /rotarkey para que la key no quede en
+ * el historial del admin. Best-effort: Telegram lo permite en privados dentro
+ * de 48h; si falla, el caller lo ignora.
+ */
+export async function deleteMessage(chatId: number, messageId: number): Promise<SendResult> {
+  return callTelegram("deleteMessage", {
+    chat_id: chatId,
+    message_id: messageId,
+  });
+}

@@ -67,6 +67,7 @@ Autorización vía `isCronAuthorized()` en `src/lib/cron-auth.ts`: acepta el sec
 - `/api/lightning-alerts` — tormenta seca (OpenWeather + Open-Meteo fallback)
 - `/api/satellites/sync-tles` — baja TLEs de CelesTrak para Suomi NPP/NOAA-20/NOAA-21 (WHI-753)
 - `/api/fire-danger-sync` — **Python** (`api/fire-danger-sync.py`), diario 09:00 UTC (06:00 ART). Por cada zona TDF: lee estado llevado `(ffmc,dmc,dc)` (spin-up ~30 días históricos si ausente), fetcha forecast 16 días Open-Meteo, encadena FWI ecuaciones Van Wagner, clasifica `bajo→moderado→alto→muy alto→extremo`, persiste en `fire_danger` y `fire_danger_state`
+- `/api/monitor/fires-freshness` — monitor dual: staleness de `fires_cache` (>60 min) + flag `firms_sync_error` (key FIRMS inválida, escrito por el guard SQL). Alerta Telegram one-shot al `admin_chat_id`; la alerta de key suprime la genérica de staleness
 
 ### API Routes — Públicas (sat data)
 - `/api/satellites/tles` — read-only, devuelve los TLEs almacenados. Cache CDN 1h + SWR 5min. Lo consume `<CitySatelliteCoverage>` para computar cobertura sin requerir cómputo server-side por las 78 páginas SSG.
@@ -109,7 +110,7 @@ Autorización vía `isCronAuthorized()` en `src/lib/cron-auth.ts`: acepta el sec
 - `lightning_alerted` (id bigserial PK, chat_id, alerted_at) — rate-limit 30 min/sub
 
 ### Config
-- `_clara_config` (key PK, value, updated_at) — actualmente solo `cron_secret`. Cron jobs leen via `clara_cron_secret()` SECURITY DEFINER
+- `_clara_config` (key PK, value, updated_at) — `cron_secret`, `firms_map_key`, `admin_chat_id`, y flags operativos (`fires_freshness_alerted_at`, `firms_sync_error`, `firms_key_alerted_at`). Cron jobs leen el secret via `clara_cron_secret()` SECURITY DEFINER
 
 ## Supabase pg_cron Jobs
 - `fires-fetch` (`0,15,30,45 * * * *`) — pg_net GET a FIRMS, stores request_id
@@ -122,6 +123,7 @@ Autorización vía `isCronAuthorized()` en `src/lib/cron-auth.ts`: acepta el sec
 - `goes-prune` (`30 3 * * *` daily) — cleanup defensivo >7 días
 - `satellites-sync-tles` (`30 4 * * *` daily, 01:30 ART) — `/api/satellites/sync-tles` baja TLEs frescos de CelesTrak (WHI-753)
 - `fire-danger-sync` (`0 9 * * *` daily, 06:00 ART) — `/api/fire-danger-sync` Python: FWI por zona TDF, 16-day forecast. Usa `trigger_fire_danger_sync()` + GUC `app.fire_danger_sync_url` + `clara_cron_secret()`. SQL en `scripts/sql/whi-fwi-cron.sql`
+- `fires-freshness-monitor` (`*/15 * * * *`) — `/api/monitor/fires-freshness` staleness + key inválida
 
 ## Supabase Functions / RPC
 - `fires_sync_step1_fetch()` — HTTP GET a FIRMS via pg_net
@@ -145,6 +147,7 @@ Autorización vía `isCronAuthorized()` en `src/lib/cron-auth.ts`: acepta el sec
 - **Filtro forestal por rol (canónico)**: `subscribers.role` determina (a) qué focos llegan — civilian solo recibe alertas en zona forestal, fireman recibe todo — y (b) el tono del mensaje: civilian con AI interpretation, fireman operativo sin AI firmado por cuartel. Aplica en `/api/alerts` y `/api/goes-alerts`. El mismo filtro (sin rol) gobierna landing/mapa/`/ciudad` (ver Forest classification > Aplicado en).
 - Doble confirmación: preliminary GOES → confirmation upgrade FIRMS si <5km/<2h → dismissal automático tras 4h
 - Preliminaries descartadas se BORRAN de goes_preliminary (cascade goes_alerted) — el landing metric "Preliminares activos" refleja solo lo pendiente
+- **Guard de body FIRMS**: NASA devuelve errores ("Invalid MAP_KEY.") con HTTP 200; `fires_sync_step2_process()` solo escribe `fires_cache` si el body empieza con el header CSV `latitude,...` — si no, marca `_clara_config.firms_sync_error` y el monitor alerta. Rotación semi-automática con el comando oculto de admin `/rotarkey <key>` (valida en vivo contra NASA antes de guardar; NO va en sync-commands)
 
 ## Forest classification (Fase 4 — WHI-756 a WHI-761)
 
