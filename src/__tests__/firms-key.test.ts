@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { isFirmsCsvBody } from "@/lib/firms-key";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { isFirmsCsvBody, validateMapKey } from "@/lib/firms-key";
 
 // Real header returned by the FIRMS area CSV API.
 const CSV_HEADER =
@@ -33,5 +33,40 @@ describe("isFirmsCsvBody", () => {
   });
   it("tolerates leading whitespace before the header", () => {
     expect(isFirmsCsvBody(`\n${CSV_HEADER}\n`)).toBe(true);
+  });
+});
+
+describe("validateMapKey", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("returns valid with no reason on a real CSV body", async () => {
+    const body = `${CSV_HEADER}\n-38.95,-68.05,330.1,0.39,0.36,2026-07-21,0512,N,VIIRS,n,2.0NRT,290.1,5.2,N`;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, text: () => Promise.resolve(body) })
+    );
+    const result = await validateMapKey("a-good-key");
+    expect(result).toEqual({ valid: true, reason: null, message: "" });
+  });
+
+  it("returns reason 'rejected' with NASA's snippet when the key is invalid", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, text: () => Promise.resolve("Invalid MAP_KEY.") })
+    );
+    const result = await validateMapKey("bad-key");
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe("rejected");
+    expect(result.message).toBe("Invalid MAP_KEY.");
+  });
+
+  it("returns reason 'network' when the fetch itself fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("fetch failed: timeout")));
+    const result = await validateMapKey("any-key");
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBe("network");
+    expect(result.message).toBe("fetch failed: timeout");
   });
 });

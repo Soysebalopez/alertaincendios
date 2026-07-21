@@ -11,6 +11,7 @@ import { haversineKm } from "@/lib/geo";
 import { artHour } from "@/lib/time";
 import { log } from "@/lib/logger";
 import { validateMapKey, FIRMS_MAP_KEY_FORM_URL } from "@/lib/firms-key";
+import { FRESHNESS_THRESHOLD_MINUTES } from "@/lib/fires-freshness";
 
 /**
  * POST /api/bot/telegram
@@ -155,7 +156,8 @@ export async function POST(request: NextRequest) {
       const arg = text.slice("/rotarkey".length);
       await handleRotarKey(chatId, arg, update.message?.message_id);
     } else {
-      await logBotCommand(chatId, "<unknown>", text.slice(0, 32));
+      // A mistyped admin command (e.g. a botched /rotarkey) must not persist its argument.
+      await logBotCommand(chatId, "<unknown>", text.split(/\s+/)[0].slice(0, 32));
       await sendMessage(
         chatId,
         "Comando no reconocido. Usa /help para ver los comandos."
@@ -1015,12 +1017,22 @@ async function handleRotarKey(chatId: number, arg: string, messageId?: number) {
 
   const result = await validateMapKey(key);
   if (!result.valid) {
-    await sendMessage(
-      chatId,
-      `❌ NASA rechazó esa key, no la guardé.\n\n` +
-        `Respuesta: <code>${escapeHtml(result.message)}</code>\n\n` +
-        `Si acabás de pedirla puede tardar unos minutos en activarse — probá de nuevo en un rato.`
-    );
+    if (result.reason === "network") {
+      // NASA never answered — we don't know if the key is good or bad, so we
+      // must not claim "NASA rechazó" (that would be a false accusation against
+      // a possibly-valid key) nor leak the raw network error to the admin.
+      await sendMessage(
+        chatId,
+        "⚠️ No pude validar la key contra NASA (problema de red o NASA caída). No la guardé — probá de nuevo en unos minutos."
+      );
+    } else {
+      await sendMessage(
+        chatId,
+        `❌ NASA rechazó esa key, no la guardé.\n\n` +
+          `Respuesta: <code>${escapeHtml(result.message)}</code>\n\n` +
+          `Si acabás de pedirla puede tardar unos minutos en activarse — probá de nuevo en un rato.`
+      );
+    }
     return;
   }
 
@@ -1035,10 +1047,20 @@ async function handleRotarKey(chatId: number, arg: string, messageId?: number) {
     return;
   }
 
+  // Delete ONLY firms_sync_error here. firms_key_alerted_at is deliberately
+  // left alone — it is cleared exclusively by the monitor's recovery
+  // transition once fires_cache actually shows fresh data again. Two races
+  // this avoids: (a) if the incident lasted >60 min, fetched_at is still old
+  // right after rotation, so deleting the flag here would let the monitor
+  // fire a misleading generic staleness alert on its next tick; (b) an
+  // in-flight pg_net response fetched with the OLD key can re-write
+  // firms_sync_error right after this delete — with keyAlerted still true,
+  // decideMonitorActions can't re-fire the "MAP_KEY inválida" alert, so the
+  // race is harmless instead of sending a self-contradicting message.
   const { error: cleanupError } = await db
     .from("_clara_config")
     .delete()
-    .in("key", ["firms_sync_error", "firms_key_alerted_at"]);
+    .eq("key", "firms_sync_error");
   if (cleanupError) {
     log.error({
       event: "bot.rotarkey_cleanup_failed",
@@ -1047,20 +1069,50 @@ async function handleRotarKey(chatId: number, arg: string, messageId?: number) {
     });
   }
 
-  // Best-effort: que la key no quede en el historial del chat.
-  if (messageId) await deleteMessage(chatId, messageId);
+  // Conditionally pre-arm the staleness anti-spam flag: if the cache is
+  // currently stale (or missing entirely), set fires_freshness_alerted_at now
+  // so the monitor's *next* tick — once the cache refreshes — sends a single
+  // accurate "✅ FIRMS se recuperó" instead of first firing a misleading
+  // generic "FIRMS sin actualizar" alert for an incident we already know the
+  // cause and fix of. If the cache is already fresh (proactive rotation,
+  // nothing stale), do NOT set it — that would cause a spurious "recovered"
+  // message with no preceding stale alert.
+  const { data: cacheRow } = await db
+    .from("fires_cache")
+    .select("fetched_at")
+    .eq("id", 1)
+    .maybeSingle();
+  const fetchedAt = cacheRow?.fetched_at ? new Date(cacheRow.fetched_at) : null;
+  const ageMinutes = fetchedAt
+    ? (Date.now() - fetchedAt.getTime()) / 60000
+    : Number.POSITIVE_INFINITY;
+  if (ageMinutes > FRESHNESS_THRESHOLD_MINUTES) {
+    await db.from("_clara_config").upsert({
+      key: "fires_freshness_alerted_at",
+      value: now,
+      updated_at: now,
+    });
+  }
 
-  await sendMessage(
-    chatId,
+  // Best-effort: que la key no quede en el historial del chat. Only claim it
+  // in the reply if it actually succeeded.
+  const deleted = messageId ? await deleteMessage(chatId, messageId) : null;
+
+  let body =
     `✅ <b>Key validada contra NASA y rotada.</b>\n\n` +
-      `El próximo sync corre en ≤15 min.\n` +
-      `Borré tu mensaje para que la key no quede en el historial.\n\n` +
-      `Pendiente (no crítico, cuando puedas):\n` +
-      `• Vercel env <code>FIRMS_API_KEY</code> (solo la ruta manual de sync)\n` +
-      `• <code>scripts/backfill.env</code> local\n\n` +
-      `Anotá la fecha: si la key muere de nuevo en ~28 días, es política de NASA — ver spec 2026-07-21.` +
-      (cleanupError
-        ? "\n\n⚠️ No pude limpiar los flags de alerta — puede llegar un aviso viejo del monitor. Se limpian solos con el próximo sync exitoso."
-        : "")
-  );
+    `El próximo sync corre en ≤15 min.\n`;
+  if (deleted?.ok) {
+    body += `Borré tu mensaje para que la key no quede en el historial.\n`;
+  }
+  body +=
+    `\n` +
+    `Pendiente (no crítico, cuando puedas):\n` +
+    `• Vercel env <code>FIRMS_API_KEY</code> (solo la ruta manual de sync)\n` +
+    `• <code>scripts/backfill.env</code> local\n\n` +
+    `Anotá la fecha: si la key muere de nuevo en ~28 días, es política de NASA — ver spec 2026-07-21.` +
+    (cleanupError
+      ? "\n\n⚠️ No pude limpiar el flag de alerta — puede llegar un aviso viejo del monitor. Se limpia solo con el próximo sync exitoso."
+      : "");
+
+  await sendMessage(chatId, body);
 }

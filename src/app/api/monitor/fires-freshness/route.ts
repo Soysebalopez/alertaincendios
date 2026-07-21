@@ -2,10 +2,8 @@ import { NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { sendMessage, escapeHtml } from "@/lib/telegram";
 import { isCronAuthorized } from "@/lib/cron-auth";
-import { decideMonitorActions } from "@/lib/fires-freshness";
+import { decideMonitorActions, FRESHNESS_THRESHOLD_MINUTES } from "@/lib/fires-freshness";
 import { FIRMS_MAP_KEY_FORM_URL } from "@/lib/firms-key";
-
-const THRESHOLD_MINUTES = 60;
 
 /**
  * GET /api/monitor/fires-freshness
@@ -14,7 +12,7 @@ const THRESHOLD_MINUTES = 60;
  * - `firms_sync_error` in _clara_config (written by the SQL body guard when
  *   NASA returns a non-CSV body, e.g. "Invalid MAP_KEY.") → specific one-shot
  *   Telegram alert with rotation instructions. Supersedes the generic alert.
- * - fires_cache.fetched_at older than THRESHOLD_MINUTES → generic staleness
+ * - fires_cache.fetched_at older than FRESHNESS_THRESHOLD_MINUTES → generic staleness
  *   alert (cron/pg_net down, etc).
  * Anti-spam flags and admin_chat_id live in _clara_config. Gated by CRON_SECRET.
  */
@@ -52,13 +50,13 @@ export async function GET(request: Request) {
 
   const { freshness, key } = decideMonitorActions({
     ageMinutes,
-    thresholdMinutes: THRESHOLD_MINUTES,
+    thresholdMinutes: FRESHNESS_THRESHOLD_MINUTES,
     staleAlerted: Boolean(cfg["fires_freshness_alerted_at"]),
     hasKeyError: Boolean(keyError),
     keyAlerted: Boolean(cfg["firms_key_alerted_at"]),
   });
 
-  const stale = ageMinutes > THRESHOLD_MINUTES;
+  const stale = ageMinutes > FRESHNESS_THRESHOLD_MINUTES;
   const ageOut = Number.isFinite(ageMinutes) ? Math.round(ageMinutes) : null;
 
   if (freshness === "none" && key === "none") {

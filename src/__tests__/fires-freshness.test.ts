@@ -59,4 +59,28 @@ describe("decideMonitorActions", () => {
     });
     expect(r.freshness).toBe("alert_stale");
   });
+  it("suppresses staleness while the key-invalid alert itself is firing", () => {
+    const r = decideMonitorActions({
+      ageMinutes: 90,
+      thresholdMinutes: 60,
+      staleAlerted: false,
+      hasKeyError: true,
+      keyAlerted: false,
+    });
+    expect(r).toEqual({ key: "alert_key_invalid", freshness: "none" });
+  });
+  // Deliberate dual-message case the route documents: a key recovery and an
+  // independently-stale (not-yet-alerted) cache can both be true in the same
+  // run, and each gets its own accurate Telegram message rather than being
+  // merged or suppressed.
+  it("fires both key-recovered and stale-not-yet-alerted in the same run", () => {
+    const r = decideMonitorActions({
+      ageMinutes: 90,
+      thresholdMinutes: 60,
+      staleAlerted: false,
+      hasKeyError: false,
+      keyAlerted: true,
+    });
+    expect(r).toEqual({ key: "alert_key_recovered", freshness: "alert_stale" });
+  });
 });

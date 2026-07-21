@@ -57,7 +57,7 @@ BEGIN
   -- texto plano ("Invalid MAP_KEY.", rate limit, HTML de mantenimiento). El
   -- CSV real del area API SIEMPRE empieza con el header "latitude,...".
   -- Cualquier otra cosa NO debe pisar fires_cache.
-  IF v_body IS NULL OR ltrim(v_body) NOT LIKE 'latitude%' THEN
+  IF v_body IS NULL OR ltrim(v_body, E' \t\r\n') NOT LIKE 'latitude%' THEN
     INSERT INTO _clara_config (key, value, updated_at)
     VALUES (
       'firms_sync_error',
