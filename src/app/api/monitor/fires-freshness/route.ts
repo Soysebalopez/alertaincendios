@@ -78,6 +78,8 @@ export async function GET(request: Request) {
   }
 
   const now = new Date().toISOString();
+  // Anti-spam flag only after a confirmed send — a failed send must retry next run.
+  let allSent = true;
 
   // --- Key-invalidation alert (specific, supersedes staleness) ---
   if (key === "alert_key_invalid") {
@@ -93,21 +95,32 @@ export async function GET(request: Request) {
       `<b>Para arreglarlo:</b>\n` +
       `1. Pedí una key nueva (llega por mail): ${FIRMS_MAP_KEY_FORM_URL}\n` +
       `2. Cuando la tengas, mandame acá:\n<code>/rotarkey LA_KEY</code>`;
-    await sendMessage(Number(adminChatId), msg);
-    await db.from("_clara_config").upsert({
-      key: "firms_key_alerted_at",
-      value: now,
-      updated_at: now,
-    });
+    const sent = await sendMessage(Number(adminChatId), msg);
+    if (sent.ok) {
+      await db.from("_clara_config").upsert({
+        key: "firms_key_alerted_at",
+        value: now,
+        updated_at: now,
+      });
+    } else {
+      allSent = false;
+    }
   } else if (key === "alert_key_recovered") {
-    await sendMessage(
+    const sent = await sendMessage(
       Number(adminChatId),
       `✅ <b>Clara — MAP_KEY de FIRMS operativa</b>\n\nLos syncs de focos volvieron a traer datos.`
     );
-    await db.from("_clara_config").delete().eq("key", "firms_key_alerted_at");
+    if (sent.ok) {
+      await db.from("_clara_config").delete().eq("key", "firms_key_alerted_at");
+    } else {
+      allSent = false;
+    }
   }
 
   // --- Generic staleness alert (only when no key error is active) ---
+  // Deliberate: this is an independent `if`, not `else if` — a key recovery and an
+  // independently-stale cache can both be true in the same run, and each deserves
+  // its own accurate message rather than being merged or suppressed.
   if (freshness === "alert_stale" || freshness === "alert_recovered") {
     const ageLabel = ageOut !== null ? `${ageOut} min` : "sin dato";
     const msg =
@@ -118,19 +131,27 @@ export async function GET(request: Request) {
           `No hay error de MAP_KEY marcado — revisá el cron fires-fetch / pg_net.`
         : `✅ <b>Clara — FIRMS se recuperó</b>\n\n` +
           `Los focos de FIRMS volvieron a actualizar (hace ${ageLabel}).`;
-    await sendMessage(Number(adminChatId), msg);
+    const sent = await sendMessage(Number(adminChatId), msg);
     if (freshness === "alert_stale") {
-      await db.from("_clara_config").upsert({
-        key: "fires_freshness_alerted_at",
-        value: now,
-        updated_at: now,
-      });
+      if (sent.ok) {
+        await db.from("_clara_config").upsert({
+          key: "fires_freshness_alerted_at",
+          value: now,
+          updated_at: now,
+        });
+      } else {
+        allSent = false;
+      }
     } else {
-      await db.from("_clara_config").delete().eq("key", "fires_freshness_alerted_at");
+      if (sent.ok) {
+        await db.from("_clara_config").delete().eq("key", "fires_freshness_alerted_at");
+      } else {
+        allSent = false;
+      }
     }
   }
 
-  return NextResponse.json({ ageMinutes: ageOut, stale, freshness, key, notified: true });
+  return NextResponse.json({ ageMinutes: ageOut, stale, freshness, key, notified: allSent });
 }
 
 /**
