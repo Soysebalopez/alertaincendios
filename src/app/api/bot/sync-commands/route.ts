@@ -20,7 +20,7 @@ const COMMANDS: BotCommand[] = [
   { command: "preferencias", description: "Ajustar tus avisos (rayos y prevención)" },
   { command: "prevencion", description: "Avisos de prevención de incendio" },
   { command: "soybombero", description: "Modo bombero (para cuarteles)" },
-  { command: "dejarcuartel", description: "Volver a alertas de vecino" },
+  { command: "dejarcuartel", description: "Volver a las alertas vecinales" },
   { command: "about", description: "Sobre el proyecto" },
   { command: "help", description: "Ver lista de comandos" },
   { command: "cancelar", description: "Eliminar tu suscripción" },
