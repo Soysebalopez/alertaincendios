@@ -1,6 +1,9 @@
 /**
- * Geocodes a city name to lat/lng using Open-Meteo Geocoding API (free, no key).
- * Returns the best match for Argentina, or null.
+ * Geocoding helpers.
+ *
+ * `geocodeCity` resolves a city NAME to coordinates (Open-Meteo, restricted to
+ * Argentina). `reverseGeocode` goes the other way — Open-Meteo has no reverse
+ * endpoint, so it uses BigDataCloud's key-less reverse client.
  */
 
 interface GeoResult {
@@ -8,6 +11,36 @@ interface GeoResult {
   lng: number;
   name: string;
   admin1: string; // province
+}
+
+/**
+ * Resolves coordinates to a place name. Callers must treat null as "no name
+ * available" and fall back to the raw coordinates — never as "not covered":
+ * coverage is decided offline by `isInArgentina`, not by this service.
+ */
+export async function reverseGeocode(
+  lat: number,
+  lng: number
+): Promise<GeoResult | null> {
+  const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=es`;
+
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    const name = data.locality || data.city;
+    if (!name) return null;
+
+    return {
+      lat,
+      lng,
+      name,
+      admin1: data.principalSubdivision || "",
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function geocodeCity(query: string): Promise<GeoResult | null> {
