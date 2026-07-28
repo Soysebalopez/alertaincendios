@@ -194,7 +194,7 @@ const ABOUT_TEXT =
   "(@satellitesonfire), que demostró que se podía detectar incendios mejor " +
   "que la NASA desde Argentina. Si sos una empresa, gobierno, forestal o " +
   "aseguradora, te recomendamos satellitesonfire.com.\n\n" +
-  "AlertaForestal es para vos, vecino de zona de riesgo. Gratis, siempre.\n\n" +
+  "AlertaForestal es para vos, que vivís en zona de riesgo. Gratis, siempre.\n\n" +
   "Hecho con cariño en Bahía Blanca por Whitebay." +
   FOOTER;
 
@@ -205,7 +205,7 @@ const HELP_TEXT =
   "📊 /estado — focos activos cerca tuyo\n" +
   "⚡ /rayos — activar/desactivar alerta de tormentas secas\n" +
   "🚒 /soybombero &lt;código&gt; — modo bombero (para cuarteles)\n" +
-  "🚪 /dejarcuartel — volver a alertas de vecino (bomberos)\n" +
+  "🚪 /dejarcuartel — volver a las alertas vecinales (bomberos)\n" +
   "ℹ️ /about — sobre el proyecto\n" +
   "❌ /cancelar — eliminar suscripción" +
   FOOTER;
@@ -510,7 +510,7 @@ async function handleLocation(chatId: number, lat: number, lng: number) {
   // WHI-585 — set clear expectations on when/why alerts arrive
   await sendMessage(
     chatId,
-    `✅ <b>Listo, vecino de ${label}</b>\n\n` +
+    `✅ <b>Listo, ya te tengo en ${label}</b>\n\n` +
       "Te aviso cuando se detecte fuego dentro de 100 km de tu ubicación.\n\n" +
       "<b>Qué esperar:</b>\n" +
       "• Si el viento empuja humo hacia vos → alerta inmediata 🚨\n" +
@@ -565,7 +565,7 @@ async function handleCiudad(chatId: number, query: string) {
   // WHI-585 — set clear expectations on when/why alerts arrive
   await sendMessage(
     chatId,
-    `✅ <b>Listo, vecino de ${label}</b>\n\n` +
+    `✅ <b>Listo, ya te tengo en ${label}</b>\n\n` +
       "Te aviso cuando se detecte fuego dentro de 100 km de tu ubicación.\n\n" +
       "<b>Qué esperar:</b>\n" +
       "• Si el viento empuja humo hacia vos → alerta inmediata 🚨\n" +
@@ -740,7 +740,7 @@ async function handleDejarCuartel(chatId: number) {
   if (!sub || sub.role !== "fireman") {
     await sendMessage(
       chatId,
-      "ℹ️ No estás registrado como bombero. Si querés cancelar tu suscripción, usá <code>/cancelar</code>." +
+      "ℹ️ Tu cuenta no está en ningún cuartel. Si querés cancelar tu suscripción, usá <code>/cancelar</code>." +
         FOOTER
     );
     return;
@@ -753,7 +753,7 @@ async function handleDejarCuartel(chatId: number) {
 
   await sendMessage(
     chatId,
-    "✅ <b>Listo</b>. Volviste a alertas de vecino — seguís suscripto en tu zona y no perdés tu ubicación. " +
+    "✅ <b>Listo</b>. Volviste a las alertas vecinales — tu suscripción sigue activa en tu zona y no perdés tu ubicación. " +
       "Ya no vas a recibir los mensajes operativos de cuartel." +
       FOOTER
   );
@@ -952,8 +952,8 @@ async function handleSoyBombero(chatId: number, code: string) {
   if (status === "already_used") {
     await sendMessage(
       chatId,
-      `ℹ️ Ya estás registrado como bombero${cuartel ? ` de ${escapeHtml(cuartel)}` : ""}. ` +
-        "Si querés volver a alertas de vecino, usá <code>/dejarcuartel</code> (seguís suscripto). " +
+      `ℹ️ Tu cuenta ya está en el cuartel${cuartel ? ` ${escapeHtml(cuartel)}` : ""}. ` +
+        "Si querés volver a las alertas vecinales, usá <code>/dejarcuartel</code> (tu suscripción sigue activa). " +
         "Para borrar todo, <code>/cancelar</code>." +
         FOOTER
     );
@@ -981,11 +981,11 @@ async function handleSoyBombero(chatId: number, code: string) {
 
   await sendMessage(
     chatId,
-    `✅ <b>Listo, bombero de ${escapeHtml(cuartel)}</b>\n\n` +
+    `✅ <b>Listo — cuartel ${escapeHtml(cuartel)}</b>\n\n` +
       "Desde ahora vas a recibir <b>mensajes operativos</b> cuando se detecte un " +
       "foco confirmado en tu zona. Más conciso, con info para coordinar respuesta.\n\n" +
-      "Si querés volver a alertas de vecino, usá <code>/dejarcuartel</code> " +
-      "(seguís suscripto, sin perder tu ubicación)." +
+      "Si querés volver a las alertas vecinales, usá <code>/dejarcuartel</code> " +
+      "(tu suscripción sigue activa, sin perder tu ubicación)." +
       FOOTER
   );
 }
