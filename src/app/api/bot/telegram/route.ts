@@ -5,7 +5,8 @@ import { parseFeedbackCallback } from "@/lib/feedback-keyboard";
 import { buildPreferencesKeyboard, parsePreferencesCallback } from "@/lib/preferences-keyboard";
 import { findDangerZone } from "@/lib/danger-zone-match";
 import { PREVENTION_PROVINCE_IDS } from "@/lib/fire-danger";
-import { geocodeCity } from "@/lib/geocode";
+import { geocodeCity, reverseGeocode } from "@/lib/geocode";
+import { isInArgentina } from "@/lib/argentina-polygon";
 import { fetchFires } from "@/lib/firms";
 import { haversineKm } from "@/lib/geo";
 import { artHour } from "@/lib/time";
@@ -481,8 +482,25 @@ async function handlePreferencesCallback(cb: {
 }
 
 async function handleLocation(chatId: number, lat: number, lng: number) {
-  // Reverse geocode to get city name
-  const geo = await geocodeCity(`${lat},${lng}`);
+  // Coverage gate. Every alert source is Argentina-only (FIRMS bbox + the
+  // isInArgentina trim, GOES-19 over the Americas), so subscribing a location
+  // we cannot watch promises alerts that will never arrive — the `/ciudad`
+  // path already refuses those. Decided offline on purpose: a geocoder outage
+  // must never turn away a real subscriber.
+  if (!isInArgentina(lat, lng)) {
+    await sendMessage(
+      chatId,
+      "🌎 <b>Por ahora solo cubrimos Argentina</b>\n\n" +
+        "Tu ubicación queda fuera del área que monitoreo, así que no podría " +
+        "avisarte a tiempo y prefiero decírtelo antes de que cuentes conmigo.\n\n" +
+        "Detecto los focos con satélites configurados para el territorio " +
+        "argentino. Si tenés otra ubicación en el país, compartila y te sumo." +
+        FOOTER
+    );
+    return;
+  }
+
+  const geo = await reverseGeocode(lat, lng);
   const cityName = geo?.name || `${lat.toFixed(2)}, ${lng.toFixed(2)}`;
   const province = geo?.admin1 || "";
 
