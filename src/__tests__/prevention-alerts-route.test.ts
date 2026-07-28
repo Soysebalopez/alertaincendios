@@ -10,10 +10,35 @@ vi.mock("@/lib/telegram", () => ({
 }));
 
 // minimal chainable supabase stub
+type Row = Record<string, unknown>;
+
+interface QueryStub {
+  _table: string;
+  _filters: Record<string, unknown>;
+  _inFilters: Record<string, unknown[]>;
+  select(): QueryStub;
+  eq(col: string, val: unknown): QueryStub;
+  in(col: string, vals: unknown[]): QueryStub;
+  order(): QueryStub;
+  limit(): QueryStub;
+  range(): QueryStub;
+  gte(): QueryStub;
+  single(): Promise<{ data: Row | null }>;
+  maybeSingle(): Promise<{ data: Row | null }>;
+  insert(row: Row): {
+    select: () => {
+      single: () => Promise<{ data: Row | null; error: { code: string } | null }>;
+    };
+  };
+  upsert(row: Row): Promise<{ error: null }>;
+  delete(): { eq: () => { eq: () => Promise<{ error: null }> } };
+  then(resolve: (v: { data: Row[] }) => void): void;
+}
+
 const state = {
-  zones: [] as any[],
-  forecast: [] as any[],
-  subs: [] as any[],
+  zones: [] as Row[],
+  forecast: [] as Row[],
+  subs: [] as Row[],
   alerted: new Map<string, string>(), // `${zone}:${chat}` -> alerted_class
   briefings: new Set<string>(), // `${chat}:${date}`
 };
@@ -24,8 +49,8 @@ function makeDb() {
     },
   };
 }
-function buildQuery(table: string): any {
-  const q: any = {
+function buildQuery(table: string): QueryStub {
+  const q: QueryStub = {
     _table: table,
     _filters: {} as Record<string, unknown>,
     _inFilters: {} as Record<string, unknown[]>,
@@ -46,7 +71,7 @@ function buildQuery(table: string): any {
       return { data: null };
     },
     async maybeSingle() { return q.single(); },
-    insert(row: any) {
+    insert(row: Row) {
       if (table === "prevention_briefing_sent") {
         const key = `${row.chat_id}:${row.sent_date}`;
         if (state.briefings.has(key)) {
@@ -57,16 +82,16 @@ function buildQuery(table: string): any {
       }
       return { select: () => ({ single: async () => ({ data: {}, error: null }) }) };
     },
-    upsert(row: any) { state.alerted.set(`${row.zone_id}:${row.chat_id}`, row.alerted_class); return Promise.resolve({ error: null }); },
+    upsert(row: Row) { state.alerted.set(`${row.zone_id}:${row.chat_id}`, String(row.alerted_class)); return Promise.resolve({ error: null }); },
     delete() { return { eq: () => ({ eq: () => Promise.resolve({ error: null }) }) }; },
-    then(resolve: (v: any) => void) {
+    then(resolve: (v: { data: Row[] }) => void) {
       if (table === "danger_zones") return resolve({ data: state.zones });
       if (table === "fire_danger") return resolve({ data: state.forecast });
       if (table === "subscribers") {
         // honour the prevention_mode .in() filter so "off" subs are excluded
         const allowed = q._inFilters["prevention_mode"] as string[] | undefined;
         const filtered = allowed
-          ? state.subs.filter((s: any) => allowed.includes(s.prevention_mode))
+          ? state.subs.filter((s) => allowed.includes(s.prevention_mode as string))
           : state.subs;
         return resolve({ data: filtered });
       }
