@@ -123,7 +123,12 @@ Autorización vía `isCronAuthorized()` en `src/lib/cron-auth.ts`: acepta el sec
 - `goes-prune` (`30 3 * * *` daily) — cleanup defensivo >7 días
 - `satellites-sync-tles` (`30 4 * * *` daily, 01:30 ART) — `/api/satellites/sync-tles` baja TLEs frescos de CelesTrak (WHI-753)
 - `fire-danger-sync` (`0 9 * * *` daily, 06:00 ART) — `/api/fire-danger-sync` Python: FWI por zona TDF, 16-day forecast. Usa `trigger_fire_danger_sync()` + GUC `app.fire_danger_sync_url` + `clara_cron_secret()`. SQL en `scripts/sql/whi-fwi-cron.sql`
-- `fires-freshness-monitor` (`*/15 * * * *`) — `/api/monitor/fires-freshness` staleness + key inválida
+- `fires-freshness-monitor` (`7,22,37,52 * * * *`) — `/api/monitor/fires-freshness` staleness + key inválida.
+  ⚠️ Corrido a `:07` el 2026-08-26: antes era `*/15`, o sea que revisaba en el
+  MISMO minuto que `fires-fetch` (`0,15,30,45`) y 2 minutos ANTES de que
+  `fires-process` (`2,17,32,47`) escribiera el caché — siempre miraba el ciclo
+  anterior. Ahora mira después de que el dato llegó. **Esto NO fue la causa de
+  las falsas alarmas del 26/8** (ver más abajo), es ordenamiento.
 
 ## Supabase Functions / RPC
 - `fires_sync_step1_fetch()` — HTTP GET a FIRMS via pg_net

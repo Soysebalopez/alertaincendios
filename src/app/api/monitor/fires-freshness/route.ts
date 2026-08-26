@@ -23,11 +23,19 @@ export async function GET(request: Request) {
 
   const db = getSupabase();
 
-  const { data: cache } = await db
+  // ⚠️ EL ERROR SE MIRA, NO SE DESCARTA. Antes esto era sólo `{ data: cache }`,
+  // y un fallo transitorio de lectura devolvía `data: null` — indistinguible de
+  // "no hay fila". Eso produjo dos falsas alarmas el 2026-08-26 con el caché
+  // sano. Ver el comentario en `decideMonitorActions`.
+  const { data: cache, error: cacheError } = await db
     .from("fires_cache")
     .select("fetched_at")
     .eq("id", 1)
     .maybeSingle();
+
+  if (cacheError) {
+    console.error("[fires-freshness] no se pudo leer fires_cache:", cacheError.message);
+  }
 
   const { data: cfgRows } = await db
     .from("_clara_config")
@@ -54,6 +62,7 @@ export async function GET(request: Request) {
     staleAlerted: Boolean(cfg["fires_freshness_alerted_at"]),
     hasKeyError: Boolean(keyError),
     keyAlerted: Boolean(cfg["firms_key_alerted_at"]),
+    cacheReadFailed: Boolean(cacheError),
   });
 
   const stale = ageMinutes > FRESHNESS_THRESHOLD_MINUTES;
