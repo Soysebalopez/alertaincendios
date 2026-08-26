@@ -44,12 +44,29 @@ export function decideMonitorActions(input: {
   staleAlerted: boolean;
   hasKeyError: boolean;
   keyAlerted: boolean;
+  /**
+   * La lectura de `fires_cache` falló (no que la fila esté vacía: que no se
+   * pudo leer). Ver abajo por qué no es lo mismo.
+   */
+  cacheReadFailed?: boolean;
 }): { freshness: FreshnessAction; key: KeyAction } {
   let key: KeyAction = "none";
   if (input.hasKeyError && !input.keyAlerted) key = "alert_key_invalid";
   else if (!input.hasKeyError && input.keyAlerted) key = "alert_key_recovered";
 
-  const freshness = input.hasKeyError
+  // 🔴 "NO PUDE LEER" NO ES "NO HAY DATOS", Y LAS DOS LLEGAN COMO null.
+  //
+  // El 2026-08-26 el monitor dio dos falsas alarmas (07:45 y 10:45) con el
+  // caché sano —6 minutos de antigüedad, 54 detecciones por hora entrando—.
+  // El route hacía `const { data: cache } = await db...`, descartando el error:
+  // un fallo transitorio de la base devuelve `data: null`, que se leía como
+  // "no hay fila = el dato falta". Ese mismo día hubo un `db_read_failed` real
+  // en otro endpoint.
+  //
+  // Ante una lectura fallida no se avisa NADA: ni que está viejo ni que se
+  // recuperó. Dar por recuperado sería cerrar un incidente sin haberlo mirado.
+  // El aviso de clave inválida SÍ sigue, porque su flag vive en otra tabla.
+  const freshness = input.hasKeyError || input.cacheReadFailed
     ? "none"
     : decideFreshnessAction({
         ageMinutes: input.ageMinutes,
