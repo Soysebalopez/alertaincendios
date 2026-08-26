@@ -1,4 +1,5 @@
 "use client";
+import { addBasemap } from "@/lib/basemap";
 import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -23,7 +24,7 @@ export function ProvinceMap({
     const [s, n, w, e] = provinceBbox(data.zones);
     const map = L.map(elRef.current, { zoomControl: false, attributionControl: false });
     map.fitBounds([[s, w], [n, e]], { padding: [24, 24] });
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", { maxZoom: 18 }).addTo(map);
+    addBasemap(L, map);
     L.control.zoom({ position: "bottomright" }).addTo(map);
     zonesLayer.current = L.layerGroup().addTo(map);
     firesLayer.current = L.layerGroup().addTo(map);
