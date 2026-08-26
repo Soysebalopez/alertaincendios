@@ -4,7 +4,7 @@ import type { NextConfig } from "next";
 // on inline script/style (Next 16 + Leaflet inject inline) to avoid breaking the
 // app, while still restricting framing, object/base-uri, and the set of origins
 // the browser may reach. External origins actually used by the browser:
-//   - map tiles: *.basemaps.cartocdn.com (Leaflet)
+//   - map tiles: services.arcgisonline.com (Leaflet, Esri World Light Gray)
 //   - auth (dashboard/login): *.supabase.co (@supabase/ssr browser client)
 //   - analytics: Vercel (script + same-origin beacon)
 // All weather/AI/Telegram calls are server-side, so they don't need connect-src.
@@ -12,7 +12,14 @@ const csp = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://va.vercel-scripts.com",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https://*.basemaps.cartocdn.com https://*.cartocdn.com",
+  // Esri sirve el mapa base desde 2026-08-26: CARTO empezó a exigir clave y
+  // pasó a estampar "API KEY REQUIRED" sobre cada mosaico. Ver src/lib/basemap.ts.
+  //
+  // ⚠️ ESTA LÍNEA ES LA MITAD QUE SE OLVIDA. Cambiar el proveedor en el código no
+  // alcanza: sin el dominio acá el navegador bloquea los mosaicos y el mapa queda
+  // GRIS Y VACÍO — sin error visible, sólo un fondo liso. Se descubrió mirando
+  // una captura del mapa local, no por un test.
+  "img-src 'self' data: blob: https://services.arcgisonline.com",
   "font-src 'self' data:",
   "connect-src 'self' https://*.supabase.co https://va.vercel-scripts.com https://*.vercel-insights.com",
   "frame-ancestors 'none'",
