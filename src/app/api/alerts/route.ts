@@ -9,6 +9,7 @@ import { buildFeedbackKeyboard } from "@/lib/feedback-keyboard";
 import { forestZoneName } from "@/lib/forest-zones";
 import { isCronAuthorized } from "@/lib/cron-auth";
 import { fetchAllRows } from "@/lib/paginate";
+import { selectAlertPairs } from "@/lib/alert-pairs";
 import { log } from "@/lib/logger";
 
 /**
@@ -63,156 +64,153 @@ export async function GET(request: Request) {
 
     let alertsSent = 0;
     let confirmations = 0;
-    // WHI-758: contadores de filtro forestal para observabilidad. "Skipped"
-    // = par (foco, subscriber civilian) descartado porque el foco no cae en
-    // zona forestal. Útil para confirmar el impacto del filtro post-deploy.
-    let skippedNonForestCivilian = 0;
 
-    for (const fire of fires) {
+    // M7 — unknown role falls back to civilian (forest-only) filtering.
+    // Surface it so a future role (e.g. institucional/B2G) isn't silently
+    // under-alerted by the string-equality check. Se recorre por suscriptor
+    // y no por par: antes esto se logueaba una vez por cada (foco × sub), o
+    // sea cientos de líneas idénticas por corrida para la misma persona.
+    for (const sub of subscribers) {
+      const role = sub.role ?? "civilian";
+      if (role !== "civilian" && role !== "fireman") {
+        log.warn({ event: "alerts.unknown_role", chatId: sub.chat_id, role });
+      }
+    }
+
+    // 🔴 LOS FILTROS BARATOS VAN ANTES DE TOCAR LA BASE. Ver `lib/alert-pairs`
+    // para el incidente del 2026-09-04: la consulta de dedup se hacía antes de
+    // mirar la distancia, y el cron se cortaba a los 60 s haciendo 564
+    // consultas para no mandar ni una alerta. `selectAlertPairs` entrega sólo
+    // los pares que valen la pena, así que el bucle de abajo ya no puede
+    // consultar por un foco que está a mil kilómetros.
+    // WHI-758: `skippedNonForestCivilian` = pares (foco, civil) descartados
+    // porque el foco no cae en zona forestal. Útil para ver el efecto del filtro.
+    const { pairs, skippedNonForestCivilian } = selectAlertPairs(fires, subscribers);
+
+    for (const { fire, sub, distKm } of pairs) {
       const fireKey = buildFireKey(fire);
       const zoneName = forestZoneName(fire.forestZone);
+      const isFireman = (sub.role ?? "civilian") === "fireman";
 
-      for (const sub of subscribers) {
-        const role = sub.role ?? "civilian";
-        const isFireman = role === "fireman";
-        // M7 — unknown role falls back to civilian (forest-only) filtering.
-        // Surface it so a future role (e.g. institucional/B2G) isn't silently
-        // under-alerted by the string-equality check.
-        if (role !== "civilian" && role !== "fireman") {
-          log.warn({ event: "alerts.unknown_role", chatId: sub.chat_id, role });
-        }
+      // Pre-check de dedup. Es solo un fast-path para evitar hacer el fetch
+      // de viento si ya alertamos — la garantía real anti-duplicado vive en
+      // el INSERT ON CONFLICT más abajo, que serializa con otros cron runs.
+      const { data: existing } = await db
+        .from("ai_alerted_fires")
+        .select("fire_key")
+        .eq("fire_key", fireKey)
+        .eq("chat_id", sub.chat_id)
+        .limit(1);
 
-        // WHI-758: civilian recibe solo alertas en zona forestal. Fireman
-        // recibe todo — los cuarteles necesitan vista completa para
-        // coordinación de respuesta general (no solo forestal).
-        if (!isFireman && !fire.forestZone) {
-          skippedNonForestCivilian++;
-          continue;
-        }
+      if (existing && existing.length > 0) continue;
 
-        // Pre-check de dedup. Es solo un fast-path para evitar hacer el fetch
-        // de viento si ya alertamos — la garantía real anti-duplicado vive en
-        // el INSERT ON CONFLICT más abajo, que serializa con otros cron runs.
-        const { data: existing } = await db
-          .from("ai_alerted_fires")
-          .select("fire_key")
-          .eq("fire_key", fireKey)
-          .eq("chat_id", sub.chat_id)
-          .limit(1);
+      // Get wind at fire location (cached per fire — see windCache above)
+      let wind = windCache.get(fireKey);
+      if (!wind) {
+        wind = await fetchWind(fire.latitude, fire.longitude);
+        windCache.set(fireKey, wind);
+      }
+      const upwind = isUpwind(sub.lat, sub.lng, fire.latitude, fire.longitude, wind.windDirection);
+      const eta = smokeEtaMinutes(distKm, wind.windSpeed, upwind.isUpwind);
 
-        if (existing && existing.length > 0) continue;
+      const level = classifyAlert(distKm, upwind.isUpwind);
+      if (level === "none") continue;
 
-        const distKm = haversineKm(sub.lat, sub.lng, fire.latitude, fire.longitude);
-        if (distKm > 100) continue; // Skip fires > 100km away
+      // H-08 — INSERT como lock primario. Si otra invocación del cron ganó
+      // la race, el conflict no devuelve row y skipeamos. Esto convierte
+      // ai_alerted_fires en el lock distribuido — antes era SELECT + INSERT
+      // separados con ventana de race.
+      const { data: claimed, error: claimErr } = await db
+        .from("ai_alerted_fires")
+        .insert({
+          fire_key: fireKey,
+          chat_id: sub.chat_id,
+          alerted_at: new Date().toISOString(),
+        })
+        .select("fire_key")
+        .single();
 
-        // Get wind at fire location (cached per fire — see windCache above)
-        let wind = windCache.get(fireKey);
-        if (!wind) {
-          wind = await fetchWind(fire.latitude, fire.longitude);
-          windCache.set(fireKey, wind);
-        }
-        const upwind = isUpwind(sub.lat, sub.lng, fire.latitude, fire.longitude, wind.windDirection);
-        const eta = smokeEtaMinutes(distKm, wind.windSpeed, upwind.isUpwind);
-
-        const level = classifyAlert(distKm, upwind.isUpwind);
-        if (level === "none") continue;
-
-        // H-08 — INSERT como lock primario. Si otra invocación del cron ganó
-        // la race, el conflict no devuelve row y skipeamos. Esto convierte
-        // ai_alerted_fires en el lock distribuido — antes era SELECT + INSERT
-        // separados con ventana de race.
-        const { data: claimed, error: claimErr } = await db
-          .from("ai_alerted_fires")
-          .insert({
-            fire_key: fireKey,
-            chat_id: sub.chat_id,
-            alerted_at: new Date().toISOString(),
-          })
-          .select("fire_key")
-          .single();
-
-        if (claimErr) {
-          // PostgREST devuelve 23505 (unique_violation) cuando ON CONFLICT
-          // dispara con la PK (fire_key, chat_id). Esa es exactamente la
-          // señal "otro cron run ya está mandando esto" — skip sin error.
-          // Cualquier otro error sí es problema real.
-          if (claimErr.code !== "23505") {
-            log.error({
-              event: "alerts.claim_failed",
-              fireKey,
-              chatId: sub.chat_id,
-              code: claimErr.code,
-              err: claimErr.message,
-            });
-          }
-          continue;
-        }
-        if (!claimed) continue;
-
-        // WHI-547 — does this FIRMS fire confirm a recent GOES preliminary
-        // alert we already sent to this subscriber?
-        const match = await findPendingPreliminary(db, sub.chat_id, fire);
-
-        // WHI-588 — fireman role gets an operational message format, not the
-        // citizen-facing alert. Same data path, different tone + structure.
-        const cuartel = (sub as { cuartel_name?: string }).cuartel_name ?? null;
-        const message = isFireman
-          ? formatFiremanAlert(fire, sub, distKm, eta, level, cuartel, match != null, zoneName)
-          : match
-            ? await formatConfirmedFromPreliminary(fire, sub, distKm, eta, level, match.preliminary_sent_at, zoneName)
-            : await formatAlert(fire, sub, distKm, eta, level, zoneName);
-
-        // Si Telegram falla, la row de dedup ya quedó registrada. Loguear con
-        // contexto suficiente (chat_id, fire_key) para reenvío manual desde
-        // /dashboard si fuera necesario. Alternativa rechazada: revertir el
-        // INSERT — abre una ventana de race nueva entre el delete y otro cron.
-        // Feedback comunitario: teclado de validación solo a civilian (el
-        // fireman valida despachando, no votando). alert_id = "f:"+fireKey.
-        const sendResult = await sendMessage(
-          sub.chat_id,
-          message,
-          isFireman
-            ? undefined
-            : { reply_markup: buildFeedbackKeyboard("f:" + fireKey) }
-        );
-        if (!sendResult.ok) {
-          // Telegram rejected the send (403 block, 400 bad HTML, 429, timeout).
-          // Do NOT count it as sent. The dedup row stays (documented tradeoff).
+      if (claimErr) {
+        // PostgREST devuelve 23505 (unique_violation) cuando ON CONFLICT
+        // dispara con la PK (fire_key, chat_id). Esa es exactamente la
+        // señal "otro cron run ya está mandando esto" — skip sin error.
+        // Cualquier otro error sí es problema real.
+        if (claimErr.code !== "23505") {
           log.error({
-            event: "alerts.send_failed",
+            event: "alerts.claim_failed",
             fireKey,
             chatId: sub.chat_id,
-            status: sendResult.status,
-            blocked: sendResult.blocked,
-            err: sendResult.description,
+            code: claimErr.code,
+            err: claimErr.message,
           });
-          if (sendResult.blocked) {
-            // User blocked/deactivated the bot — surface for cleanup. (Removal
-            // needs a soft-delete column + explicit OK, so we only log here.)
-            log.warn({ event: "alerts.subscriber_blocked", chatId: sub.chat_id });
-          }
-          continue;
         }
-        log.info({
-          event: "alerts.sent",
+        continue;
+      }
+      if (!claimed) continue;
+
+      // WHI-547 — does this FIRMS fire confirm a recent GOES preliminary
+      // alert we already sent to this subscriber?
+      const match = await findPendingPreliminary(db, sub.chat_id, fire);
+
+      // WHI-588 — fireman role gets an operational message format, not the
+      // citizen-facing alert. Same data path, different tone + structure.
+      const cuartel = (sub as { cuartel_name?: string }).cuartel_name ?? null;
+      const message = isFireman
+        ? formatFiremanAlert(fire, sub, distKm, eta, level, cuartel, match != null, zoneName)
+        : match
+          ? await formatConfirmedFromPreliminary(fire, sub, distKm, eta, level, match.preliminary_sent_at, zoneName)
+          : await formatAlert(fire, sub, distKm, eta, level, zoneName);
+
+      // Si Telegram falla, la row de dedup ya quedó registrada. Loguear con
+      // contexto suficiente (chat_id, fire_key) para reenvío manual desde
+      // /dashboard si fuera necesario. Alternativa rechazada: revertir el
+      // INSERT — abre una ventana de race nueva entre el delete y otro cron.
+      // Feedback comunitario: teclado de validación solo a civilian (el
+      // fireman valida despachando, no votando). alert_id = "f:"+fireKey.
+      const sendResult = await sendMessage(
+        sub.chat_id,
+        message,
+        isFireman
+          ? undefined
+          : { reply_markup: buildFeedbackKeyboard("f:" + fireKey) }
+      );
+      if (!sendResult.ok) {
+        // Telegram rejected the send (403 block, 400 bad HTML, 429, timeout).
+        // Do NOT count it as sent. The dedup row stays (documented tradeoff).
+        log.error({
+          event: "alerts.send_failed",
           fireKey,
           chatId: sub.chat_id,
-          role: isFireman ? "fireman" : "civilian",
-          distKm: Math.round(distKm),
-          level,
-          isConfirmation: match != null,
+          status: sendResult.status,
+          blocked: sendResult.blocked,
+          err: sendResult.description,
         });
-
-        if (match) {
-          await db
-            .from("goes_alerted")
-            .update({ confirmed_sent_at: new Date().toISOString(), firms_fire_key: fireKey })
-            .eq("id", match.id);
-          confirmations++;
+        if (sendResult.blocked) {
+          // User blocked/deactivated the bot — surface for cleanup. (Removal
+          // needs a soft-delete column + explicit OK, so we only log here.)
+          log.warn({ event: "alerts.subscriber_blocked", chatId: sub.chat_id });
         }
-
-        alertsSent++;
+        continue;
       }
+      log.info({
+        event: "alerts.sent",
+        fireKey,
+        chatId: sub.chat_id,
+        role: isFireman ? "fireman" : "civilian",
+        distKm: Math.round(distKm),
+        level,
+        isConfirmation: match != null,
+      });
+
+      if (match) {
+        await db
+          .from("goes_alerted")
+          .update({ confirmed_sent_at: new Date().toISOString(), firms_fire_key: fireKey })
+          .eq("id", match.id);
+        confirmations++;
+      }
+
+      alertsSent++;
     }
 
     // Invalidar el segment cache de Next 16 para / y /mapa: estas páginas
