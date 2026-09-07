@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
 import { sendMessage, escapeHtml } from "@/lib/telegram";
 import { isCronAuthorized } from "@/lib/cron-auth";
-import { decideMonitorActions, FRESHNESS_THRESHOLD_MINUTES } from "@/lib/fires-freshness";
+import {
+  decideMonitorActions,
+  FRESHNESS_THRESHOLD_MINUTES,
+  buildStaleAlert,
+  buildRecoveredAlert,
+} from "@/lib/fires-freshness";
 import { FIRMS_MAP_KEY_FORM_URL } from "@/lib/firms-key";
 
 /**
@@ -46,6 +51,10 @@ export async function GET(request: Request) {
       "firms_sync_error",
       "firms_key_alerted_at",
       "firms_map_key",
+      // Respuesta fallida de NASA (status != 200) registrada por el paso 2 del
+      // sync. No cambia CUÁNDO se avisa, sólo QUÉ dice el aviso — ver
+      // `buildStaleAlert`.
+      "firms_upstream_error",
     ]);
 
   const cfg = Object.fromEntries((cfgRows ?? []).map((r) => [r.key, r.value]));
@@ -132,12 +141,12 @@ export async function GET(request: Request) {
     const ageLabel = ageOut !== null ? `${ageOut} min` : "sin dato";
     const msg =
       freshness === "alert_stale"
-        ? `⚠️ <b>Clara — FIRMS sin actualizar</b>\n\n` +
-          `Los focos de FIRMS no se actualizan hace <b>${ageLabel}</b>.\n` +
-          `Último fetch: ${fetchedAt ? fetchedAt.toISOString() : "—"}.\n\n` +
-          `No hay error de MAP_KEY marcado — revisá el cron fires-fetch / pg_net.`
-        : `✅ <b>Clara — FIRMS se recuperó</b>\n\n` +
-          `Los focos de FIRMS volvieron a actualizar (hace ${ageLabel}).`;
+        ? buildStaleAlert({
+            ageLabel,
+            fetchedAt,
+            upstreamError: cfg["firms_upstream_error"] ?? null,
+          })
+        : buildRecoveredAlert({ ageLabel });
     const sent = await sendMessage(Number(adminChatId), msg);
     if (freshness === "alert_stale") {
       if (sent.ok) {

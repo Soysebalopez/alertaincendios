@@ -1,3 +1,7 @@
+// `escapeHtml` es una función pura y `telegram.ts` no importa nada: traerla
+// acá no rompe la promesa de "sin I/O" de este módulo.
+import { escapeHtml } from "./telegram";
+
 /**
  * Decide whether to notify about FIRMS data freshness. Pure — no I/O. The caller
  * reads fires_cache.fetched_at and the anti-spam flag, passes them in, and acts
@@ -75,4 +79,57 @@ export function decideMonitorActions(input: {
       });
 
   return { freshness, key };
+}
+
+/**
+ * 🔴 EL AVISO TIENE QUE NOMBRAR AL CULPABLE, NO MANDAR A BUSCARLO.
+ *
+ * Hasta el 2026-09-04 el aviso de dato viejo decía siempre lo mismo:
+ * "revisá el cron fires-fetch / pg_net". Ese día NASA devolvió HTTP 500 en
+ * cuatro pedidos seguidos y dejó el dato congelado 75 minutos — y el aviso
+ * mandó a revisar los dos únicos componentes que estaban perfectos. El cron
+ * corrió sus 24 veces y pg_net encoló bien; lo que falló estaba afuera.
+ *
+ * `upstreamError` es el flag `_clara_config.firms_upstream_error`, que el
+ * paso 2 del sync escribe cuando la respuesta de NASA existe pero no es 200.
+ * Su presencia no cambia CUÁNDO se avisa —el umbral sigue siendo el mismo, y
+ * una caída de 15 minutos no molesta a nadie— sólo QUÉ dice el aviso.
+ *
+ * Se separa del texto para que sea testeable: un mensaje se lee, no se ejecuta,
+ * así que sin test nadie se entera de que volvió a apuntar al lugar equivocado.
+ */
+export function buildStaleAlert(input: {
+  ageLabel: string;
+  fetchedAt: Date | null;
+  upstreamError: string | null;
+}): string {
+  const cabecera =
+    `⚠️ <b>Clara — FIRMS sin actualizar</b>\n\n` +
+    `Los focos de FIRMS no se actualizan hace <b>${input.ageLabel}</b>.\n` +
+    `Último fetch: ${input.fetchedAt ? input.fetchedAt.toISOString() : "—"}.\n\n`;
+
+  if (input.upstreamError) {
+    return (
+      cabecera +
+      `<b>NASA está devolviendo error.</b> Última respuesta fallida:\n` +
+      `<code>${escapeHtml(input.upstreamError)}</code>\n\n` +
+      `El cron y pg_net están bien: el pedido sale y NASA lo rechaza. ` +
+      `El sitio queda congelado en el último dato bueno (no se pierde nada) ` +
+      `y se recupera solo cuando NASA vuelva.`
+    );
+  }
+
+  return (
+    cabecera +
+    `No hay error de MAP_KEY ni respuesta fallida de NASA registrada — ` +
+    `revisá el cron fires-fetch / pg_net.`
+  );
+}
+
+/** Cierre del incidente. Mismo texto para los dos motivos: el dato volvió. */
+export function buildRecoveredAlert(input: { ageLabel: string }): string {
+  return (
+    `✅ <b>Clara — FIRMS se recuperó</b>\n\n` +
+    `Los focos de FIRMS volvieron a actualizar (hace ${input.ageLabel}).`
+  );
 }
