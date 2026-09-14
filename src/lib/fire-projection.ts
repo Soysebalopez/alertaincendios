@@ -3,7 +3,8 @@
  *
  * Two separate things, never merged:
  *  - SMOKE: a sector downwind. Reach = wind speed × time (capped at 3 h);
- *    the half-angle stands for the uncertainty in wind direction (±15°).
+ *    the half-angle stands for the uncertainty in wind direction, measured
+ *    against the Bahía Blanca airport (see smokeHalfAngleDeg).
  *  - FIRE FRONT: only for a confirmed fire and only when the CSIRO grassfire
  *    rule applies (see fire-spread.ts). The head advances 20% of the wind;
  *    the shape is the Canadian FBP O-1 grass ellipse (length/breadth =
@@ -19,7 +20,34 @@ const EARTH_RADIUS_KM = 6371;
 export const SMOKE_MAX_MINUTES = 180;
 export const CALM_WIND_KMH = 10;
 export const FRONT_ETAS_MIN = [30, 60, 120, 180] as const;
-export const DEFAULT_HALF_ANGLE_DEG = 15;
+type HalfAngleRow = { belowKmh: number; degrees: number };
+
+// Measured on 2026-09-14 against the Bahía Blanca airport (METAR SAZB), wind of
+// 10 km/h or more: Open-Meteo over 15/7–13/9 (756 hours) and SMN WRF 3–15 h
+// ahead (120 hours). Each value is the half-angle that held the real wind
+// direction 9 times out of 10, rounded up to 5°. Stronger wind keeps its
+// direction better; the SMN erred more, above all further ahead.
+const OPEN_METEO_HALF_ANGLES: readonly HalfAngleRow[] = [
+  { belowKmh: 20, degrees: 40 },
+  { belowKmh: 30, degrees: 30 },
+  { belowKmh: Infinity, degrees: 25 },
+];
+const SMN_HALF_ANGLES: readonly HalfAngleRow[] = [
+  { belowKmh: 20, degrees: 55 },
+  { belowKmh: 30, degrees: 40 },
+  { belowKmh: Infinity, degrees: 25 },
+];
+const HALF_ANGLES_BY_SOURCE: Record<string, readonly HalfAngleRow[]> = {
+  "open-meteo": OPEN_METEO_HALF_ANGLES,
+  "smn-wrf": SMN_HALF_ANGLES,
+};
+const WIDEST_HALF_ANGLE_DEG = 55;
+
+/** Half-angle of the smoke sector that held the real wind direction 9 times out of 10. */
+export function smokeHalfAngleDeg(windKmh: number, windSource: string): number {
+  const table = HALF_ANGLES_BY_SOURCE[windSource] ?? SMN_HALF_ANGLES;
+  return table.find((row) => windKmh < row.belowKmh)?.degrees ?? WIDEST_HALF_ANGLE_DEG;
+}
 export const VALIDITY_MINUTES = 60;
 const VARIABLE_WIND_RADIUS_KM = 2;
 const SECTOR_ARC_POINTS = 11;
@@ -103,7 +131,7 @@ export function smokeSector(
   windFromDeg: number,
   windKmh: number,
   minutes: number,
-  halfAngleDeg: number = DEFAULT_HALF_ANGLE_DEG
+  halfAngleDeg: number
 ): { type: "Feature"; geometry: PolygonGeometry; properties: { kind: "smoke"; half_angle_deg: number } } {
   const axis = (windFromDeg + 180) % 360;
   const reachKm = (windKmh * Math.min(minutes, SMOKE_MAX_MINUTES)) / 60;
@@ -190,7 +218,7 @@ export function projectFire(input: ProjectFireInput): ProjectionCollection {
     input.windFromDeg,
     input.windKmh,
     SMOKE_MAX_MINUTES,
-    input.halfAngleDeg ?? DEFAULT_HALF_ANGLE_DEG
+    input.halfAngleDeg ?? smokeHalfAngleDeg(input.windKmh, input.windSource ?? "unknown")
   );
   const features: ProjectionFeature[] = [
     { ...smoke, properties: { ...smoke.properties, possible_fire: !input.confirmed, ...common } },

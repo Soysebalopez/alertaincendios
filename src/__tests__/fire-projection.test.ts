@@ -5,6 +5,7 @@ import {
   frontIsochrone,
   lengthToBreadth,
   projectFire,
+  smokeHalfAngleDeg,
   smokeSector,
 } from "@/lib/fire-projection";
 
@@ -56,6 +57,40 @@ describe("smokeSector", () => {
   it("reaches wind speed × time along its axis", () => {
     const { lat, lng } = axisPoint();
     expect(haversineKm(ORIGIN.lat, ORIGIN.lng, lat, lng)).toBeCloseTo(40, 0);
+  });
+});
+
+describe("smoke half-angle, measured against the Bahía Blanca airport (2026-09-14)", () => {
+  // Forecast wind direction vs METAR SAZB, wind of 10 km/h or more: Open-Meteo
+  // 15/7–13/9 (756 hours) and SMN WRF 3–15 h ahead (120 hours). Each value is
+  // the half-angle that held the real direction 9 times out of 10, rounded up
+  // to 5°. Stronger wind keeps its direction better; the SMN errs more.
+  it.each([
+    ["open-meteo", 15, 40],
+    ["open-meteo", 25, 30],
+    ["open-meteo", 45, 25],
+    ["smn-wrf", 15, 55],
+    ["smn-wrf", 25, 40],
+    ["smn-wrf", 45, 25],
+  ])("%s at %i km/h → ±%i°", (source, wind, degrees) => {
+    expect(smokeHalfAngleDeg(wind, source)).toBe(degrees);
+  });
+
+  it("a wind source it does not know gets the widest cone", () => {
+    expect(smokeHalfAngleDeg(15, "unknown")).toBe(55);
+  });
+
+  it("projectFire uses the measured width, not a fixed 15°", () => {
+    const fc = projectFire({
+      origin: ORIGIN,
+      windFromDeg: 315,
+      windKmh: 25,
+      tempC: 22,
+      rhPct: 60,
+      confirmed: true,
+      windSource: "open-meteo",
+    });
+    expect(fc.features[0].properties.half_angle_deg).toBe(30);
   });
 });
 

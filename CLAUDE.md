@@ -54,7 +54,7 @@ Alertas tempranas de incendios forestales en Argentina vía Telegram. El bot del
 - `/api/summary?lat=X&lng=Y&city=Name` — Groq summary
 - `/api/history?lat=X&lng=Y&pollutant=NO2&days=7` — historial por contaminante
 - `/api/simulate` — POST, dispersión gaussiana (Pasquill-Gifford). Modelo de fuga de gas: **no usarlo para pastizal**
-- `/api/fire-projection?lat=X&lng=Y&confirmed=1` — GeoJSON de un foco (WHI-907): sector de humo a sotavento (±15°, hasta 3 h) y, si está confirmado y aplica la regla CSIRO del 20%, isócronas del frente a +30/+60/+120/+180 min. Con viento de fallback (inventado) no dibuja nada y no se cachea; si no, cache 10 min
+- `/api/fire-projection?lat=X&lng=Y&confirmed=1` — GeoJSON de un foco (WHI-907): sector de humo a sotavento (ancho medido según la fuerza del viento y la fuente, de ±25° a ±55°, hasta 3 h) y, si está confirmado y aplica la regla CSIRO del 20%, isócronas del frente a +30/+60/+120/+180 min. Con viento de fallback (inventado) no dibuja nada y no se cachea; si no, cache 10 min
 - `/api/bot/telegram` — webhook Telegram
 - `/api/bot/sync-commands` — registra el menú nativo del bot (lo que Telegram muestra al tocar "/") vía `setMyCommands`. NO se deriva del webhook; re-ejecutar con `?secret=<CRON_SECRET>` cada vez que cambia la lista de comandos
 
@@ -162,7 +162,7 @@ Archivos: `scripts/sql/whi-907-wind.sql` y `scripts/sql/whi-907-lightning.sql`. 
 - Wind direction: `degreesToCardinal()` + `cardinalToSpanish()` en `src/lib/wind.ts`
 - **Convención de viento**: la dirección es desde dónde VIENE el viento (Open-Meteo, METAR y SMN coinciden; verificado contra SAZB). El único helper para "¿el humo va hacia el vecino?" es `smokeHeadsTowardUser()` en `src/lib/geo.ts`. **Hasta el 14/9/2026 la comparación estaba invertida** y la alerta decía "hacia tu posición" cuando el humo se alejaba (WHI-908)
 - **Regla CSIRO del 20%** (`src/lib/fire-spread.ts`): el frente de un pastizal avanza al 20% del viento, sólo con viento >30 km/h y humedad del pasto muerto <6%. Fuera de esas condiciones devuelve null: nunca un número inventado. La alerta agrega la línea "Si el viento se mantiene, el fuego podría llegar en…" sólo cuando aplica
-- **Cono en el mapa** (`src/lib/fire-projection.ts` + `src/lib/projection-legend.ts`): humo y frente son capas separadas, cada línea del frente lleva su hora escrita, y la leyenda dice "Es una estimación, no un límite…". Viento <10 km/h dibuja sólo un círculo "viento variable"; un foco sin confirmar sólo humo, como "posible foco"
+- **Cono en el mapa** (`src/lib/fire-projection.ts` + `src/lib/projection-legend.ts`): humo y frente son capas separadas, cada línea del frente lleva su hora escrita, y la leyenda dice "Es una estimación, no un límite…". Viento <10 km/h dibuja sólo un círculo "viento variable"; un foco sin confirmar sólo humo, como "posible foco". El ancho del humo se midió el 14/9 contra el viento real del aeropuerto (METAR SAZB) para que acierte 9 de cada 10 veces (`smokeHalfAngleDeg`): Open-Meteo ±40° / ±30° / ±25° y SMN ±55° / ±40° / ±25° para viento de 10–20 / 20–30 / más de 30 km/h. En esa medición el SMN no fue más preciso que Open-Meteo en dirección (a 3 h de plazo empataron; a 9–15 h fue peor)
 - WHO AQI thresholds en `src/lib/air-quality.ts` — worst pollutant wins
 - City pages SSG via `generateStaticParams()` desde `argentina-cities.ts` (~78)
 - Dispersión: Gaussian plume (Pasquill-Gifford) en `src/lib/dispersion.ts`
