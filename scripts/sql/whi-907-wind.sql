@@ -43,6 +43,18 @@ CREATE INDEX IF NOT EXISTS wind_forecast_valid_idx ON wind_forecast (valid_at);
 ALTER TABLE wind_forecast ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON wind_forecast FROM anon, authenticated;
 
+-- Retención. OJO: estas funciones BORRAN filas viejas (es la política de
+-- retención) y se agendan con pg_cron recién en el checkpoint C5.
+--   - Pronóstico: 3 días (sólo sirve el de las próximas horas; ~2.300 filas por corrida).
+--   - Observaciones: 90 días (para medir cuánto se equivoca el pronóstico en Bahía).
+CREATE OR REPLACE FUNCTION purge_old_wind_data() RETURNS void
+  LANGUAGE sql SECURITY DEFINER SET search_path = public AS
+  $$
+    DELETE FROM public.wind_forecast     WHERE valid_at    < now() - interval '3 days';
+    DELETE FROM public.wind_observations WHERE observed_at < now() - interval '90 days';
+  $$;
+REVOKE ALL ON FUNCTION purge_old_wind_data() FROM PUBLIC, anon, authenticated;
+
 -- Verificación posterior (correr DESPUÉS de aplicar; tiene que devolver 0 filas):
 --   SELECT table_name, grantee, privilege_type
 --   FROM information_schema.role_table_grants

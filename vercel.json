@@ -10,6 +10,16 @@
       "maxDuration": 300,
       "memory": 1024,
       "excludeFiles": "{scripts/**,public/**,docs/**,src/**,.next/**,node_modules/**,tests/**,**/__pycache__/**}"
+    },
+    "api/glm-sync.py": {
+      "maxDuration": 300,
+      "memory": 1024,
+      "excludeFiles": "{scripts/**,public/**,docs/**,src/**,.next/**,node_modules/**,tests/**,fire_danger/**,smn_wrf/**,**/__pycache__/**}"
+    },
+    "api/smn-wrf-sync.py": {
+      "maxDuration": 300,
+      "memory": 1024,
+      "excludeFiles": "{scripts/**,public/**,docs/**,src/**,.next/**,node_modules/**,tests/**,fire_danger/**,glm/**,**/__pycache__/**}"
     }
   }
 }
