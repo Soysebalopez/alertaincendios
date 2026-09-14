@@ -30,7 +30,7 @@
 - **Tests:**
   - TS en `src/__tests__/**/*.test.ts` (entorno node, alias `@` → `src`).
   - Python en `tests/python/` (`pytest.ini`: `pythonpath = .`).
-  - Entorno Python local: `.venv` con Python 3.12 (ignorado por git).
+  - Entorno Python local: `.venv` con Python 3.14.5 (ignorado por git). Vercel puede correr otra versión: no usar sintaxis nueva sin verificarla.
 - **Guardianes:** todo test que vigile una regla **se rompe a propósito** antes de darlo por bueno, y el sabotaje tiene que ponerlo rojo.
 - **Convención de viento:** la dirección es **desde dónde sopla** (0 = norte), igual que Open-Meteo y el METAR. Toda comparación pasa por `smokeHeadsTowardUser` / `bearingDegrees` de `src/lib/geo.ts`.
 - **Migraciones:**
@@ -86,7 +86,7 @@
 - [x] Git firma como `Soysebalopez <soysebalopez@gmail.com>` (global en esta Mac, pedido de Seba).
 - [x] Rama `feat/whi-907-bahia-blanca-nivel-1` creada desde `main` = `origin/main` (`b9517a1`).
 - [x] Línea base: `npm test` → 19 archivos, **147 tests en verde**.
-- [x] `.venv` con Python 3.12 + `requirements.txt` + pytest (línea base de pytest anotada al terminar).
+- [x] `.venv` (ya existía, Python 3.14.5) con `requirements.txt` instalado vía `uv` + pytest: **42 tests en verde**.
 
 ---
 
@@ -279,7 +279,7 @@ En `src/components/city/city-forest-fires.tsx:180`: comparar el `bearingDegrees`
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run src/__tests__/geo-smoke-direction.test.ts`
-Expected: PASS (13 tests)
+Expected: PASS (12 tests)
 
 - [ ] **Step 5: Sabotage the guard**
 
@@ -290,7 +290,7 @@ Revertir el sabotaje y confirmar PASS.
 - [ ] **Step 6: Full suite + build**
 
 Run: `npm test && npm run build`
-Expected: 160 tests en verde (147 + 13) y build OK. Si `next build` se atasca más de 5 min sin salida, correr `npx next build --webpack` para ver el error.
+Expected: 159 tests en verde (147 + 12) y build OK. Si `next build` se atasca más de 5 min sin salida, correr `npx next build --webpack` para ver el error.
 
 - [ ] **Step 7: Commit**
 
