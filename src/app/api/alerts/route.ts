@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { getSupabase } from "@/lib/supabase";
 import { fetchFires, FirePoint } from "@/lib/firms";
 import { fetchWind, degreesToCardinal } from "@/lib/wind";
+import { alertMapLinks } from "@/lib/alert-links";
 import { formatFrontEta, grassFireFrontEtaMinutes } from "@/lib/fire-spread";
 import { bearingDegrees, haversineKm, smokeEtaMinutes, smokeHeadsTowardUser } from "@/lib/geo";
 import { sendMessage, escapeHtml } from "@/lib/telegram";
@@ -283,7 +284,6 @@ async function formatAlert(
 ): Promise<string> {
   const dist = Math.round(distKm * 10) / 10;
   const emoji = level === "danger" ? "🚨" : level === "warning" ? "⚠️" : "ℹ️";
-  const gMapsUrl = `https://www.google.com/maps?q=${fire.latitude},${fire.longitude}&z=12`;
   const cardinal = degreesToCardinal(
     bearingDegrees(sub.lat, sub.lng, fire.latitude, fire.longitude)
   );
@@ -319,7 +319,7 @@ async function formatAlert(
     msg += `\n<i>${escapeHtml(interpretation)}</i>\n`;
   }
 
-  msg += `\n📌 <a href="${gMapsUrl}">Ver en Google Maps</a>`;
+  msg += `\n${alertMapLinks(fire.latitude, fire.longitude)}`;
   msg += `\n\n—\nClara · AlertaForestal.org`;
   msg += `\n<i>Datos: NASA FIRMS VIIRS · Open-Meteo</i>`;
 
@@ -436,7 +436,6 @@ async function formatConfirmedFromPreliminary(
   zoneName: string | null
 ): Promise<string> {
   const dist = Math.round(distKm * 10) / 10;
-  const gMapsUrl = `https://www.google.com/maps?q=${fire.latitude},${fire.longitude}&z=12`;
   const cardinal = degreesToCardinal(
     bearingDegrees(sub.lat, sub.lng, fire.latitude, fire.longitude)
   );
@@ -470,7 +469,7 @@ async function formatConfirmedFromPreliminary(
         ? `Mantenete atento al avance del foco.`
         : `No hay riesgo inmediato pero seguimos monitoreando.`) +
     `</i>\n`;
-  msg += `\n📌 <a href="${gMapsUrl}">Ver en Google Maps</a>`;
+  msg += `\n${alertMapLinks(fire.latitude, fire.longitude)}`;
   msg += `\n\n—\nClara · AlertaForestal.org · GOES-19 + NASA FIRMS`;
 
   return msg;
