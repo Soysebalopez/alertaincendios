@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchWind } from "@/lib/wind";
 
+// No database here: near Bahía Blanca fetchWind first looks for an SMN forecast
+// row (covered by wind-fetch-smn.test.ts); without one it uses Open-Meteo.
+vi.mock("@/lib/supabase", () => ({
+  getSupabase: () => {
+    throw new Error("no database in this test");
+  },
+}));
+
 /**
  * WHI-907 part 5 — the CSIRO grassfire rule needs relative humidity to decide
  * whether it applies. fetchWind must return it, and must say "unknown" (null)
