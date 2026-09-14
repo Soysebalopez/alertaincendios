@@ -21,7 +21,10 @@ const csp = [
   // una captura del mapa local, no por un test.
   "img-src 'self' data: blob: https://services.arcgisonline.com",
   "font-src 'self' data:",
-  "connect-src 'self' https://*.supabase.co https://va.vercel-scripts.com https://*.vercel-insights.com",
+  // wss:// — the home hero listens on a Supabase Realtime websocket
+  // (hero-auto-refresh.tsx). Without it the browser blocks the connection and
+  // the hero never refreshes on its own, with no visible error.
+  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://va.vercel-scripts.com https://*.vercel-insights.com",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",
