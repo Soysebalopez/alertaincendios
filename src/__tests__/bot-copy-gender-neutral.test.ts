@@ -21,8 +21,8 @@ vi.mock("@/lib/geocode", () => ({
   geocodeCity: vi.fn(async () => BAHIA),
 }));
 
-// Row the subscribers table hands back; tests flip `role` per scenario.
-const sub = { role: "civilian", lat: BAHIA.lat, lng: BAHIA.lng, prevention_mode: "off" };
+// Row the subscribers table hands back.
+const sub = { lat: BAHIA.lat, lng: BAHIA.lng, prevention_mode: "off" };
 
 type Row = Record<string, unknown>;
 interface QueryStub {
@@ -81,8 +81,7 @@ const textMsg = (text: string) => ({ message: { chat: { id: CHAT }, text } });
 /**
  * The bot addressed every subscriber as "vecino" / "suscripto" — masculine by
  * default. A real subscriber named María would have been greeted as "vecino".
- * The product may keep a role called "bombero"; it must not assume the gender
- * of the person reading the message.
+ * The copy must not assume the gender of the person reading the message.
  */
 const GENDERED =
   /\b(vecino|vecina|suscripto|suscripta|suscrito|suscrita|bienvenido|bienvenida|registrado|registrada)\b/i;
@@ -96,7 +95,6 @@ describe("bot copy never assumes the subscriber's gender", () => {
     vi.clearAllMocks();
     process.env.TELEGRAM_BOT_TOKEN = "test-token";
     delete process.env.TELEGRAM_WEBHOOK_SECRET;
-    sub.role = "civilian";
   });
 
   it("greets a shared location without a gendered noun", async () => {
@@ -121,20 +119,6 @@ describe("bot copy never assumes the subscriber's gender", () => {
 
   it("lists the commands without a gendered noun", async () => {
     await send(textMsg("/help"));
-
-    expect(replies()).not.toMatch(GENDERED);
-  });
-
-  it("confirms leaving a cuartel without a gendered noun", async () => {
-    sub.role = "fireman";
-
-    await send(textMsg("/dejarcuartel"));
-
-    expect(replies()).not.toMatch(GENDERED);
-  });
-
-  it("refuses /dejarcuartel for a non-fireman without a gendered noun", async () => {
-    await send(textMsg("/dejarcuartel"));
 
     expect(replies()).not.toMatch(GENDERED);
   });

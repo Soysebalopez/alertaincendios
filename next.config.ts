@@ -49,6 +49,20 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // WHI-907 — the volunteer firefighter page was retired on 2026-09-14 (never
+  // used). Keep old links and search results landing somewhere useful.
+  async redirects() {
+    return [
+      { source: "/cuarteles", destination: "/", permanent: true },
+      // WHI-907 — Bahía Blanca has its own page. Never two Bahía pages with
+      // different content; the query string (?foco=) is kept.
+      {
+        source: "/ciudad/buenos-aires/bahia-blanca",
+        destination: "/bahia-blanca",
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     return [
       {

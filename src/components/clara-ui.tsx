@@ -61,7 +61,7 @@ export function Beacon({ color = "var(--accent)" }: { color?: string }) {
 }
 
 /* ─── Data source logos — abstract SVG marks, not official brand logos ─── */
-type LogoName = "nasa" | "noaa" | "esa" | "sentinel" | "openmeteo" | "telegram";
+type LogoName = "nasa" | "noaa" | "esa" | "sentinel" | "openmeteo" | "telegram" | "smn" | "xweather";
 
 export function DataSourceLogo({
   name,
@@ -164,6 +164,45 @@ export function DataSourceLogo({
             opacity="0.3"
             stroke={color}
             strokeWidth="1.1"
+            strokeLinejoin="round"
+          />
+        </svg>
+      );
+    case "smn":
+      // Wind lines past a thermometer (SMN forecast: wind, temperature, humidity).
+      return (
+        <svg {...common}>
+          <rect
+            x="15"
+            y="3"
+            width="4"
+            height="12"
+            rx="2"
+            fill={color}
+            opacity="0.25"
+            stroke={color}
+            strokeWidth="1.2"
+          />
+          <circle cx="17" cy="18" r="3" fill={color} opacity="0.3" stroke={color} strokeWidth="1.2" />
+          <path
+            d="M3 8h8a2 2 0 1 0-2-2M3 12h9M3 16h6a2 2 0 1 1-2 2"
+            stroke={color}
+            strokeWidth="1.2"
+            strokeLinecap="round"
+          />
+        </svg>
+      );
+    case "xweather":
+      // Lightning bolt inside a detection ring (lightning network).
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="9" stroke={color} strokeWidth="1.1" opacity="0.6" />
+          <path
+            d="M13 4l-6 9h4.5L10 20l7-10h-4.5L13 4z"
+            fill={color}
+            opacity="0.3"
+            stroke={color}
+            strokeWidth="1.2"
             strokeLinejoin="round"
           />
         </svg>

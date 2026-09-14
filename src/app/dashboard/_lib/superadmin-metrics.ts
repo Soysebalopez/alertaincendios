@@ -29,8 +29,6 @@ function percentile(sorted: number[], p: number): number | null {
 
 export type SubscriberBreakdown = {
   total: number;
-  civilian: number;
-  fireman: number;
   lightning_on: number;
   lightning_off: number;
   in_forest_zone: number;
@@ -41,24 +39,19 @@ export async function getSubscriberBreakdown(): Promise<SubscriberBreakdown> {
   const db = getSupabase();
   const { data } = await db
     .from("subscribers")
-    .select("role, lightning_enabled, lat, lng");
+    .select("lightning_enabled, lat, lng");
   const subs = (data ?? []) as Array<{
-    role: string | null;
     lightning_enabled: boolean | null;
     lat: number | null;
     lng: number | null;
   }>;
 
-  let civilian = 0;
-  let fireman = 0;
   let lightning_on = 0;
   let lightning_off = 0;
   let in_forest = 0;
   let out_forest = 0;
 
   for (const s of subs) {
-    if (s.role === "fireman") fireman++;
-    else civilian++;
     if (s.lightning_enabled !== false) lightning_on++;
     else lightning_off++;
     if (s.lat != null && s.lng != null) {
@@ -69,68 +62,10 @@ export async function getSubscriberBreakdown(): Promise<SubscriberBreakdown> {
 
   return {
     total: subs.length,
-    civilian,
-    fireman,
     lightning_on,
     lightning_off,
     in_forest_zone: in_forest,
     out_of_forest_zone: out_forest,
-  };
-}
-
-// ─── Cuarteles ───────────────────────────────────────────────────────────
-
-export async function getTopCuarteles(): Promise<
-  { cuartel: string; subs: number }[]
-> {
-  const db = getSupabase();
-  const { data } = await db
-    .from("subscribers")
-    .select("cuartel_name")
-    .eq("role", "fireman");
-  const counts = new Map<string, number>();
-  for (const r of (data ?? []) as Array<{ cuartel_name: string | null }>) {
-    const name = r.cuartel_name?.trim();
-    if (!name) continue;
-    counts.set(name, (counts.get(name) ?? 0) + 1);
-  }
-  return Array.from(counts.entries())
-    .filter(([, n]) => n >= SUPERADMIN_CONFIG.CUARTEL_MIN_SUBS)
-    .map(([cuartel, subs]) => ({ cuartel, subs }))
-    .sort((a, b) => b.subs - a.subs);
-}
-
-export async function getInviteCodesStatus(): Promise<{
-  total_codes: number;
-  total_slots: number;
-  used_slots: number;
-  exhausted_codes: number;
-  rows: { code: string; cuartel_name: string | null; used_count: number; max_uses: number }[];
-}> {
-  const db = getSupabase();
-  const { data } = await db
-    .from("fireman_codes")
-    .select("code, cuartel_name, used_count, max_uses");
-  const rows = (data ?? []) as Array<{
-    code: string;
-    cuartel_name: string | null;
-    used_count: number;
-    max_uses: number;
-  }>;
-  let total_slots = 0;
-  let used_slots = 0;
-  let exhausted = 0;
-  for (const r of rows) {
-    total_slots += r.max_uses;
-    used_slots += r.used_count;
-    if (r.used_count >= r.max_uses) exhausted++;
-  }
-  return {
-    total_codes: rows.length,
-    total_slots,
-    used_slots,
-    exhausted_codes: exhausted,
-    rows: rows.sort((a, b) => b.used_count - a.used_count),
   };
 }
 

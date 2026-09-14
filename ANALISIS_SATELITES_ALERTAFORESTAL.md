@@ -1,5 +1,7 @@
 # Análisis de Opciones de Satélites y Fuentes de Datos para AlertaForestal
 
+> ⚠️ **Desactualizado (14/9/2026).** Dos recomendaciones de este documento no sirven: **MTG no ve Bahía Blanca** (la ve a 77° del cenit, contra 47° de GOES-19) y **los términos de Blitzortung prohíben los sistemas de alerta**. Lo que se hizo en su lugar está en WHI-907 (rayos del GLM de GOES-19, viento del SMN a 4 km, METAR del aeropuerto).
+
 ## Resumen Ejecutivo
 Investigación exhaustiva de opciones para mejorar la latencia y cobertura del servicio AlertaForestal enfocándose en soluciones gratuitas y viables para un proyecto sin fines de lucro.
 

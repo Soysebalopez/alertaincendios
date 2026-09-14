@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { degreesToCardinal, cardinalToSpanish } from "@/lib/wind";
+import { openMeteoUrl } from "@/lib/open-meteo";
 import {
   checkRateLimit,
   clientIp,
@@ -12,8 +13,6 @@ import {
  *
  * Returns current wind data for any location using Open-Meteo.
  */
-
-const OPEN_METEO_BASE = "https://api.open-meteo.com/v1/forecast";
 
 // H-10 — protege la cuota de Open-Meteo. 60 req/min por IP es generoso para
 // uso real (todo el grid de 12 ciudades en el hero cuenta como 12), pero corta
@@ -47,7 +46,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const params = new URLSearchParams({
+    const url = openMeteoUrl("forecast", {
       latitude: lat,
       longitude: lng,
       current:
@@ -55,7 +54,7 @@ export async function GET(request: NextRequest) {
       timezone: "America/Argentina/Buenos_Aires",
     });
 
-    const res = await fetch(`${OPEN_METEO_BASE}?${params}`, {
+    const res = await fetch(url, {
       next: { revalidate: 1800 },
     });
 

@@ -13,14 +13,11 @@
  *   atraviesa al menos una semana de estación activa típica.
  * - ACTIVE_COMMANDS_DAYS: ventana para considerar un sub "activo" (usó algún
  *   comando). 30d es estándar producto.
- * - CUARTEL_MIN_SUBS: mínimo de subs fireman con cuartel_name = X para
- *   considerar el cuartel "real". 1 es laxo (ideal mientras el rol es nuevo).
  */
 export const SUPERADMIN_CONFIG = {
   ZOMBIE_AFTER_DAYS: 60,
   SILENT_AFTER_DAYS: 30,
   ACTIVE_COMMANDS_DAYS: 30,
-  CUARTEL_MIN_SUBS: 1,
   // Trends y latencias
   TREND_DAYS: 30,
   LATENCY_BUCKETS_MIN: [5, 15, 30, 60, 120, 240, 480] as const,

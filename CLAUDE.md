@@ -7,13 +7,13 @@ Alertas tempranas de incendios forestales en Argentina vía Telegram. El bot del
 ## Stack
 - Next.js 16 + TypeScript + Tailwind CSS v4 + Motion + Phosphor Icons + Leaflet + Recharts
 - Supabase (shared with SatAI, ref: qmzuwnilehldvobjsbcs) — Postgres + pg_cron + pg_net + Auth
-- Vercel Hobby — Next.js routes (TS) + 1 Python Vercel Function (`api/goes-sync.py`)
+- Vercel Hobby — Next.js routes (TS) + Python Vercel Functions (`api/goes-sync.py`, `api/fire-danger-sync.py`, `api/glm-sync.py`, `api/smn-wrf-sync.py`)
 - Groq llama-3.3-70b (AI citizen summaries + interpretation)
 - Python pipeline: xarray, netCDF4, boto3, pyproj — procesa GOES NetCDF en Vercel
 
 ## Servicios
 - GitHub: https://github.com/Soysebalopez/alertaincendios (repo conserva el nombre viejo)
-- Linear: CLARA project en Whitebay Products team
+- Linear: proyecto AlertaForestal en el team Growing Bay Products (WHI)
 - Deploy: Vercel — dominio principal https://alertaforestal.org (alias: alertaincendios.vercel.app)
 - Supabase: project ref qmzuwnilehldvobjsbcs (shared with SatAI)
 - Telegram Bot: @alertaforestal_bot (persona del bot: Clara)
@@ -33,10 +33,11 @@ Alertas tempranas de incendios forestales en Argentina vía Telegram. El bot del
 - Mapa: `/mapa` — fullscreen Leaflet con capas focos/aire/viento. Layout propio (sin footer)
 - Calidad del aire: `/calidad-aire` — selector de provincia → cards por ciudad
 - Ciudad: `/ciudad/[province]/[city]` — SSG 78 páginas, dashboard completo por ciudad
+- Bahía Blanca: `/bahia-blanca` — página propia (WHI-907). Muestra **todos los focos de vegetación** (Bahía no está en ninguna zona forestal) sin antorchas industriales: como el feed de FIRMS casi en tiempo real no trae el tipo de fuente, se descartan **por posición** (polo petroquímico de Ingeniero White y un sitio industrial al noroeste, sacados del archivo de FIRMS 2023–2024: `src/lib/static-heat-sources.ts`). Además: el mapa con el cono de humo y frente, `?foco=<lat>,<lng>` para centrarlo en un foco (sólo a <100 km; el mapa sólo se aleja para mostrar los conos cuando se llega con `?foco=`), viento medido del aeropuerto (METAR SAZB), rayos GLM, historial medido y el deep link del bot `ciudad-bahia-blanca`. Los paneles de viento y rayos no se muestran si su tabla no existe o el dato está vencido. `/ciudad/buenos-aires/bahia-blanca` redirige acá (308)
 - Historial: `/historial` — Recharts evolución de focos
 - Cómo funciona: `/como-funciona` — FAQ ciudadano (8 preguntas, sin jerga)
-- Cuarteles: `/cuarteles` — landing para bomberos voluntarios (comparativa vecino/bombero, cómo activar el rol con código) + **form de alta de cuartel** que envía la solicitud por email vía Resend (`<CuartelRequestForm>` → `/api/cuarteles/request`). Opción A del onboarding fireman: contacto manual, sin auto-emisión de códigos todavía
-- Dashboard: `/dashboard`, `/dashboard/alerts`, `/dashboard/health`, `/dashboard/superadmin` — métricas internas (`superadmin` agrega breakdown de subscribers, top cuarteles, funnel GOES, latencias, forest split), gated por Supabase Auth allowlist (soysebalopez@gmail.com)
+- ~~Cuarteles~~: la función de bomberos voluntarios (rol, códigos de invitación, `/cuarteles`, `/soybombero`) **se retiró el 2026-09-14 sin haberse usado nunca** (WHI-907). `/cuarteles` redirige a `/`. Las tablas `fireman_codes` / `fireman_code_usage` y la columna `subscribers.cuartel_name` siguen en la base hasta el borrado con OK explícito
+- Dashboard: `/dashboard`, `/dashboard/alerts`, `/dashboard/health`, `/dashboard/superadmin` — métricas internas (`superadmin` agrega breakdown de subscribers, funnel GOES, latencias, forest split), gated por Supabase Auth allowlist (soysebalopez@gmail.com)
 - Login: `/login` — entry point del dashboard
 
 ### Route Groups
@@ -52,8 +53,8 @@ Alertas tempranas de incendios forestales en Argentina vía Telegram. El bot del
 - `/api/wind?lat=X&lng=Y` — viento + temp + humedad
 - `/api/summary?lat=X&lng=Y&city=Name` — Groq summary
 - `/api/history?lat=X&lng=Y&pollutant=NO2&days=7` — historial por contaminante
-- `/api/simulate` — POST, dispersión gaussiana (Pasquill-Gifford)
-- `/api/cuarteles/request` — POST, recibe el form de alta de cuartel y manda email al owner vía **Resend** (lazy init, `from: onboarding@resend.dev`, reply-to al email del cuartel). Honeypot anti-spam + rate-limit 5/min/IP. Requiere `RESEND_API_KEY` en env (Production); sin la key devuelve `email_unavailable`
+- `/api/simulate` — POST, dispersión gaussiana (Pasquill-Gifford). Modelo de fuga de gas: **no usarlo para pastizal**
+- `/api/fire-projection?lat=X&lng=Y&confirmed=1&grass=1` — GeoJSON de un foco (WHI-907): sector de humo a sotavento (ancho medido según la fuerza del viento y la fuente, de ±25° a ±55°, hasta 3 h) y, si está confirmado, es de pastizal (`grass=1`: fuera de toda zona forestal; el mapa arma el pedido con `fireProjectionPath()`), es de noviembre a abril y aplica la regla CSIRO del 20%, isócronas del frente a +30/+60/+120/+180 min. Con viento de fallback (inventado) no dibuja nada y no se cachea; si no, cache 10 min
 - `/api/bot/telegram` — webhook Telegram
 - `/api/bot/sync-commands` — registra el menú nativo del bot (lo que Telegram muestra al tocar "/") vía `setMyCommands`. NO se deriva del webhook; re-ejecutar con `?secret=<CRON_SECRET>` cada vez que cambia la lista de comandos
 
@@ -64,7 +65,11 @@ Autorización vía `isCronAuthorized()` en `src/lib/cron-auth.ts`: acepta el sec
 - `/api/goes-sync` — **Python** (`api/goes-sync.py`), descarga GOES-19 ABI-L2-FDCF, filtros, inserta en goes_preliminary, guarda stats en goes_sync_runs
 - `/api/goes-alerts` — preliminary → Telegram + tracking en goes_alerted. Mismo filtro forestal que `/api/alerts`.
 - `/api/goes-dismissals` — falsa alarma + DELETE preliminary descartadas + huérfanos
-- `/api/lightning-alerts` — tormenta seca (OpenWeather + Open-Meteo fallback)
+- `/api/lightning-alerts` — tormenta seca. Usa **rayos reales del GLM** (`lightning_flashes`, 30 km) cuando el latido `_clara_config.glm_last_sync_at` tiene menos de 15 min; si no, el método viejo por código de clima (OpenWeather / Open-Meteo). La respuesta dice `source: "glm" | "weather-code"`
+- `/api/metar-sync` — viento medido del aeropuerto Comandante Espora (METAR SAZB, aviationweather.gov) → `wind_observations`. Sin la tabla responde 200 con `skipped: "table_missing"`
+- `/api/glm-sync` — **Python** (`api/glm-sync.py`): archivos GLM de los últimos 6 min, flashes de buena calidad sobre Argentina → `lightning_flashes`, más el latido `glm_last_sync_at` (sin latido, "no hay rayos" no se distingue de "el sync murió")
+- `/api/smn-wrf-sync` — **Python** (`api/smn-wrf-sync.py`): SMN WRF 4 km, la corrida completa más nueva, horas 0–18, celdas a <30 km de Bahía → `wind_forecast`. Escribe archivo por archivo y no arranca descargas después de 240 s. El SMN arranca una corrida cada 6 h (00, 06, 12 y 18 UTC), la publica ~2,5 h después y algunas no aparecen nunca: cron recomendado 02:45, 08:45, 14:45 y 20:45 UTC
+- ⚠️ **WHI-907: las tablas de estas tres rutas NO están aplicadas (checkpoint C2) y sus crons NO están programados (checkpoint C5).** Hasta entonces responden `table_missing` y todo cae en los caminos viejos
 - `/api/satellites/sync-tles` — baja TLEs de CelesTrak para Suomi NPP/NOAA-20/NOAA-21 (WHI-753)
 - `/api/fire-danger-sync` — **Python** (`api/fire-danger-sync.py`), diario 09:00 UTC (06:00 ART). Por cada zona TDF: lee estado llevado `(ffmc,dmc,dc)` (spin-up ~30 días históricos si ausente), fetcha forecast 16 días Open-Meteo, encadena FWI ecuaciones Van Wagner, clasifica `bajo→moderado→alto→muy alto→extremo`, persiste en `fire_danger` y `fire_danger_state`
 - `/api/monitor/fires-freshness` — monitor dual: staleness de `fires_cache` (>60 min) + flag `firms_sync_error` (key FIRMS inválida, escrito por el guard SQL). Alerta Telegram one-shot al `admin_chat_id`; la alerta de key suprime la genérica de staleness
@@ -75,16 +80,20 @@ Autorización vía `isCronAuthorized()` en `src/lib/cron-auth.ts`: acepta el sec
 ## Data Sources (all free)
 - **NASA FIRMS VIIRS**: focos confirmados, ~15 min, 375m res
 - **NOAA GOES-19 ABI-L2-FDCF**: focos preliminares, 10 min, 2km res, vía AWS Open Data anonymous (`s3://noaa-goes19`)
-- **OpenWeather One Call 3.0**: rayos (con Open-Meteo Lightning fallback)
-- **Open-Meteo Forecast**: viento/temp/humedad
+- **NOAA GOES-19 GLM** (`s3://noaa-goes19/GLM-L2-LCFA`): rayos reales, un archivo cada 20 s. Ubica con margen de 8–14 km y no distingue nube-tierra de nube-nube
+- **OpenWeather One Call 3.0 / Open-Meteo**: código de clima "tormenta". **No es detección de rayos**: sólo queda como fallback cuando GLM no está vivo
+- **SMN WRF 4 km** (`s3://smn-ar-wrf`, licencia CC BY 2.5 AR — **requiere atribución**): viento, temperatura y humedad horarios alrededor de Bahía. No trae ráfagas
+- **METAR SAZB** (aviationweather.gov): viento medido cada hora en el aeropuerto de Bahía Blanca. Es un solo punto, al este de la ciudad
+- **Xweather** (opcional, plan Developer): `src/lib/xweather.ts`, inerte sin credenciales y **todavía no conectado a las alertas** (falta crear la cuenta y verificar cuántos accesos gasta una consulta de rayos)
+- **Open-Meteo Forecast**: viento/temp/humedad. Toda URL de Open-Meteo pasa por `openMeteoUrl()` (`src/lib/open-meteo.ts`; par Python en `fire_danger/openmeteo.py`): con `OPEN_METEO_API_KEY` usa el host pago `customer-*`, sin ella el gratis. Un guardián falla si aparece una URL de Open-Meteo escrita a mano. **El plan gratis prohíbe el uso comercial** (WHI-905). Del lado Python los errores salen con la clave tapada (`apikey=***`): `requests` mete la URL completa en el mensaje, `fire-danger-sync` devuelve ese texto y pg_net lo guarda en `net._http_response`
 - **Open-Meteo Air Quality**: CAMS/Sentinel-5P
 - **Open-Meteo Geocoding**: ciudad → lat/lng
 
 ## Supabase Tables (shared project)
 
 ### Suscripción + estado del bot
-- `subscribers` (chat_id bigint PK, lat, lng, city_name, lightning_enabled bool default true, role text default 'civilian', cuartel_name text, created_at)
-- `fireman_codes` (code text PK, cuartel_name, used_count, max_uses) — WHI-588: invite codes
+- `subscribers` (chat_id bigint PK, lat, lng, city_name, lightning_enabled bool default true, role text default 'civilian', cuartel_name text, created_at) — `role` y `cuartel_name` quedaron sin uso desde el retiro de bomberos (2026-09-14); se borran con OK explícito
+- `fireman_codes` (code text PK, cuartel_name, used_count, max_uses) — **sin uso desde 2026-09-14** (WHI-907); pendiente de borrar con OK explícito
 - `bot_commands_log` (id bigserial PK, chat_id, command, args, created_at) — WHI-587: engagement
 
 ### FIRMS (cache + dedup)
@@ -109,8 +118,15 @@ Autorización vía `isCronAuthorized()` en `src/lib/cron-auth.ts`: acepta el sec
 ### Lightning
 - `lightning_alerted` (id bigserial PK, chat_id, alerted_at) — rate-limit 30 min/sub
 
+### Viento y rayos (WHI-907) — ⚠️ SQL escrito, NO aplicado (checkpoint C2)
+Archivos: `scripts/sql/whi-907-wind.sql` y `scripts/sql/whi-907-lightning.sql`. RLS activo, sin policies y `REVOKE ALL` para anon/authenticated (RLS no gobierna TRUNCATE).
+- `wind_observations` (station, observed_at, wind_from_deg nullable = VRB, wind_kmh, gust_kmh, variable; PK (station, observed_at)) — METAR, retención 90 días
+- `wind_forecast` (source, run_at, valid_at, lat, lng, wind_from_deg, wind_kmh, temp_c, rh_pct; PK (source, run_at, valid_at, lat, lng)) — SMN WRF, retención 3 días. `fetchWind()` la prefiere a <30 km de Bahía (fila de la hora válida más cercana, después la celda más cercana, después la corrida más nueva)
+- `lightning_flashes` (flash_at, lat, lng, energy_j, area_m2, source; PK (flash_at, lat, lng)) — GLM, retención 7 días
+- Funciones de retención `purge_old_wind_data()` y `purge_old_lightning_flashes()` (SECURITY DEFINER, borran filas viejas; se agendan en C5)
+
 ### Config
-- `_clara_config` (key PK, value, updated_at) — `cron_secret`, `firms_map_key`, `admin_chat_id`, y flags operativos (`fires_freshness_alerted_at`, `firms_sync_error`, `firms_key_alerted_at`). Cron jobs leen el secret via `clara_cron_secret()` SECURITY DEFINER
+- `_clara_config` (key PK, value text, updated_at) — `cron_secret`, `firms_map_key`, `admin_chat_id`, flags operativos (`fires_freshness_alerted_at`, `firms_sync_error`, `firms_key_alerted_at`) y `glm_last_sync_at` (latido del sync GLM, WHI-907). Cron jobs leen el secret via `clara_cron_secret()` SECURITY DEFINER
 
 ## Supabase pg_cron Jobs
 - `fires-fetch` (`0,15,30,45 * * * *`) — pg_net GET a FIRMS, stores request_id
@@ -144,12 +160,16 @@ Autorización vía `isCronAuthorized()` en `src/lib/cron-auth.ts`: acepta el sec
 - Supabase client lazy init (getSupabase()) — NUNCA module scope (Vercel build evalúa rutas)
 - AI summaries: Groq primary → template fallback
 - Wind direction: `degreesToCardinal()` + `cardinalToSpanish()` en `src/lib/wind.ts`
+- **Convención de viento**: la dirección es desde dónde VIENE el viento (Open-Meteo, METAR y SMN coinciden; verificado contra SAZB). El único helper para "¿el humo va hacia el vecino?" es `smokeHeadsTowardUser()` en `src/lib/geo.ts`. **Hasta el 14/9/2026 la comparación estaba invertida** y la alerta decía "hacia tu posición" cuando el humo se alejaba (WHI-908)
+- **Regla CSIRO del 20%** (`src/lib/fire-spread.ts`): el frente de un pastizal avanza al 20% del viento, sólo con viento >30 km/h y humedad del pasto muerto <6%. **Sólo para pastizal** —un foco dentro de una zona forestal nunca la recibe— y **sólo de noviembre a abril** en hora argentina (`isGrassCuringSeason`): la regla supone pasto curado >90%, y eso no se mide. Fuera de esas condiciones devuelve null: nunca un número inventado. La alerta agrega la línea "Si el viento se mantiene, el fuego podría llegar en…" sólo cuando aplica. **Hoy no aparece en ninguna alerta**: el bot sólo alerta focos en zona forestal, así que recién sirve si se decide alertar pastizales cerca de Bahía. Hasta el 14/9 se aplicaba también a bosques y en invierno (lo cazó la revisión previa al merge de WHI-907)
+- **Cono en el mapa** (`src/lib/fire-projection.ts` + `src/lib/projection-legend.ts`): humo y frente son capas separadas, cada línea del frente lleva su hora escrita, y la leyenda dice "Es una estimación, no un límite…". Viento <10 km/h dibuja sólo un círculo "viento variable"; un foco sin confirmar sólo humo, como "posible foco". El ancho del humo se midió el 14/9 contra el viento real del aeropuerto (METAR SAZB) para que acierte 9 de cada 10 veces (`smokeHalfAngleDeg`): Open-Meteo ±40° / ±30° / ±25° y SMN ±55° / ±40° / ±25° para viento de 10–20 / 20–30 / más de 30 km/h. En esa medición el SMN no fue más preciso que Open-Meteo en dirección (a 3 h de plazo empataron; a 9–15 h fue peor)
 - WHO AQI thresholds en `src/lib/air-quality.ts` — worst pollutant wins
 - City pages SSG via `generateStaticParams()` desde `argentina-cities.ts` (~78)
 - Dispersión: Gaussian plume (Pasquill-Gifford) en `src/lib/dispersion.ts`
 - Fire history backfill: `scripts/backfill-fires.sh` con MAP_KEY desde `scripts/backfill.env` (gitignored)
 - Leaflet maps con dynamic import + ssr:false
-- **Filtro forestal por rol (canónico)**: `subscribers.role` determina (a) qué focos llegan — civilian solo recibe alertas en zona forestal, fireman recibe todo — y (b) el tono del mensaje: civilian con AI interpretation, fireman operativo sin AI firmado por cuartel. Aplica en `/api/alerts` y `/api/goes-alerts`. El mismo filtro (sin rol) gobierna landing/mapa/`/ciudad` (ver Forest classification > Aplicado en).
+- **Filtro forestal (canónico)**: todo suscriptor recibe sólo alertas de focos en zona forestal, con interpretación AI. Aplica en `/api/alerts` y `/api/goes-alerts`. (Hasta el 2026-09-14 existía un rol de bombero que recibía todo con formato operativo; se retiró sin haberse usado nunca — WHI-907.) El mismo filtro gobierna landing/mapa/`/ciudad` (ver Forest classification > Aplicado en), **excepto `/bahia-blanca`**, que muestra todos los focos de vegetación (`showsFire(f, "vegetation")` en `src/lib/city-fires.ts`).
+  - 🔴 **Bahía Blanca no está en ninguna de las 7 zonas forestales** (son sólo bosques). Como las dos alertas del bot aplican el filtro, **hoy un incendio de pastizal cerca de Bahía no genera alerta**. Cambiarlo es decisión de producto (volumen, quemas agrícolas, antorchas de Ingeniero White) y quedó pendiente con Seba. **Si se habilita, las alertas tienen que descartar también las antorchas por posición** (`isStaticHeatSource`, como la página): hoy `/api/alerts` sólo filtra por `type`, y el feed casi en tiempo real no lo trae.
 - Doble confirmación: preliminary GOES → confirmation upgrade FIRMS si <5km/<2h → dismissal automático tras 4h
 - Preliminaries descartadas se BORRAN de goes_preliminary (cascade goes_alerted) — el landing metric "Preliminares activos" refleja solo lo pendiente
 - **Guard de body FIRMS**: NASA devuelve errores ("Invalid MAP_KEY.") con HTTP 200; `fires_sync_step2_process()` solo escribe `fires_cache` si el body empieza con el header CSV `latitude,...` — si no, marca `_clara_config.firms_sync_error` y el monitor alerta. Rotación semi-automática con el comando oculto de admin `/rotarkey <key>` (valida en vivo contra NASA antes de guardar; NO va en sync-commands)
@@ -180,7 +200,7 @@ Autorización vía `isCronAuthorized()` en `src/lib/cron-auth.ts`: acepta el sec
 - **Hero**: `forestTotal = high + moderate + low` (todos los wildfires en forestZone). Sub-line muestra "+N fuera de zona forestal".
 - **Mapa `/`**: capa Focos forestales filtra `f.forestZone` truthy. Toggle "+ No forestal" muestra los grises translúcidos (no-forestal con opacidad baja para no competir visualmente).
 - **`/ciudad/[p]/[c]`**: bloque `<CityForestFires>` muestra los 3 focos forestales más cercanos en 100km. Si 0, mensaje positivo "Sin actividad forestal en 100 km" (tono `--good`).
-- **Bot Telegram**: `/api/alerts` y `/api/goes-alerts` filtran por rol (ver Key Patterns > Filtro forestal). Mensaje incluye línea "🌲 Zona: {nombre}".
+- **Bot Telegram**: `/api/alerts` y `/api/goes-alerts` filtran por zona forestal (ver Key Patterns > Filtro forestal). Mensaje incluye línea "🌲 Zona: {nombre}". Si el foco está a <100 km de Bahía Blanca, la alerta agrega "🗺️ Ver hacia dónde va" con el link a `/bahia-blanca?foco=`, antes del de Google Maps.
 
 ## Satellite trajectories (WHI-752 a WHI-755)
 
@@ -211,7 +231,7 @@ Autorización vía `isCronAuthorized()` en `src/lib/cron-auth.ts`: acepta el sec
 ## SEO
 - Title template: "%s — AlertaForestal" (default: "AlertaForestal — Alertas de incendios forestales en Argentina")
 - robots.ts: allow all excepto /api/, /dashboard, /login
-- sitemap.ts: estáticas + 78 ciudades + /como-funciona = ~85 URLs
+- sitemap.ts: estáticas + `/bahia-blanca` + 77 ciudades (la genérica de Bahía no, porque redirige) + /como-funciona = ~85 URLs
 - JSON-LD: WebApplication en root layout, Place + GeoCoordinates por ciudad
 - OG image dinámica via `next/og` ImageResponse en `src/app/opengraph-image.tsx` (1200×630)
 - OpenGraph + Twitter cards en todas las páginas
@@ -222,10 +242,11 @@ Autorización vía `isCronAuthorized()` en `src/lib/cron-auth.ts`: acepta el sec
 - Migrado al nuevo sistema de API keys de Supabase: `sb_publishable_*` (anon) + `sb_secret_*` (service role). Legacy JWT system disabled.
 - CRON_SECRET nunca literal en cron jobs (ver Config + API Routes — Cron para el doble path)
 - Secrets fuera del repo (.env*, scripts/*.env gitignored). Templates en *.env.example
+- Variables opcionales de WHI-907 (siempre con `.trim()`): `OPEN_METEO_API_KEY` (activa el plan pago), `XWEATHER_API_KEY` (la clave única del portal nuevo, que es `<client_id>_<client_secret>`) o `XWEATHER_CLIENT_ID` + `XWEATHER_CLIENT_SECRET`, `XWEATHER_MONTHLY_ACCESSES` y `XWEATHER_ACCESSES_PER_LIGHTNING_QUERY` (cupo; por defecto 15000 y 10, con 10% de reserva). Sin ellas todo funciona como antes
 - Procedimiento de rotación documentado en `SECURITY-AUDIT.md`
 
 ## Current focus
-- El producto está construido (detección dual GOES/FIRMS, pivote forestal, trayectorias satelitales, bot Telegram, dashboard) pero tiene casi 0 usuarios. Foco actual: **go-to-market** vía cuarteles de bomberos voluntarios. Plan en `founders_meeting.md`.
+- El producto está construido (detección dual GOES/FIRMS, pivote forestal, trayectorias satelitales, bot Telegram, dashboard) pero tiene casi 0 usuarios. Foco actual (sept. 2026): **Bahía Blanca nivel 1** (WHI-907) antes de la temporada de incendios (nov–abr), y el producto institucional para municipios. La vía de cuarteles de bomberos se retiró el 14/9 sin haberse usado.
 - Estado de fases, tickets y pendientes (dominio propio, WhatsApp, SMS) viven en Linear (CLARA project) + git history — no en este archivo.
 
 ## Docs en el repo
@@ -233,6 +254,7 @@ Autorización vía `isCronAuthorized()` en `src/lib/cron-auth.ts`: acepta el sec
 - `TESTING.md` — recipes de verificación end-to-end (incluye inyección de focos sintéticos)
 - `SECURITY-AUDIT.md` — findings + procedimiento de rotación de secrets
 - `scripts/goes-spike/REPORT.md` — viabilidad pipeline GOES (referencia histórica)
-- `scripts/glm-spike/REPORT.md` — GLM evaluation (defer)
+- `scripts/glm-spike/REPORT.md` — GLM evaluation (histórico: se implementó en WHI-907)
+- `docs/superpowers/plans/2026-09-14-bahia-blanca-nivel-1.md` — plan de WHI-907/WHI-908, con los formatos reales de SMN, GLM y FDCM anotados
 - `scripts/super-res-research/REPORT.md` — super-resolución (rejected)
 - `scripts/WHI-581-bot-rotation.md` — procedimiento rotación bot

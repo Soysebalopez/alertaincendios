@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { haversineKm } from "@/lib/geo";
+import { bearingDegrees, haversineKm } from "@/lib/geo";
 import { cardinalToSpanish, degreesToCardinal } from "@/lib/wind";
 import { forestZoneName } from "@/lib/forest-zones";
+import { showsFire, type CityFireFilter } from "@/lib/city-fires";
 
 interface Fire {
   latitude: number;
@@ -11,6 +12,7 @@ interface Fire {
   frp: number;
   acqDate: string;
   acqTime: string;
+  type?: number;
   forestZone?: string;
 }
 
@@ -38,11 +40,15 @@ export function CityForestFires({
   lat,
   lng,
   cityName,
+  fireFilter = "forest",
 }: {
   lat: number;
   lng: number;
   cityName: string;
+  /** "vegetation" on Bahía Blanca's page: grassland outside every forest zone (WHI-907). */
+  fireFilter?: CityFireFilter;
 }) {
+  const vegetation = fireFilter === "vegetation";
   const [fires, setFires] = useState<NearbyFire[] | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -53,7 +59,7 @@ export function CityForestFires({
       .then((data: { fires?: Fire[] }) => {
         if (cancelled) return;
         const nearby = (data.fires ?? [])
-          .filter((f) => f.forestZone)
+          .filter((f) => showsFire(f, fireFilter))
           .map((f) => {
             const distanceKm = haversineKm(lat, lng, f.latitude, f.longitude);
             const bearing = bearingDegrees(lat, lng, f.latitude, f.longitude);
@@ -71,7 +77,7 @@ export function CityForestFires({
     return () => {
       cancelled = true;
     };
-  }, [lat, lng]);
+  }, [lat, lng, fireFilter]);
 
   if (loading || fires === null) return null;
 
@@ -86,14 +92,14 @@ export function CityForestFires({
             🛡
           </span>
           <span className="font-mono text-[10px] text-muted tracking-[0.12em] uppercase">
-            Actividad forestal · {cityName}
+            {vegetation ? "Actividad de fuego" : "Actividad forestal"} · {cityName}
           </span>
         </div>
         <p
           className="mt-2 m-0"
           style={{ fontSize: 15, fontWeight: 500, color: "var(--good)" }}
         >
-          Sin actividad forestal en {RADIUS_KM} km
+          {vegetation ? "Sin focos activos" : "Sin actividad forestal"} en {RADIUS_KM} km
         </p>
         <p className="mt-1 font-mono text-[11px] text-muted">
           Última verificación: NASA FIRMS VIIRS, últimas 24h
@@ -113,7 +119,7 @@ export function CityForestFires({
             🔥
           </span>
           <span className="font-mono text-[10px] text-muted tracking-[0.12em] uppercase">
-            Focos forestales cerca de {cityName}
+            {vegetation ? "Focos activos" : "Focos forestales"} cerca de {cityName}
           </span>
         </div>
         <span className="font-mono text-[11px] text-muted tabular-nums">
@@ -122,14 +128,18 @@ export function CityForestFires({
       </div>
       <ul className="flex flex-col gap-2 list-none p-0 m-0">
         {fires.map((f) => (
-          <FireRow key={`${f.latitude}_${f.longitude}_${f.acqDate}_${f.acqTime}`} fire={f} />
+          <FireRow
+            key={`${f.latitude}_${f.longitude}_${f.acqDate}_${f.acqTime}`}
+            fire={f}
+            vegetation={vegetation}
+          />
         ))}
       </ul>
     </div>
   );
 }
 
-function FireRow({ fire }: { fire: NearbyFire }) {
+function FireRow({ fire, vegetation }: { fire: NearbyFire; vegetation: boolean }) {
   const cardinal = cardinalToSpanish(degreesToCardinal(fire.bearing));
   const zone = forestZoneName(fire.forestZone);
   const ageMin = minutesSinceDetection(fire.acqDate, fire.acqTime);
@@ -152,7 +162,7 @@ function FireRow({ fire }: { fire: NearbyFire }) {
           </span>
         </div>
         <div className="font-mono text-[10px] text-muted mt-0.5">
-          {zone ?? "Forestal"} · detectado hace {formatAge(ageMin)}
+          {zone ?? (vegetation ? "Vegetación" : "Forestal")} · detectado hace {formatAge(ageMin)}
         </div>
       </div>
     </li>
@@ -175,15 +185,6 @@ function minutesSinceDetection(acqDate: string, acqTime: string): number {
   const ts = Date.parse(`${acqDate}T${hh}:${mm}:00Z`);
   if (Number.isNaN(ts)) return 0;
   return Math.max(0, Math.round((Date.now() - ts) / 60000));
-}
-
-function bearingDegrees(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const φ1 = (lat1 * Math.PI) / 180;
-  const φ2 = (lat2 * Math.PI) / 180;
-  const Δλ = ((lng2 - lng1) * Math.PI) / 180;
-  const y = Math.sin(Δλ) * Math.cos(φ2);
-  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
-  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
 function formatAge(min: number): string {

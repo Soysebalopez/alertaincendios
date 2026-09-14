@@ -81,13 +81,11 @@ export async function GET(request: Request) {
       lat: number;
       lng: number;
       city_name: string;
-      role?: string;
-      cuartel_name?: string;
     };
     const subscribers = await fetchAllRows<Subscriber>(
       db,
       "subscribers",
-      "chat_id, lat, lng, city_name, role, cuartel_name",
+      "chat_id, lat, lng, city_name",
       (q) => q.order("chat_id")
     );
 
@@ -115,18 +113,8 @@ export async function GET(request: Request) {
       const zone = findForestZone(det.lat, det.lng);
 
       for (const sub of subscribers) {
-        const role = sub.role ?? "civilian";
-        const isFireman = role === "fireman";
-        // M7 — unknown role falls back to civilian (forest-only) filtering.
-        // Surface it so a future role (e.g. institucional/B2G) isn't silently
-        // under-alerted by the string-equality check.
-        if (role !== "civilian" && role !== "fireman") {
-          log.warn({ event: "goes_alerts.unknown_role", chatId: sub.chat_id, role });
-        }
-
-        // WHI-758: civilian solo recibe preliminares en zona forestal.
-        // Fireman ve todo para coordinación general.
-        if (!isFireman && !zone) {
+        // WHI-758: los suscriptores reciben sólo preliminares en zona forestal.
+        if (!zone) {
           skippedNonForestCivilian++;
           continue;
         }
@@ -165,20 +153,12 @@ export async function GET(request: Request) {
         }
         if (!claimed) continue;
 
-        // WHI-588 — fireman role gets operational format
-        const cuartel = (sub as { cuartel_name?: string }).cuartel_name ?? null;
-        const message = isFireman
-          ? formatFiremanPreliminary(det, sub.city_name, distKm, cuartel, zone?.name ?? null)
-          : formatPreliminary(det, sub.city_name, distKm, zone?.name ?? null);
-        // Feedback comunitario: teclado de validación solo a civilian.
+        const message = formatPreliminary(det, sub.city_name, distKm, zone?.name ?? null);
+        // Feedback comunitario: teclado de validación.
         // alert_id = "g:"+det.id (det.id = goes_preliminary.id).
-        const sendResult = await sendMessage(
-          sub.chat_id,
-          message,
-          isFireman
-            ? undefined
-            : { reply_markup: buildFeedbackKeyboard("g:" + det.id) }
-        );
+        const sendResult = await sendMessage(sub.chat_id, message, {
+          reply_markup: buildFeedbackKeyboard("g:" + det.id),
+        });
         if (!sendResult.ok) {
           log.error({
             event: "goes_alerts.send_failed",
@@ -197,7 +177,6 @@ export async function GET(request: Request) {
           event: "goes_alerts.sent",
           goesId: det.id,
           chatId: sub.chat_id,
-          role: isFireman ? "fireman" : "civilian",
           distKm: Math.round(distKm),
           frp: det.frp_mw,
           seenInScans,
@@ -235,42 +214,6 @@ function minutesSince(iso: string): number {
   const t = Date.parse(iso);
   if (Number.isNaN(t)) return 0;
   return Math.max(0, Math.round((Date.now() - t) / 60000));
-}
-
-// WHI-588 — operational preliminary alert for fireman role
-function formatFiremanPreliminary(
-  det: {
-    lat: number;
-    lng: number;
-    mask: number;
-    mask_label: string | null;
-    frp_mw: number | null;
-    scan_start: string;
-  },
-  cityName: string,
-  distKm: number,
-  cuartelName: string | null,
-  zoneName: string | null
-): string {
-  const dist = Math.round(distKm * 10) / 10;
-  const ageMin = minutesSince(det.scan_start);
-  const gMaps = `https://www.google.com/maps?q=${det.lat},${det.lng}&z=12`;
-  const frp = det.frp_mw != null ? `${det.frp_mw.toFixed(1)} MW` : "—";
-  const city = escapeHtml(cityName);
-  const zone = zoneName ? escapeHtml(zoneName) : "fuera de zona forestal";
-  const cuartel = cuartelName ? ` · ${escapeHtml(cuartelName)}` : "";
-
-  return (
-    `⚠️ <b>Posible foco a ${dist}km — esperando confirmación</b>\n\n` +
-    `📍 ${dist} km (desde ${city})\n` +
-    `🔥 FRP estimado: ${frp}\n` +
-    `🛰️ NOAA GOES-19 · detección hace ~${ageMin} min\n` +
-    `🧭 Coords: <code>${det.lat.toFixed(4)}, ${det.lng.toFixed(4)}</code>\n` +
-    `🌲 Zona: ${zone}\n` +
-    `📌 <a href="${gMaps}">Maps</a>\n\n` +
-    `<i>Preliminar — NASA FIRMS confirma en 1-3 h. Validá visualmente antes de despachar.</i>` +
-    `\n—\nClara · AlertaForestal.org · Coordinación interna${cuartel}`
-  );
 }
 
 function formatPreliminary(

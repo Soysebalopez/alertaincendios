@@ -14,7 +14,7 @@
 type LogLevel = "debug" | "info" | "warn" | "error";
 
 interface LogFields {
-  /** Nombre del evento — ej. "alert_sent", "fireman_promoted". Permite agrupar. */
+  /** Nombre del evento — ej. "alert_sent", "bot.command_failed". Permite agrupar. */
   event: string;
   /** Campos arbitrarios. Mantenelos chicos y serializables. */
   [key: string]: unknown;

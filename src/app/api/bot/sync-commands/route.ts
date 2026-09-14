@@ -6,8 +6,8 @@ import { setMyCommands, type BotCommand } from "@/lib/telegram";
  * GET /api/bot/sync-commands?secret=<CRON_SECRET>
  *
  * Registra el menú nativo del bot (lo que Telegram muestra al tocar "/").
- * Ese menú se setea con setMyCommands y NO se deriva del webhook — por eso
- * antes /soybombero y /dejarcuartel no aparecían aunque el código los manejara.
+ * Ese menú se setea con setMyCommands y NO se deriva del webhook — por eso un
+ * comando que el código ya maneja no aparece en el menú hasta volver a correr esto.
  *
  * Re-ejecutable: pegá esta URL (con el secret) cada vez que cambie la lista.
  * /start lo agrega Telegram automáticamente, no hace falta listarlo.
@@ -19,8 +19,6 @@ const COMMANDS: BotCommand[] = [
   { command: "rayos", description: "Activar/desactivar alertas de tormenta seca" },
   { command: "preferencias", description: "Ajustar tus avisos (rayos y prevención)" },
   { command: "prevencion", description: "Avisos de prevención de incendio" },
-  { command: "soybombero", description: "Modo bombero (para cuarteles)" },
-  { command: "dejarcuartel", description: "Volver a las alertas vecinales" },
   { command: "about", description: "Sobre el proyecto" },
   { command: "help", description: "Ver lista de comandos" },
   { command: "cancelar", description: "Eliminar tu suscripción" },
@@ -31,9 +29,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   // Telegram resuelve el menú por SCOPE (el más específico gana). Un set previo
-  // en all_private_chats sombreaba el scope default (por eso /soybombero no
-  // aparecía). Seteamos los 3 scopes que ganan para un usuario es en un DM:
-  // default, all_private_chats, y all_private_chats+es.
+  // en all_private_chats sombreaba el scope default y escondía comandos nuevos.
+  // Seteamos los 3 scopes que ganan para un usuario en un DM: default,
+  // all_private_chats, y all_private_chats+es.
   const PRIVATE = { type: "all_private_chats" };
   const def = await setMyCommands(COMMANDS);
   const dm = await setMyCommands(COMMANDS, PRIVATE);

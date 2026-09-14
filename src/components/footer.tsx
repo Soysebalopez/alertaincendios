@@ -24,8 +24,10 @@ const COLUMNS = [
     items: [
       { label: "NASA FIRMS", href: "https://firms.modaps.eosdis.nasa.gov/", external: true },
       { label: "NOAA GOES-19", href: "https://www.star.nesdis.noaa.gov/goes/", external: true },
+      { label: "SMN", href: "https://www.smn.gob.ar/", external: true },
+      { label: "Copernicus", href: "https://atmosphere.copernicus.eu/", external: true },
       { label: "Open-Meteo", href: "https://open-meteo.com/", external: true },
-      { label: "Sentinel-5P", href: "https://sentinels.copernicus.eu/web/sentinel/missions/sentinel-5p", external: true },
+      { label: "Vaisala Xweather", href: "https://www.xweather.com/", external: true },
     ],
   },
 ];

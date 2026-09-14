@@ -30,10 +30,6 @@ Alerta preventiva cuando hay rayos + humedad <60% + lluvia <0.5 mm/h cerca tuyo.
 
 Argentina con 3 capas: focos activos, calidad del aire por ciudad, y dirección del viento. En tiempo real.
 
-### 🚒 Modo bombero
-
-Los bomberos voluntarios pueden activar el rol "fireman" con un código de invitación distribuido a su cuartel. Reciben mensajes operativos (sin interpretación AI, coords precisas, firmado por cuartel) en lugar de los civiles.
-
 ## Cómo funciona
 
 ```
@@ -88,7 +84,6 @@ Pg_cron daily ──► /api/goes-dismissals (hourly) ──► "falsa alarma" +
 | `/ciudad <nombre>` | Suscribirse por nombre de ciudad |
 | `/estado` | Focos activos cerca tuyo + última verificación |
 | `/rayos` | Activar/desactivar alertas de tormenta seca |
-| `/soybombero <código>` | Activar modo bombero (necesita código de cuartel) |
 | `/about` | Sobre el proyecto |
 | `/help` | Lista de comandos |
 | `/cancelar` | Eliminar suscripción |

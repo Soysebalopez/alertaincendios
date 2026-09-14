@@ -1,7 +1,5 @@
 import {
   getSubscriberBreakdown,
-  getTopCuarteles,
-  getInviteCodesStatus,
   getEngagement,
   getGoesFunnelTrend,
   getConfirmationTrend,
@@ -30,8 +28,6 @@ export const metadata = {
 export default async function SuperadminPage() {
   const [
     subs,
-    cuarteles,
-    codes,
     engagement,
     funnelTrend,
     confirmationTrend,
@@ -41,8 +37,6 @@ export default async function SuperadminPage() {
     sysHealth,
   ] = await Promise.all([
     getSubscriberBreakdown(),
-    getTopCuarteles(),
-    getInviteCodesStatus(),
     getEngagement(),
     getGoesFunnelTrend(14),
     getConfirmationTrend(),
@@ -79,23 +73,12 @@ export default async function SuperadminPage() {
       </header>
 
       {/* ════════════ Suscriptores ════════════ */}
-      <Section title="Suscriptores" subtitle="bot Telegram · roles · cuarteles · engagement">
+      <Section title="Suscriptores" subtitle="bot Telegram · engagement">
         <div
           className="grid"
           style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}
         >
           <MetricCard label="Total" value={subs.total.toLocaleString("es-AR")} sub="suscriptores activos" />
-          <MetricCard
-            label="Civilian"
-            value={subs.civilian}
-            sub={`${pct(subs.civilian, subs.total)} del total`}
-          />
-          <MetricCard
-            label="Fireman"
-            value={subs.fireman}
-            sub={`${pct(subs.fireman, subs.total)} del total`}
-            tone={subs.fireman > 0 ? "accent" : undefined}
-          />
           <MetricCard
             label="En zona forestal (WUI 5km)"
             value={subs.in_forest_zone}
@@ -104,17 +87,7 @@ export default async function SuperadminPage() {
           />
         </div>
 
-        <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-          <Panel title="Civilian vs Fireman">
-            <DonutChart
-              data={[
-                { name: "Civilian", value: subs.civilian, color: "#e8622c" },
-                { name: "Fireman", value: subs.fireman, color: "#4ade80" },
-              ]}
-              centerLabel="Total"
-              centerValue={subs.total.toString()}
-            />
-          </Panel>
+        <div className="grid" style={{ gridTemplateColumns: "1fr", gap: 16 }}>
           <Panel title="Lightning opt-in">
             <DonutChart
               data={[
@@ -146,75 +119,6 @@ export default async function SuperadminPage() {
             sub="/cancelar emitidos"
             tone={engagement.cancellations_30d > 0 ? "warn" : undefined}
           />
-        </div>
-
-        <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-          <Panel title="Top cuarteles" subtitle={`${cuarteles.length} cuarteles`}>
-            {cuarteles.length === 0 ? (
-              <EmptyHint>Ningún cuartel registrado todavía</EmptyHint>
-            ) : (
-              <HorizontalBars
-                data={cuarteles.slice(0, 8).map((c) => ({ name: c.cuartel, value: c.subs }))}
-                color="#4ade80"
-                height={Math.max(140, cuarteles.length * 28)}
-              />
-            )}
-          </Panel>
-          <Panel
-            title="Invite codes (fireman)"
-            subtitle={`${codes.used_slots}/${codes.total_slots} usos`}
-          >
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <div
-                style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}
-              >
-                <MiniStat label="Códigos" value={codes.total_codes} />
-                <MiniStat label="Usados" value={codes.used_slots} />
-                <MiniStat label="Agotados" value={codes.exhausted_codes} />
-              </div>
-              {codes.rows.length > 0 ? (
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                  <thead>
-                    <tr
-                      style={{
-                        borderBottom: "1px solid var(--border)",
-                        textAlign: "left",
-                        color: "var(--muted)",
-                        fontSize: 10,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.08em",
-                      }}
-                    >
-                      <th style={{ padding: "8px 4px" }}>Cuartel</th>
-                      <th style={{ padding: "8px 4px", textAlign: "right" }}>Uso</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {codes.rows.slice(0, 6).map((r) => (
-                      <tr
-                        key={r.code}
-                        style={{ borderBottom: "1px solid var(--border)" }}
-                      >
-                        <td style={{ padding: "8px 4px" }}>{r.cuartel_name ?? "—"}</td>
-                        <td
-                          style={{
-                            padding: "8px 4px",
-                            textAlign: "right",
-                            fontFamily: "var(--font-mono)",
-                            color: r.used_count >= r.max_uses ? "var(--muted)" : "var(--foreground)",
-                          }}
-                        >
-                          {r.used_count}/{r.max_uses}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : (
-                <EmptyHint>Sin códigos cargados</EmptyHint>
-              )}
-            </div>
-          </Panel>
         </div>
       </Section>
 
@@ -445,33 +349,6 @@ function Panel({
   );
 }
 
-function MiniStat({ label, value }: { label: string; value: number }) {
-  return (
-    <div
-      style={{
-        padding: 10,
-        background: "color-mix(in oklab, var(--foreground) 3%, transparent)",
-        border: "1px solid var(--border)",
-        borderRadius: 8,
-      }}
-    >
-      <div className="font-mono text-[9px] text-muted uppercase tracking-wider">
-        {label}
-      </div>
-      <div
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 18,
-          fontWeight: 600,
-          marginTop: 2,
-        }}
-      >
-        {value.toLocaleString("es-AR")}
-      </div>
-    </div>
-  );
-}
-
 function LatencyCard({
   title,
   stats,
@@ -536,22 +413,6 @@ function LatencyCard({
           {hint}
         </div>
       ) : null}
-    </div>
-  );
-}
-
-function EmptyHint({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      style={{
-        padding: "24px 16px",
-        textAlign: "center",
-        color: "var(--muted)",
-        fontSize: 13,
-        fontStyle: "italic",
-      }}
-    >
-      {children}
     </div>
   );
 }
