@@ -1,8 +1,11 @@
 -- WHI-907 parte 2 — rayos reales del GLM (GOES-19) sobre Argentina.
 --
--- ⚠️ NO APLICAR sin que Seba vea este SQL y dé OK (checkpoint C2 del plan
---    docs/superpowers/plans/2026-09-14-bahia-blanca-nivel-1.md).
--- Aplicar en Supabase SQL Editor (proyecto qmzuwnilehldvobjsbcs, compartido con SatAI).
+-- Aplicado el 2026-09-14 con OK de Seba (checkpoint C2 del plan
+-- docs/superpowers/plans/2026-09-14-bahia-blanca-nivel-1.md), en el proyecto
+-- qmzuwnilehldvobjsbcs (compartido con SatAI). Verificado después: RLS activo,
+-- sin policies, sin permisos para anon ni authenticated, y ninguna de las dos
+-- claves públicas puede ejecutar la función de limpieza. La tabla queda vacía
+-- hasta programar glm-sync, que espera la mudanza a Vercel Pro (WHI-911).
 --
 -- Mismo criterio que whi-907-wind.sql: RLS activo, SIN policies para anon ni
 -- authenticated, y REVOKE ALL explícito (RLS no gobierna TRUNCATE).

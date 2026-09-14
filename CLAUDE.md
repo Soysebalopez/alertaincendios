@@ -36,7 +36,7 @@ Alertas tempranas de incendios forestales en Argentina vía Telegram. El bot del
 - Bahía Blanca: `/bahia-blanca` — página propia (WHI-907). Muestra **todos los focos de vegetación** (Bahía no está en ninguna zona forestal) sin antorchas industriales: como el feed de FIRMS casi en tiempo real no trae el tipo de fuente, se descartan **por posición** (polo petroquímico de Ingeniero White y un sitio industrial al noroeste, sacados del archivo de FIRMS 2023–2024: `src/lib/static-heat-sources.ts`). Además: el mapa con el cono de humo y frente, `?foco=<lat>,<lng>` para centrarlo en un foco (sólo a <100 km; el mapa sólo se aleja para mostrar los conos cuando se llega con `?foco=`), viento medido del aeropuerto (METAR SAZB), rayos GLM, historial medido y el deep link del bot `ciudad-bahia-blanca`. Los paneles de viento y rayos no se muestran si su tabla no existe o el dato está vencido. `/ciudad/buenos-aires/bahia-blanca` redirige acá (308)
 - Historial: `/historial` — Recharts evolución de focos
 - Cómo funciona: `/como-funciona` — FAQ ciudadano (8 preguntas, sin jerga)
-- ~~Cuarteles~~: la función de bomberos voluntarios (rol, códigos de invitación, `/cuarteles`, `/soybombero`) **se retiró el 2026-09-14 sin haberse usado nunca** (WHI-907). `/cuarteles` redirige a `/`. Las tablas `fireman_codes` / `fireman_code_usage` y la columna `subscribers.cuartel_name` siguen en la base hasta el borrado con OK explícito
+- ~~Cuarteles~~: la función de bomberos voluntarios (rol, códigos de invitación, `/cuarteles`, `/soybombero`) **se retiró el 2026-09-14 sin haberse usado nunca** (WHI-907). `/cuarteles` redirige a `/`. Sus tablas (`fireman_codes`, `fireman_code_usage`), la función `consume_fireman_code` y las columnas `subscribers.role` y `subscribers.cuartel_name` **se borraron de la base el 14/9** con OK de Seba (`scripts/sql/whi-907-drop-firefighters.sql`; copia en `~/whitebay-backups/alertaforestal-bomberos-2026-09-14/`)
 - Dashboard: `/dashboard`, `/dashboard/alerts`, `/dashboard/health`, `/dashboard/superadmin` — métricas internas (`superadmin` agrega breakdown de subscribers, funnel GOES, latencias, forest split), gated por Supabase Auth allowlist (soysebalopez@gmail.com)
 - Login: `/login` — entry point del dashboard
 
@@ -92,8 +92,7 @@ Autorización vía `isCronAuthorized()` en `src/lib/cron-auth.ts`: acepta el sec
 ## Supabase Tables (shared project)
 
 ### Suscripción + estado del bot
-- `subscribers` (chat_id bigint PK, lat, lng, city_name, lightning_enabled bool default true, role text default 'civilian', cuartel_name text, created_at) — `role` y `cuartel_name` quedaron sin uso desde el retiro de bomberos (2026-09-14); se borran con OK explícito
-- `fireman_codes` (code text PK, cuartel_name, used_count, max_uses) — **sin uso desde 2026-09-14** (WHI-907); pendiente de borrar con OK explícito
+- `subscribers` (chat_id bigint PK, lat, lng, city_name, created_at, lightning_enabled bool default true, source, prevention_mode) — `role` y `cuartel_name` se borraron el 14/9 con el retiro de bomberos (WHI-907)
 - `bot_commands_log` (id bigserial PK, chat_id, command, args, created_at) — WHI-587: engagement
 
 ### FIRMS (cache + dedup)
@@ -118,12 +117,12 @@ Autorización vía `isCronAuthorized()` en `src/lib/cron-auth.ts`: acepta el sec
 ### Lightning
 - `lightning_alerted` (id bigserial PK, chat_id, alerted_at) — rate-limit 30 min/sub
 
-### Viento y rayos (WHI-907) — ⚠️ SQL escrito, NO aplicado (checkpoint C2)
+### Viento y rayos (WHI-907) — aplicado el 14/9 (checkpoint C2)
 Archivos: `scripts/sql/whi-907-wind.sql` y `scripts/sql/whi-907-lightning.sql`. RLS activo, sin policies y `REVOKE ALL` para anon/authenticated (RLS no gobierna TRUNCATE).
 - `wind_observations` (station, observed_at, wind_from_deg nullable = VRB, wind_kmh, gust_kmh, variable; PK (station, observed_at)) — METAR, retención 90 días
-- `wind_forecast` (source, run_at, valid_at, lat, lng, wind_from_deg, wind_kmh, temp_c, rh_pct; PK (source, run_at, valid_at, lat, lng)) — SMN WRF, retención 3 días. `fetchWind()` la prefiere a <30 km de Bahía (fila de la hora válida más cercana, después la celda más cercana, después la corrida más nueva)
-- `lightning_flashes` (flash_at, lat, lng, energy_j, area_m2, source; PK (flash_at, lat, lng)) — GLM, retención 7 días
-- Funciones de retención `purge_old_wind_data()` y `purge_old_lightning_flashes()` (SECURITY DEFINER, borran filas viejas; se agendan en C5)
+- `wind_forecast` (source, run_at, valid_at, lat, lng, wind_from_deg, wind_kmh, temp_c, rh_pct; PK (source, run_at, valid_at, lat, lng)) — SMN WRF, retención 3 días. `fetchWind()` la prefiere a <30 km de Bahía (fila de la hora válida más cercana, después la celda más cercana, después la corrida más nueva). **Vacía a propósito:** el 14/9 se decidió no programar `smn-wrf-sync` porque el SMN midió peor que Open-Meteo en dirección; sin filas, `fetchWind()` usa Open-Meteo
+- `lightning_flashes` (flash_at, lat, lng, energy_j, area_m2, source; PK (flash_at, lat, lng)) — GLM, retención 7 días. Vacía hasta programar `glm-sync`, que espera la mudanza a Vercel Pro (WHI-911)
+- Funciones de retención `purge_old_wind_data()` y `purge_old_lightning_flashes()` (SECURITY DEFINER, borran filas viejas). **Sin programar:** borran datos, así que necesitan un OK aparte de Seba; la de rayos va junto con `glm-sync`
 
 ### Config
 - `_clara_config` (key PK, value text, updated_at) — `cron_secret`, `firms_map_key`, `admin_chat_id`, flags operativos (`fires_freshness_alerted_at`, `firms_sync_error`, `firms_key_alerted_at`) y `glm_last_sync_at` (latido del sync GLM, WHI-907). Cron jobs leen el secret via `clara_cron_secret()` SECURITY DEFINER
@@ -139,6 +138,8 @@ Archivos: `scripts/sql/whi-907-wind.sql` y `scripts/sql/whi-907-lightning.sql`. 
 - `goes-prune` (`30 3 * * *` daily) — cleanup defensivo >7 días
 - `satellites-sync-tles` (`30 4 * * *` daily, 01:30 ART) — `/api/satellites/sync-tles` baja TLEs frescos de CelesTrak (WHI-753)
 - `fire-danger-sync` (`0 9 * * *` daily, 06:00 ART) — `/api/fire-danger-sync` Python: FWI por zona TDF, 16-day forecast. Usa `trigger_fire_danger_sync()` + GUC `app.fire_danger_sync_url` + `clara_cron_secret()`. SQL en `scripts/sql/whi-fwi-cron.sql`
+- `metar-sync` (`10 * * * *`, desde el 14/9) — `/api/metar-sync`: METAR del aeropuerto → `wind_observations` (WHI-907). SQL en `scripts/sql/whi-907-crons.sql`
+- **Sin programar a propósito (WHI-907):** `glm-sync` (cada 5 min; espera la mudanza a Vercel Pro, WHI-911), `smn-wrf-sync` (el SMN midió peor que Open-Meteo) y las limpiezas `purge_old_wind_data()` / `purge_old_lightning_flashes()` (borran: OK aparte)
 - `fires-freshness-monitor` (`7,22,37,52 * * * *`) — `/api/monitor/fires-freshness` staleness + key inválida.
   ⚠️ Corrido a `:07` el 2026-08-26: antes era `*/15`, o sea que revisaba en el
   MISMO minuto que `fires-fetch` (`0,15,30,45`) y 2 minutos ANTES de que
@@ -238,11 +239,12 @@ Archivos: `scripts/sql/whi-907-wind.sql` y `scripts/sql/whi-907-lightning.sql`. 
 
 ## Seguridad (WHI-586 auditado)
 - HSTS, X-Frame-Options DENY, X-Content-Type-Options, Referrer-Policy, Permissions-Policy en `next.config.ts`
+- CSP en `next.config.ts`: `connect-src` incluye `wss://*.supabase.co` para el Realtime del contador de la home. Sin eso el navegador cortaba la conexión en silencio y el contador nunca se actualizaba solo; arreglado el 14/9 (#78), con test en `src/__tests__/csp-realtime.test.ts`
 - RLS habilitado en todas las tablas, anon/auth roles bloqueados — service_role bypassea
 - Migrado al nuevo sistema de API keys de Supabase: `sb_publishable_*` (anon) + `sb_secret_*` (service role). Legacy JWT system disabled.
 - CRON_SECRET nunca literal en cron jobs (ver Config + API Routes — Cron para el doble path)
 - Secrets fuera del repo (.env*, scripts/*.env gitignored). Templates en *.env.example
-- Variables opcionales de WHI-907 (siempre con `.trim()`): `OPEN_METEO_API_KEY` (activa el plan pago), `XWEATHER_API_KEY` (la clave única del portal nuevo, que es `<client_id>_<client_secret>`) o `XWEATHER_CLIENT_ID` + `XWEATHER_CLIENT_SECRET`, `XWEATHER_MONTHLY_ACCESSES` y `XWEATHER_ACCESSES_PER_LIGHTNING_QUERY` (cupo; por defecto 15000 y 10, con 10% de reserva). Sin ellas todo funciona como antes
+- Variables opcionales de WHI-907 (siempre con `.trim()`): `OPEN_METEO_API_KEY` (activa el plan pago), `XWEATHER_API_KEY` (la clave única del portal nuevo, que es `<client_id>_<client_secret>`) o `XWEATHER_CLIENT_ID` + `XWEATHER_CLIENT_SECRET`, `XWEATHER_MONTHLY_ACCESSES` y `XWEATHER_ACCESSES_PER_LIGHTNING_QUERY` (cupo; por defecto 15000 y 10, con 10% de reserva). Sin ellas todo funciona como antes. ⚠️ El plan gratis de Xweather prohíbe el uso comercial ("sólo para probar"); decisión de Seba del 14/9: se usa mientras AlertaForestal no cobre, y se revisa si se vende la capa institucional
 - Procedimiento de rotación documentado en `SECURITY-AUDIT.md`
 
 ## Current focus
