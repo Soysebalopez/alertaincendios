@@ -112,13 +112,16 @@ async function getFireCounts(): Promise<FireCounts> {
   }
 }
 
+// WHI-907: the SMN licence (CC BY 2.5 AR) asks to be credited, and Xweather
+// lightning is shown in alerts. Sentinel-5P is a Copernicus mission and
+// Telegram is not a data source, so neither gets its own card.
 const DATA_SOURCES = [
   { name: "NASA FIRMS", org: "NASA", color: "#4b8bd4", icon: "nasa" },
-  { name: "NOAA GOES-19", org: "NOAA", color: "#3a9bdc", icon: "noaa" },
-  { name: "Copernicus", org: "ESA", color: "#7fb3c7", icon: "esa" },
-  { name: "Sentinel-5P", org: "ESA Copernicus", color: "#6aa8d4", icon: "sentinel" },
+  { name: "NOAA GOES-19", org: "NOAA · focos y rayos", color: "#3a9bdc", icon: "noaa" },
+  { name: "SMN", org: "Servicio Meteorológico Nacional", color: "#5fa8a0", icon: "smn" },
+  { name: "Copernicus", org: "ESA · Sentinel-5P", color: "#7fb3c7", icon: "esa" },
   { name: "Open-Meteo", org: "Open-Source", color: "#ff6b35", icon: "openmeteo" },
-  { name: "Telegram", org: "Telegram", color: "#5eb1e8", icon: "telegram" },
+  { name: "Vaisala Xweather", org: "Red de rayos", color: "#d4a72c", icon: "xweather" },
 ] as const;
 
 const STEPS = [
@@ -158,24 +161,9 @@ const UPCOMING = [
     body: "Para los que no usan Telegram.",
   },
   {
-    emoji: "⚡",
-    title: "Alerta de tormenta seca",
-    body: "Rayos sin lluvia = riesgo de incendio. Te avisamos cuando hay actividad eléctrica cerca tuyo sin precipitación.",
-  },
-  {
-    emoji: "💨",
-    title: "Ver hacia dónde se mueve el humo",
-    body: "En el mapa vas a poder ver el área que puede verse afectada según la dirección del viento, no solo el punto donde está el incendio.",
-  },
-  {
     emoji: "🌑",
     title: "Zonas afectadas por incendios recientes",
     body: "Después de un incendio, vas a poder ver qué áreas quedaron afectadas — útil para productores, vecinos y periodistas.",
-  },
-  {
-    emoji: "📡",
-    title: "Más fuentes de datos, mayor precisión",
-    body: "Estamos incorporando nuevas herramientas de detección para confirmar los focos con mayor precisión y reducir las falsas alarmas.",
   },
 ] as const;
 
@@ -607,7 +595,7 @@ export default async function Home() {
                 className="text-muted mt-3"
                 style={{ fontSize: 13, margin: "12px 0 0", maxWidth: "62ch" }}
               >
-                Todo abierto. Todo verificable. Sin cajas negras.
+                Fuentes oficiales y verificables. Sin cajas negras.
               </p>
             </div>
           </div>
