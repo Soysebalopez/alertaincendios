@@ -9,6 +9,13 @@ import {
   type Flash,
 } from "@/lib/lightning-near";
 import { sendMessage, escapeHtml } from "@/lib/telegram";
+import {
+  XWEATHER_ATTRIBUTION,
+  closestLightningUrl,
+  parseLightningResponse,
+  withinMonthlyBudget,
+  xweatherConfigured,
+} from "@/lib/xweather";
 import { isCronAuthorized } from "@/lib/cron-auth";
 import { fetchAllRows } from "@/lib/paginate";
 import { log } from "@/lib/logger";
@@ -21,12 +28,17 @@ import { log } from "@/lib/logger";
  * sincronización está viva (`_clara_config.glm_last_sync_at` reciente y la
  * tabla `lightning_flashes` existe). Si no, vuelve al método anterior:
  * pronóstico de tormenta de OpenWeather / Open-Meteo.
+ * WHI-907 parte 3 — con credenciales de Xweather, cuando ya sale una alerta por
+ * rayos GLM, pregunta si hubo un rayo nube-tierra cerca en los últimos 5 min
+ * (10 accesos por consulta, contados por mes en `_clara_config`). Sin
+ * credenciales, sin cupo o si falla, la alerta sale igual que antes.
  *
  * Rate limit: 30 min por suscriptor (vía lightning_alerted.alerted_at).
  * Solo alerta con rayo/tormenta + condiciones secas (humedad < 60%, lluvia < 0.5 mm).
  */
 const RECENT_FLASH_MINUTES = 30;
 const GLM_HEARTBEAT_KEY = "glm_last_sync_at";
+const XWEATHER_TIMEOUT_MS = 5000;
 
 type Db = ReturnType<typeof getSupabase>;
 type Subscriber = {
@@ -38,6 +50,7 @@ type Subscriber = {
 };
 type FlashRow = { flash_at: string; lat: number; lng: number };
 type DryConditions = { humidity: number | null; recentRainMm: number | null };
+type XweatherRun = { key: string; used: number; queries: number; confirmed: number; skippedBudget: number };
 
 export async function GET(request: Request) {
   if (!isCronAuthorized(request)) {
@@ -71,6 +84,7 @@ export async function GET(request: Request) {
     // Expected until the GLM migration and cron are live (WHI-907 C2/C5).
     log.info({ event: "lightning_alerts.glm_unavailable", reason: glm.reason });
   }
+  const xweather = glm.ok ? await xweatherRun(db, now) : null;
 
   let alertsSent = 0;
   let evaluated = 0;
@@ -93,7 +107,8 @@ export async function GET(request: Request) {
       if (near.length === 0) continue;
       const dry = await fetchDryConditions(sub.lat, sub.lng);
       if (!isDryLightningRisk({ flashesNearby: near.length, ...dry })) continue;
-      msg = glmMessage(sub.city_name, near, dry, now);
+      const groundStrikeKm = xweather ? await cloudToGroundNear(db, xweather, sub) : null;
+      msg = glmMessage(sub.city_name, near, dry, now, groundStrikeKm);
     } else {
       const risk = await fetchLightningRisk(sub.lat, sub.lng);
       if (!risk.hasFireRisk) continue;
@@ -130,6 +145,9 @@ export async function GET(request: Request) {
     evaluated,
     alerts: alertsSent,
     source: glm.ok ? "glm" : "weather-code",
+    xweather: xweather
+      ? { queries: xweather.queries, confirmed: xweather.confirmed, skipped_budget: xweather.skippedBudget }
+      : null,
   });
 }
 
@@ -197,11 +215,59 @@ async function nearbyFlashes(
   return flashesNear(flashes, sub.lat, sub.lng);
 }
 
+/** The month's Xweather query counter, or null when there are no credentials. */
+async function xweatherRun(db: Db, now: Date): Promise<XweatherRun | null> {
+  if (!xweatherConfigured()) return null;
+  const key = `xweather_queries_${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+  const { data } = await db.from("_clara_config").select("value").eq("key", key).maybeSingle();
+  const used = Number.parseInt((data as { value?: string } | null)?.value ?? "0", 10);
+  return { key, used: Number.isFinite(used) ? used : 0, queries: 0, confirmed: 0, skippedBudget: 0 };
+}
+
+/**
+ * Distance to the nearest cloud-to-ground strike Xweather saw near the
+ * subscriber in the last 5 minutes, or null (none, no budget, or a failure).
+ */
+async function cloudToGroundNear(db: Db, run: XweatherRun, sub: Subscriber): Promise<number | null> {
+  if (!withinMonthlyBudget(run.used)) {
+    run.skippedBudget++;
+    return null;
+  }
+  // Counted before asking: a query that fails still spends accesses.
+  run.used++;
+  run.queries++;
+  await db.from("_clara_config").upsert({ key: run.key, value: String(run.used), updated_at: new Date().toISOString() });
+
+  try {
+    const res = await fetch(closestLightningUrl(sub.lat, sub.lng, GLM_NEAR_RADIUS_KM), {
+      signal: AbortSignal.timeout(XWEATHER_TIMEOUT_MS),
+    });
+    const body = (await res.json()) as { success?: boolean; error?: { code?: string } | null };
+    if (body?.success !== true) {
+      log.info({ event: "lightning_alerts.xweather_error", chatId: sub.chat_id, code: body?.error?.code });
+    }
+    const distances = parseLightningResponse(body)
+      .filter((strike) => strike.type === "cg" && strike.distanceKm !== null)
+      .map((strike) => strike.distanceKm as number);
+    if (distances.length === 0) return null;
+    run.confirmed++;
+    return Math.min(...distances);
+  } catch (err) {
+    log.info({
+      event: "lightning_alerts.xweather_failed",
+      chatId: sub.chat_id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+}
+
 function glmMessage(
   cityName: string,
   near: Array<Flash & { distKm: number }>,
   dry: DryConditions,
-  now: Date
+  now: Date,
+  groundStrikeKm: number | null
 ): string {
   const nearest = near[0];
   const minutesAgo = Math.max(0, Math.round((now.getTime() - Date.parse(nearest.flashAt)) / 60000));
@@ -210,12 +276,15 @@ function glmMessage(
     `⚡ <b>Clara — Rayo con tormenta seca</b>\n\n` +
     `📍 <b>${escapeHtml(cityName)}</b>\n` +
     `⚡ Rayo detectado a ~${Math.round(nearest.distKm)} km (hace ${minutesAgo} min)${others}\n` +
+    (groundStrikeKm !== null ? `⚡ Rayo nube-tierra confirmado a ~${Math.round(groundStrikeKm)} km\n` : "") +
     `💧 Humedad: ${Math.round(dry.humidity ?? 0)}%\n` +
     `🌧 Lluvia última hora: ${(dry.recentRainMm ?? 0).toFixed(1)} mm\n\n` +
     `Un rayo con aire seco puede iniciar un incendio. Prestá atención a los próximos minutos.\n\n` +
     `Usa /rayos para activar/desactivar este tipo de alerta.\n\n` +
     `—\nClara · AlertaForestal.org\n` +
-    `<i>Datos: NOAA GOES-19 (GLM) · Open-Meteo</i>`
+    `<i>Datos: NOAA GOES-19 (GLM) · Open-Meteo` +
+    (groundStrikeKm !== null ? ` · <a href="https://www.xweather.com">${XWEATHER_ATTRIBUTION}</a>` : "") +
+    `</i>`
   );
 }
 

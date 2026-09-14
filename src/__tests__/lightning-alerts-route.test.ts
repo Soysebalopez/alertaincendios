@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -17,8 +19,10 @@ type QueryResult = { data: unknown; error: { code: string; message: string } | n
 const state: {
   flashes: QueryResult;
   heartbeat: string | null;
+  config: Record<string, string>;
   inserts: Array<{ table: string; row: unknown }>;
-} = { flashes: { data: [], error: null }, heartbeat: null, inserts: [] };
+  upserts: Array<{ table: string; row: unknown }>;
+} = { flashes: { data: [], error: null }, heartbeat: null, config: {}, inserts: [], upserts: [] };
 
 vi.mock("@/lib/telegram", () => ({
   sendMessage: (...args: unknown[]) => sendMessage(...args),
@@ -32,13 +36,23 @@ vi.mock("@/lib/paginate", () => ({ fetchAllRows: async () => [SUB] }));
 
 function query(table: string) {
   const q: Record<string, unknown> = {};
-  for (const method of ["select", "eq", "gte", "lte", "order", "limit"]) q[method] = () => q;
-  q.maybeSingle = async () =>
-    table === "_clara_config"
-      ? { data: state.heartbeat ? { value: state.heartbeat } : null, error: null }
-      : { data: null, error: null };
+  let configKey: string | null = null;
+  for (const method of ["select", "gte", "lte", "order", "limit"]) q[method] = () => q;
+  q.eq = (column: string, value: unknown) => {
+    if (column === "key") configKey = String(value);
+    return q;
+  };
+  q.maybeSingle = async () => {
+    if (table !== "_clara_config") return { data: null, error: null };
+    const value = configKey === "glm_last_sync_at" ? state.heartbeat : state.config[configKey ?? ""];
+    return { data: value ? { value } : null, error: null };
+  };
   q.insert = async (row: unknown) => {
     state.inserts.push({ table, row });
+    return { error: null };
+  };
+  q.upsert = async (row: unknown) => {
+    state.upserts.push({ table, row });
     return { error: null };
   };
   q.then = (resolve: (value: QueryResult) => void) =>
@@ -60,7 +74,13 @@ beforeEach(() => {
   fetchDryConditions.mockReset();
   state.flashes = { data: [], error: null };
   state.heartbeat = minutesAgo(3);
+  state.config = {};
   state.inserts = [];
+  state.upserts = [];
+  delete process.env.XWEATHER_API_KEY;
+  delete process.env.XWEATHER_CLIENT_ID;
+  delete process.env.XWEATHER_CLIENT_SECRET;
+  vi.unstubAllGlobals();
 });
 
 describe("GET /api/lightning-alerts — real GLM flashes", () => {
@@ -121,5 +141,69 @@ describe("GET /api/lightning-alerts — real GLM flashes", () => {
     expect(body.source).toBe("weather-code");
     expect(fetchLightningRisk).toHaveBeenCalledTimes(1);
     expect(sendMessage).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * WHI-907 part 3 — when an alert is already going out from real GLM flashes,
+ * Xweather (Vaisala) can say whether lightning actually hit the ground near
+ * the subscriber in the last 5 minutes. Optional: without credentials, over
+ * the month's budget, or on any failure, the alert goes out exactly as before.
+ */
+describe("GET /api/lightning-alerts — Xweather cloud-to-ground confirmation", () => {
+  const fixture = JSON.parse(readFileSync(path.join(__dirname, "fixtures", "xweather-lightning-closest.json"), "utf8"));
+  const monthKey = () => {
+    const now = new Date();
+    return `xweather_queries_${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+  };
+  const xweather = vi.fn();
+
+  beforeEach(() => {
+    state.flashes = { data: [nearFlash()], error: null };
+    fetchDryConditions.mockResolvedValue({ humidity: 35, recentRainMm: 0 });
+    xweather.mockReset().mockImplementation(async () => new Response(JSON.stringify(fixture), { status: 200 }));
+    vi.stubGlobal("fetch", xweather);
+  });
+
+  it("adds the confirmed cloud-to-ground strike with attribution, and counts the query", async () => {
+    process.env.XWEATHER_API_KEY = "someid_somesecret";
+
+    await GET(request());
+
+    const msg = String(sendMessage.mock.calls[0][1]);
+    expect(msg).toMatch(/Rayo nube-tierra confirmado a ~9 km/);
+    expect(msg).toContain("powered by Vaisala Xweather");
+    expect(xweather).toHaveBeenCalledTimes(1);
+    expect(state.upserts).toContainEqual({
+      table: "_clara_config",
+      row: expect.objectContaining({ key: monthKey(), value: "1" }),
+    });
+  });
+
+  it("without credentials it never asks Xweather and the alert stays as it was", async () => {
+    await GET(request());
+
+    expect(xweather).not.toHaveBeenCalled();
+    expect(String(sendMessage.mock.calls[0][1])).not.toMatch(/nube-tierra/);
+  });
+
+  it("once the month's budget is used it stops asking, and still alerts", async () => {
+    process.env.XWEATHER_API_KEY = "someid_somesecret";
+    state.config[monthKey()] = "1350";
+
+    await GET(request());
+
+    expect(xweather).not.toHaveBeenCalled();
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("an Xweather failure never blocks the alert", async () => {
+    process.env.XWEATHER_API_KEY = "someid_somesecret";
+    xweather.mockRejectedValue(new Error("network down"));
+
+    await GET(request());
+
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(String(sendMessage.mock.calls[0][1])).not.toMatch(/nube-tierra/);
   });
 });
