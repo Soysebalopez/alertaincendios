@@ -13,6 +13,8 @@ import { artHour } from "@/lib/time";
 import { log } from "@/lib/logger";
 import { validateMapKey, FIRMS_MAP_KEY_FORM_URL } from "@/lib/firms-key";
 import { FRESHNESS_THRESHOLD_MINUTES } from "@/lib/fires-freshness";
+import { parseStartPayload } from "@/lib/start-payload";
+import type { City } from "@/lib/argentina-cities";
 
 /**
  * POST /api/bot/telegram
@@ -113,7 +115,14 @@ export async function POST(request: NextRequest) {
       // `source` cuando el usuario se suscribe (first-write-wins).
       const startArg = text.startsWith("/start ") ? text.slice(7).trim() : "";
       await logBotCommand(chatId, "/start", startArg || undefined);
-      await handleStart(chatId);
+      // WHI-907 — `ciudad-<slug>` (e.g. the Bahía Blanca page) subscribes right
+      // away, like /ciudad; any other payload only welcomes.
+      const payload = parseStartPayload(startArg);
+      if (payload?.kind === "city") {
+        await handleCityStart(chatId, payload.city, payload.provinceName);
+      } else {
+        await handleStart(chatId);
+      }
     } else if (text === "/help") {
       await logBotCommand(chatId, "/help");
       await handleHelp(chatId);
@@ -497,20 +506,7 @@ async function handleLocation(chatId: number, lat: number, lng: number) {
   await upsertSubscriber(chatId, lat, lng, cityName);
 
   const label = escapeHtml(province ? `${cityName}, ${province}` : cityName);
-  // WHI-585 — set clear expectations on when/why alerts arrive
-  await sendMessage(
-    chatId,
-    `✅ <b>Listo, ya te tengo en ${label}</b>\n\n` +
-      "Te aviso cuando se detecte fuego dentro de 100 km de tu ubicación.\n\n" +
-      "<b>Qué esperar:</b>\n" +
-      "• Si el viento empuja humo hacia vos → alerta inmediata 🚨\n" +
-      "• Si hay tormenta seca cerca → aviso preventivo ⚡\n" +
-      "• Si no pasa nada → silencio. Sin spam.\n\n" +
-      "En temporada baja (otoño/invierno) puede no haber avisos por semanas. " +
-      "En temporada alta (oct-mar) puede haber varios por día.\n\n" +
-      "📊 Probá /estado para ver focos activos cerca tuyo ahora." +
-      FOOTER
-  );
+  await sendMessage(chatId, subscribedMessage(label));
 
   // Offer prevention only if the new location falls in a covered zone.
   const db = getSupabase();
@@ -552,19 +548,30 @@ async function handleCiudad(chatId: number, query: string) {
   await upsertSubscriber(chatId, geo.lat, geo.lng, geo.name);
 
   const label = escapeHtml(geo.admin1 ? `${geo.name}, ${geo.admin1}` : geo.name);
-  // WHI-585 — set clear expectations on when/why alerts arrive
-  await sendMessage(
-    chatId,
+  await sendMessage(chatId, subscribedMessage(label));
+}
+
+// WHI-907 — t.me/alertaforestal_bot?start=ciudad-<slug>. The city comes from our
+// own list (PROVINCES), so there is nothing to geocode.
+async function handleCityStart(chatId: number, city: City, provinceName: string) {
+  await upsertSubscriber(chatId, city.lat, city.lng, city.name);
+  await sendMessage(chatId, subscribedMessage(escapeHtml(`${city.name}, ${provinceName}`)));
+}
+
+// WHI-585 — set clear expectations on when/why alerts arrive. `label` must
+// already be HTML-escaped.
+function subscribedMessage(label: string): string {
+  return (
     `✅ <b>Listo, ya te tengo en ${label}</b>\n\n` +
-      "Te aviso cuando se detecte fuego dentro de 100 km de tu ubicación.\n\n" +
-      "<b>Qué esperar:</b>\n" +
-      "• Si el viento empuja humo hacia vos → alerta inmediata 🚨\n" +
-      "• Si hay tormenta seca cerca → aviso preventivo ⚡\n" +
-      "• Si no pasa nada → silencio. Sin spam.\n\n" +
-      "En temporada baja (otoño/invierno) puede no haber avisos por semanas. " +
-      "En temporada alta (oct-mar) puede haber varios por día.\n\n" +
-      "📊 Probá /estado para ver focos activos cerca tuyo ahora." +
-      FOOTER
+    "Te aviso cuando se detecte fuego dentro de 100 km de tu ubicación.\n\n" +
+    "<b>Qué esperar:</b>\n" +
+    "• Si el viento empuja humo hacia vos → alerta inmediata 🚨\n" +
+    "• Si hay tormenta seca cerca → aviso preventivo ⚡\n" +
+    "• Si no pasa nada → silencio. Sin spam.\n\n" +
+    "En temporada baja (otoño/invierno) puede no haber avisos por semanas. " +
+    "En temporada alta (oct-mar) puede haber varios por día.\n\n" +
+    "📊 Probá /estado para ver focos activos cerca tuyo ahora." +
+    FOOTER
   );
 }
 
@@ -733,13 +740,11 @@ async function fetchLastFiresCheck(): Promise<number | null> {
 
 // P1-4 — origen del alta (attribution). El deep link `/start <payload>` se guarda
 // en bot_commands_log; acá lo resolvemos a `source` la primera vez que el usuario
-// se suscribe. Convención del payload: `src-<slug>` (campañas: QR, radio, etc.).
-// Cualquier otra cosa → organic (null).
+// se suscribe. Convenciones del payload en src/lib/start-payload.ts: `src-<slug>`
+// (campañas: QR, radio, etc.) y `ciudad-<slug>` (WHI-907). Cualquier otra cosa →
+// organic (null).
 function parseStartSource(payload: string): string | null {
-  const p = payload.trim().toLowerCase().slice(0, 64);
-  const m = /^src-([a-z0-9-]{1,48})$/.exec(p);
-  if (!m) return null;
-  return "campaign:" + m[1];
+  return parseStartPayload(payload)?.source ?? null;
 }
 
 async function resolveSource(chatId: number): Promise<string | null> {
