@@ -89,3 +89,35 @@ def points_near(ds, lat: float, lng: float, radius_km: float) -> list[dict]:
             "rh_pct": round(float(values[3]), 1),
         })
     return rows
+
+
+_S3_PREFIX = "DATA/WRF/DET"
+
+
+def candidate_run_prefixes(now: datetime, count: int = 3) -> list[str]:
+    """S3 prefixes of the `count` most recent 00/12 UTC runs, newest first.
+    A run's files are published over several hours, so older runs are kept
+    as fallbacks for when the newest one is still incomplete."""
+    utc = now.astimezone(timezone.utc)
+    run = utc.replace(hour=12 if utc.hour >= 12 else 0, minute=0, second=0, microsecond=0)
+    prefixes: list[str] = []
+    for _ in range(count):
+        prefixes.append(f"{_S3_PREFIX}/{run:%Y/%m/%d/%H}/")
+        run -= timedelta(hours=12)
+    return prefixes
+
+
+def pick_run_keys(keys: list[str], max_lead: int) -> list[str]:
+    """Keys for leads 0..max_lead of the newest run that has all of them."""
+    runs: dict[str, dict[int, str]] = {}
+    for key in keys:
+        match = _KEY_RE.search(key)
+        if not match:
+            continue
+        day, hour, lead = match.groups()
+        runs.setdefault(day + hour, {})[int(lead)] = key
+    for run_id in sorted(runs, reverse=True):
+        leads = runs[run_id]
+        if all(lead in leads for lead in range(max_lead + 1)):
+            return [leads[lead] for lead in range(max_lead + 1)]
+    return []

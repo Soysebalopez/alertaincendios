@@ -68,3 +68,41 @@ def flashes_in_bbox(ds, bbox: tuple[float, float, float, float]) -> list[dict]:
             "area_m2": float(area[i]) if np.isfinite(area[i]) else None,
         })
     return flashes
+
+
+PRODUCT_PREFIX = "GLM-L2-LCFA"
+_KEY_START_RE = re.compile(r"_s(\d{4})(\d{3})(\d{2})(\d{2})(\d{2})(\d)_")
+
+
+def key_start(key: str) -> datetime:
+    """Scan start encoded in a GLM key as sYYYYJJJHHMMSS plus tenths of second."""
+    match = _KEY_START_RE.search(key)
+    if not match:
+        raise ValueError(f"not a GLM L2 file key: {key}")
+    year, day_of_year, hour, minute, second, tenth = (int(g) for g in match.groups())
+    start_of_year = datetime(year, 1, 1, hour, minute, second, tenth * 100_000, tzinfo=timezone.utc)
+    return start_of_year + timedelta(days=day_of_year - 1)
+
+
+def keys_since(keys: list[str], since: datetime) -> list[str]:
+    """Keys whose scan started at or after `since`, oldest first."""
+    dated: list[tuple[datetime, str]] = []
+    for key in keys:
+        try:
+            start = key_start(key)
+        except ValueError:
+            continue
+        if start >= since:
+            dated.append((start, key))
+    return [key for _, key in sorted(dated)]
+
+
+def hour_prefixes(since: datetime, now: datetime) -> list[str]:
+    """S3 hour folders that can hold files between `since` and `now`."""
+    hour = since.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    end = now.astimezone(timezone.utc)
+    prefixes: list[str] = []
+    while hour <= end:
+        prefixes.append(f"{PRODUCT_PREFIX}/{hour:%Y}/{hour.timetuple().tm_yday:03d}/{hour:%H}/")
+        hour += timedelta(hours=1)
+    return prefixes
