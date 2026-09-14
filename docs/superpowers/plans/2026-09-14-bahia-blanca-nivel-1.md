@@ -948,6 +948,16 @@ Anotar en este paso, editando el plan:
 - los de magnitud y dirección del viento a 10 m, temperatura y humedad;
 - las unidades (m/s o km/h; convención de la dirección).
 
+> **Anotado el 14/9** (archivo real `WRFDETAR_01H_20260914_00_003.nc`, 34 MB):
+> - Grilla `time=1, y=1249, x=999` con coordenadas 2D `lat` / `lon` (Lambert).
+> - Variables: `magViento10` (**meter / second**), `dirViento10` (degree), `T2` (°C, calibrada), `HR2` (percent) y `PP` (mm acumulados).
+> - Punto más cercano a Bahía Blanca: índice (520, 558) → -38.710, -62.285.
+> - Corrida y hora válida: salen del nombre del archivo (`..._AAAAMMDD_HH_FFF.nc` = corrida HH, plazo FFF horas).
+> - **Convención de la dirección: verificada "desde dónde viene"** contra el METAR de SAZB el 14/9:
+>   - 12Z: SMN 329° / 26,1 km/h contra METAR 330° / 25,9 km/h (diferencia 1°);
+>   - 13Z: 326° / 28,9 km/h contra 320° / 33,3 km/h (diferencia 6°).
+> - `time` = "hours since AAAA-MM-DD" (el plazo coincide con el FFF del nombre).
+
 - [ ] **Step 2: Write the failing test** con un `xarray.Dataset` sintético que use **esos mismos nombres**. Casos:
   - devuelve sólo los puntos a menos de `radius_km` de Bahía Blanca;
   - convierte la velocidad a km/h si viene en m/s;
@@ -1003,6 +1013,11 @@ curl -s -o /tmp/glm.nc "https://noaa-goes19.s3.amazonaws.com/$key"
 Anotar en el plan:
 - los nombres exactos de latitud y longitud del flash, del tiempo relativo al primer evento, de la energía y del área;
 - el atributo con la hora de inicio del archivo (`time_coverage_start`) y las unidades.
+
+> **Anotado el 14/9** (archivo real `OR_GLM-L2-LCFA_G19_s20262571400000_...nc`, 113 flashes en 20 s, todo el disco):
+> - Por flash: `flash_lat` / `flash_lon` (grados), `flash_energy` (J), `flash_area` (m²), `flash_quality_flag` (0 = buena calidad) y `flash_id`.
+> - Tiempo: `flash_time_offset_of_first_event`, en segundos, con `units = "seconds since 2026-09-14 14:00:00.000"`. **La base sale de `units`**; `time_coverage_start` es el inicio del archivo.
+> - Se abre con `decode_times=False`.
 
 - [ ] **Step 2: Failing test** con un Dataset sintético que use esos nombres. Casos:
   - filtra por bbox;
@@ -1246,6 +1261,11 @@ curl -s -o /tmp/fdcm.nc "https://noaa-goes19.s3.amazonaws.com/$key"
 ```
 
 Anotar dónde está la extensión geográfica del sector.
+
+> **Anotado el 14/9** (archivo real `OR_ABI-L2-FDCM1-M6_G19_s20262571400291_...nc`, 500×500):
+> - La extensión está en los atributos de la variable `geospatial_lat_lon_extent`: `geospatial_westbound_longitude`, `geospatial_eastbound_longitude`, `geospatial_southbound_latitude` y `geospatial_northbound_latitude`.
+> - Ese día el sector M1 cubría **EE.UU.** (32.7–47.4°N, -110 a -89°): no cubre Bahía.
+> - `scene_id = "Mesoscale"`. Mismas variables de fuego que el full disk: `Mask`, `Area`, `Temp`, `Power` y `DQF`.
 
 - [ ] **Step 2: Failing pytest** — un sector sobre EE.UU. no cubre Bahía; uno centrado en (-38, -62) sí.
 - [ ] **Step 3: Implement.** Después del full disk, `goes-sync` lista los `FDCM` de los últimos 10 min.
