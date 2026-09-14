@@ -5,6 +5,10 @@ Triggered by Supabase pg_cron every 10 min via pg_net HTTP GET. Downloads the
 latest GOES-19 ABI-L2-FDCF NetCDF from noaa-goes19, applies WHI-546 filters,
 and upserts surviving detections into the `goes_preliminary` Supabase table.
 
+WHI-907 part 6: after the full disk it also looks at the newest frame of each
+1-minute mesoscale sector (ABI-L2-FDCM). Only a sector covering Bahía Blanca
+is processed, and a mesoscale failure never breaks the full-disk run.
+
 URL: GET /api/goes-sync?secret=<CRON_SECRET>
 Auth: matches the existing CRON_SECRET pattern used by /api/alerts and /api/fires/sync.
 
@@ -36,9 +40,15 @@ from botocore import UNSIGNED
 from botocore.client import Config
 from pyproj import Proj
 
+from goes_mesoscale import coverage, selection
+
 # --- Config ---
 BUCKET = "noaa-goes19"
 PRODUCT = "ABI-L2-FDCF"
+MESOSCALE_PRODUCT = "ABI-L2-FDCM"
+# Mesoscale frames are published ~7 s after the scan; 10 min matches the cron.
+MESOSCALE_WINDOW_MINUTES = 10
+BAHIA_BLANCA = (-38.72, -62.27)
 
 HIGH_CONFIDENCE_CODES = {10, 11, 13, 30, 31, 33}
 FIRE_CODES = {10, 11, 12, 13, 14, 15, 30, 31, 32, 33, 34, 35}
@@ -172,6 +182,63 @@ def latest_object_key(client) -> str | None:
         if contents:
             return max(contents, key=lambda o: o["Key"])["Key"]
     return None
+
+
+# --- WHI-907 part 6 — 1-minute mesoscale sectors ---
+def list_mesoscale_keys(client, since: datetime) -> list[str]:
+    """Mesoscale fire files of both sectors whose scan started at or after `since`."""
+    now = datetime.now(timezone.utc)
+    keys: list[str] = []
+    hour = since.replace(minute=0, second=0, microsecond=0)
+    while hour <= now:
+        prefix = f"{MESOSCALE_PRODUCT}/{hour.year}/{hour.timetuple().tm_yday:03d}/{hour.hour:02d}/"
+        resp = client.list_objects_v2(Bucket=BUCKET, Prefix=prefix)
+        keys.extend(obj["Key"] for obj in resp.get("Contents", []))
+        hour += timedelta(hours=1)
+    return coverage.keys_since(keys, since)
+
+
+def download_to_temp(client, key: str) -> str:
+    with tempfile.NamedTemporaryFile(suffix=".nc", delete=False) as tmp:
+        path = tmp.name
+    client.download_file(BUCKET, key, path)
+    return path
+
+
+def read_extent(path: str) -> tuple[float, float, float, float]:
+    with xr.open_dataset(path) as ds:
+        return coverage.sector_extent(ds)
+
+
+def mesoscale_detections(client, now: datetime, full_disk: list[dict]) -> tuple[list[dict], dict]:
+    """New detections from the newest frame of each mesoscale sector that covers
+    Bahía Blanca, minus fires the full disk already has; plus stats. Never
+    raises: the full-disk run must not depend on it."""
+    stats: dict = {"sectors_checked": 0, "sectors_covering": 0, "detections_added": 0}
+    added: list[dict] = []
+    try:
+        since = now - timedelta(minutes=MESOSCALE_WINDOW_MINUTES)
+        newest = selection.newest_per_sector(list_mesoscale_keys(client, since))
+        for _sector, key in sorted(newest.items()):
+            stats["sectors_checked"] += 1
+            path = download_to_temp(client, key)
+            try:
+                if not coverage.covers(read_extent(path), BAHIA_BLANCA):
+                    continue
+                stats["sectors_covering"] += 1
+                detections, _scan_start, _funnel = extract_filtered_detections(path)
+                # Against the full disk AND earlier sectors: M1 and M2 can overlap.
+                added.extend(selection.drop_already_detected(full_disk + added, detections, DEDUP_RADIUS_KM))
+            finally:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+    except Exception as exc:  # noqa: BLE001 — reported in the run result, never raised
+        stats["error"] = f"{type(exc).__name__}: {exc}"
+        added = []
+    stats["detections_added"] = len(added)
+    return added, stats
 
 
 def project_pixels(ds, y_idx, x_idx):
@@ -408,6 +475,11 @@ def run_pipeline() -> dict:
     detections, scan_start, funnel = extract_filtered_detections(local_path)
     t_process = time.time() - t_p0
 
+    # WHI-907 part 6 — 1-minute mesoscale frames, only when a sector covers
+    # Bahía Blanca. Before persistence, so these rows get seen_in_scans too.
+    mesoscale_added, mesoscale_stats = mesoscale_detections(client, datetime.now(timezone.utc), detections)
+    detections = detections + mesoscale_added
+
     # WHI-546 v2 — compute seen_in_scans before insert.
     # SECURITY: keep the supabase service-role key in a clearly-named local
     # variable, never shadow `s3_key` which gets serialized into the response.
@@ -452,6 +524,7 @@ def run_pipeline() -> dict:
         "inserted": inserted,
         "persistent": promoted,
         "funnel": funnel,
+        "mesoscale": mesoscale_stats,
         "timing_seconds": timing,
     }
 
