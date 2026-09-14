@@ -13,6 +13,9 @@
  */
 
 import { openMeteoUrl } from "@/lib/open-meteo";
+// Dry storm thresholds — humidity below 60% and less than 0.5 mm of rain in the
+// last hour mean any thunderstorm is a high fire risk. Shared with the GLM path.
+import { DRY_HUMIDITY_THRESHOLD, DRY_RAIN_THRESHOLD_MM } from "@/lib/lightning-near";
 import { fetchWind } from "./wind";
 
 export interface LightningRisk {
@@ -33,11 +36,6 @@ function isOwmThunderstorm(code: number): boolean {
   return code >= 200 && code <= 232;
 }
 
-// Dry storm thresholds — humidity below this and no rain in last 6h means
-// any thunderstorm is high fire risk.
-const DRY_HUMIDITY_THRESHOLD = 60;
-const DRY_RAIN_THRESHOLD_MM = 0.5;
-
 export async function fetchLightningRisk(
   lat: number,
   lng: number
@@ -51,6 +49,34 @@ export async function fetchLightningRisk(
     }
   }
   return fetchFromOpenMeteo(lat, lng);
+}
+
+/**
+ * Current humidity and last-hour rain at a point (WHI-907 part 2). With real
+ * GLM flashes these decide whether a storm is dry. Unknown readings are null —
+ * never a default — so a missing value can't make a storm look dry.
+ */
+export async function fetchDryConditions(
+  lat: number,
+  lng: number
+): Promise<{ humidity: number | null; recentRainMm: number | null }> {
+  const unknown = { humidity: null, recentRainMm: null };
+  const url = openMeteoUrl("forecast", {
+    latitude: lat,
+    longitude: lng,
+    current: "relative_humidity_2m,precipitation",
+  });
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return unknown;
+    const current = (await res.json())?.current;
+    return {
+      humidity: typeof current?.relative_humidity_2m === "number" ? current.relative_humidity_2m : null,
+      recentRainMm: typeof current?.precipitation === "number" ? current.precipitation : null,
+    };
+  } catch {
+    return unknown;
+  }
 }
 
 async function fetchFromOpenWeather(
