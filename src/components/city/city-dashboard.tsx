@@ -82,6 +82,7 @@ export function CityDashboard({
   lng,
   focus = null,
   fireFilter = "forest",
+  mapHeight = 360,
 }: {
   cityName: string;
   provinceName: string;
@@ -90,6 +91,8 @@ export function CityDashboard({
   /** Fire the map centers on (Bahía Blanca page, `?foco=`). */
   focus?: { lat: number; lng: number } | null;
   fireFilter?: CityFireFilter;
+  /** Map height in px. Bahía Blanca uses a taller map so the projection legend reads whole. */
+  mapHeight?: number;
 }) {
   const [air, setAir] = useState<AirData | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
@@ -298,7 +301,7 @@ export function CityDashboard({
         style={{
           borderRadius: 14,
           border: "1px solid var(--border)",
-          height: 360,
+          height: mapHeight,
           background: "var(--surface)",
         }}
       >

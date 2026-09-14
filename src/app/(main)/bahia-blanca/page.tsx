@@ -109,6 +109,7 @@ export default async function BahiaBlancaPage({
             lng={BAHIA_BLANCA.lng}
             focus={focus}
             fireFilter="vegetation"
+            mapHeight={560}
           />
           <HistoryCard />
           <div className="mt-6">

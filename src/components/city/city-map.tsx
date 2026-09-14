@@ -534,8 +534,11 @@ function CollapsibleCard({
 }) {
   const [open, setOpen] = useState(defaultOpen);
 
+  // shrink-0: inside the scrolling panel a card keeps its full height instead
+  // of being squeezed and cutting its text — the projection legend's "es una
+  // estimación" footer has to stay readable.
   return (
-    <div className="rounded-xl border border-border bg-background/90 backdrop-blur-sm overflow-hidden">
+    <div className="shrink-0 rounded-xl border border-border bg-background/90 backdrop-blur-sm overflow-hidden">
       <button
         onClick={() => setOpen(!open)}
         className="flex items-center justify-between w-full px-3 py-2 text-left"
