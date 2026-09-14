@@ -4,6 +4,7 @@ expects. Forecast and historical (archive) endpoints share `parse_daily`."""
 from __future__ import annotations
 
 import os
+import re
 import time
 from dataclasses import dataclass
 
@@ -43,7 +44,7 @@ _MAX_RETRIES = 3
 _BACKOFF_SECONDS = (1.0, 2.0, 4.0)
 
 
-def _request_with_retry(url: str, params: dict, timeout: float) -> requests.Response:
+def _send_with_retry(url: str, params: dict, timeout: float) -> requests.Response:
     """GET with short exponential backoff on HTTP 429 and transient network
     errors. The happy path is unchanged: a 2xx response returns immediately.
     After exhausting retries, the last error is propagated as before."""
@@ -64,6 +65,25 @@ def _request_with_retry(url: str, params: dict, timeout: float) -> requests.Resp
     # Unreachable: the loop either returns or raises on the last attempt.
     resp.raise_for_status()
     return resp
+
+
+_APIKEY_IN_TEXT = re.compile(r"(apikey=)[^&\s'\"]+")
+
+
+def _redact(text: str) -> str:
+    """Error text without the API key: requests writes the full URL into it."""
+    redacted = _APIKEY_IN_TEXT.sub(r"\1***", text)
+    key = _api_key()
+    return redacted.replace(key, "***") if key else redacted
+
+
+def _request_with_retry(url: str, params: dict, timeout: float) -> requests.Response:
+    """_send_with_retry, but errors never carry the API key: api/fire-danger-sync.py
+    returns error text in its response, and pg_net stores response bodies."""
+    try:
+        return _send_with_retry(url, params, timeout)
+    except requests.RequestException as exc:
+        raise type(exc)(_redact(str(exc))) from None
 
 
 @dataclass(frozen=True)
