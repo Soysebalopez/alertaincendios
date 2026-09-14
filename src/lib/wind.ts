@@ -6,8 +6,10 @@ import { openMeteoUrl } from "@/lib/open-meteo";
 
 export interface WindData {
   windSpeed: number; // km/h
-  windDirection: number; // degrees
+  windDirection: number; // degrees, the direction the wind blows FROM
   temperature: number;
+  /** % — null when Open-Meteo did not report it (never a made-up default). */
+  relativeHumidity: number | null;
 }
 
 /** Convert wind direction degrees to cardinal abbreviation */
@@ -33,7 +35,7 @@ export function cardinalToSpanish(cardinal: string): string {
 // Return a fresh object each time (not a shared reference) so a caller that
 // caches/mutates the result can't corrupt the fallback for everyone else.
 function windFallback(): WindData {
-  return { windSpeed: 10, windDirection: 180, temperature: 20 };
+  return { windSpeed: 10, windDirection: 180, temperature: 20, relativeHumidity: null };
 }
 
 /** Fetch current wind for a location (fallback values on error/timeout) */
@@ -41,7 +43,7 @@ export async function fetchWind(lat: number, lng: number): Promise<WindData> {
   const url = openMeteoUrl("forecast", {
     latitude: lat,
     longitude: lng,
-    current: "wind_speed_10m,wind_direction_10m,temperature_2m",
+    current: "wind_speed_10m,wind_direction_10m,temperature_2m,relative_humidity_2m",
   });
 
   try {
@@ -56,6 +58,8 @@ export async function fetchWind(lat: number, lng: number): Promise<WindData> {
       windSpeed: current?.wind_speed_10m ?? 10,
       windDirection: current?.wind_direction_10m ?? 180,
       temperature: current?.temperature_2m ?? 20,
+      relativeHumidity:
+        typeof current?.relative_humidity_2m === "number" ? current.relative_humidity_2m : null,
     };
   } catch {
     return windFallback();

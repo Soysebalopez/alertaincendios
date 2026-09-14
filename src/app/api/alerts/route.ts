@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { getSupabase } from "@/lib/supabase";
 import { fetchFires, FirePoint } from "@/lib/firms";
 import { fetchWind, degreesToCardinal } from "@/lib/wind";
+import { formatFrontEta, grassFireFrontEtaMinutes } from "@/lib/fire-spread";
 import { bearingDegrees, haversineKm, smokeEtaMinutes, smokeHeadsTowardUser } from "@/lib/geo";
 import { sendMessage, escapeHtml } from "@/lib/telegram";
 import { buildFeedbackKeyboard } from "@/lib/feedback-keyboard";
@@ -97,6 +98,16 @@ export async function GET(request: Request) {
       }
       const smoke = smokeHeadsTowardUser(sub.lat, sub.lng, fire.latitude, fire.longitude, wind.windDirection);
       const eta = smokeEtaMinutes(distKm, wind.windSpeed, smoke.headsToward);
+      // WHI-907 part 5 — worst-case fire front ETA, only when the wind pushes
+      // the fire toward the user and the CSIRO grassfire conditions hold.
+      const frontEta = smoke.headsToward
+        ? grassFireFrontEtaMinutes({
+            distKm,
+            windKmh: wind.windSpeed,
+            tempC: wind.temperature,
+            rhPct: wind.relativeHumidity,
+          })
+        : null;
 
       const level = classifyAlert(distKm, smoke.headsToward);
       if (level === "none") continue;
@@ -138,8 +149,8 @@ export async function GET(request: Request) {
       const match = await findPendingPreliminary(db, sub.chat_id, fire);
 
       const message = match
-        ? await formatConfirmedFromPreliminary(fire, sub, distKm, eta, level, match.preliminary_sent_at, zoneName)
-        : await formatAlert(fire, sub, distKm, eta, level, zoneName);
+        ? await formatConfirmedFromPreliminary(fire, sub, distKm, eta, frontEta, level, match.preliminary_sent_at, zoneName)
+        : await formatAlert(fire, sub, distKm, eta, frontEta, level, zoneName);
 
       // Si Telegram falla, la row de dedup ya quedó registrada. Loguear con
       // contexto suficiente (chat_id, fire_key) para reenvío manual desde
@@ -266,6 +277,7 @@ async function formatAlert(
   sub: { lat: number; lng: number; city_name: string },
   distKm: number,
   etaMinutes: number,
+  frontEtaMinutes: number | null,
   level: "danger" | "warning" | "info",
   zoneName: string | null
 ): Promise<string> {
@@ -294,6 +306,10 @@ async function formatAlert(
   msg += `💨 Viento: ${windToward ? "<b>hacia tu posición</b>" : "fuera de tu posición"}`;
   if (windToward) msg += ` (ETA humo ~${etaMinutes} min)`;
   msg += `\n`;
+  const frontText = formatFrontEta(frontEtaMinutes);
+  if (frontText) {
+    msg += `🔥 Si el viento se mantiene, el fuego podría llegar en <b>${frontText}</b> (estimación de peor caso)\n`;
+  }
   msg += `${frpBars(fire.frp)} ${fire.frp} MW — ${frpLabel(fire.frp).split(" (")[0]}\n`;
   msg += `🛰️ Fuente: NASA FIRMS\n`;
   msg += `⏱️ Detectado hace ${ageMin} min\n`;
@@ -414,6 +430,7 @@ async function formatConfirmedFromPreliminary(
   sub: { lat: number; lng: number; city_name: string },
   distKm: number,
   etaMinutes: number,
+  frontEtaMinutes: number | null,
   level: "danger" | "warning" | "info",
   preliminarySentAt: string,
   zoneName: string | null
@@ -437,6 +454,10 @@ async function formatConfirmedFromPreliminary(
   msg += `💨 Viento: ${windToward ? "<b>hacia tu posición</b>" : "fuera de tu posición"}`;
   if (windToward) msg += ` (ETA humo ~${etaMinutes} min)`;
   msg += `\n`;
+  const frontText = formatFrontEta(frontEtaMinutes);
+  if (frontText) {
+    msg += `🔥 Si el viento se mantiene, el fuego podría llegar en <b>${frontText}</b> (estimación de peor caso)\n`;
+  }
   msg += `${frpBars(fire.frp)} ${fire.frp} MW — ${frpLabel(fire.frp).split(" (")[0]}\n`;
   msg += `🛰️ Validado por NASA FIRMS (VIIRS 375m)\n`;
   msg += `⏱️ Alerta preliminar hace ${sinceMin} min, confirmada ahora\n`;
