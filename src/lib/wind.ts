@@ -2,6 +2,8 @@
  * Wind utilities — direction conversion and data fetching.
  */
 
+import { openMeteoUrl } from "@/lib/open-meteo";
+
 export interface WindData {
   windSpeed: number; // km/h
   windDirection: number; // degrees
@@ -36,7 +38,11 @@ function windFallback(): WindData {
 
 /** Fetch current wind for a location (fallback values on error/timeout) */
 export async function fetchWind(lat: number, lng: number): Promise<WindData> {
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=wind_speed_10m,wind_direction_10m,temperature_2m`;
+  const url = openMeteoUrl("forecast", {
+    latitude: lat,
+    longitude: lng,
+    current: "wind_speed_10m,wind_direction_10m,temperature_2m",
+  });
 
   try {
     // Timeout so a hung Open-Meteo doesn't stall the alert-fan-out cron.

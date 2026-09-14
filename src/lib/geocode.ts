@@ -6,6 +6,8 @@
  * endpoint, so it uses BigDataCloud's key-less reverse client.
  */
 
+import { openMeteoUrl } from "@/lib/open-meteo";
+
 interface GeoResult {
   lat: number;
   lng: number;
@@ -44,7 +46,12 @@ export async function reverseGeocode(
 }
 
 export async function geocodeCity(query: string): Promise<GeoResult | null> {
-  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=5&language=es&country_code=AR`;
+  const url = openMeteoUrl("geocoding", {
+    name: query,
+    count: 5,
+    language: "es",
+    country_code: "AR",
+  });
 
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(5000) });

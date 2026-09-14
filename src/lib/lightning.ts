@@ -11,6 +11,8 @@
  * humidity + no recent rain). Wet storms put fires out; dry storms start
  * them. We only alert on dry storms.
  */
+
+import { openMeteoUrl } from "@/lib/open-meteo";
 import { fetchWind } from "./wind";
 
 export interface LightningRisk {
@@ -95,7 +97,14 @@ async function fetchFromOpenMeteo(
   lat: number,
   lng: number
 ): Promise<LightningRisk> {
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=weather_code,relative_humidity_2m,precipitation&hourly=weather_code&past_hours=6&forecast_hours=3`;
+  const url = openMeteoUrl("forecast", {
+    latitude: lat,
+    longitude: lng,
+    current: "weather_code,relative_humidity_2m,precipitation",
+    hourly: "weather_code",
+    past_hours: 6,
+    forecast_hours: 3,
+  });
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
     if (!res.ok) throw new Error(`Open-Meteo ${res.status}`);

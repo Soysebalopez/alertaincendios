@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { POLLUTANT_VARS } from "@/lib/air-quality";
+import { openMeteoUrl } from "@/lib/open-meteo";
 
 /**
  * GET /api/history?lat=-34.6&lng=-58.38&pollutant=NO2&days=7
@@ -7,9 +8,6 @@ import { POLLUTANT_VARS } from "@/lib/air-quality";
  * Returns historical air quality data for any location.
  * Uses Open-Meteo hourly data aggregated to daily averages.
  */
-
-const AIR_QUALITY_BASE =
-  "https://air-quality-api.open-meteo.com/v1/air-quality";
 
 export async function GET(request: NextRequest) {
   const lat = request.nextUrl.searchParams.get("lat");
@@ -43,7 +41,7 @@ export async function GET(request: NextRequest) {
       endDate.getTime() - days * 24 * 60 * 60 * 1000,
     );
 
-    const params = new URLSearchParams({
+    const url = openMeteoUrl("air-quality", {
       latitude: lat,
       longitude: lng,
       hourly: openMeteoVar,
@@ -52,7 +50,7 @@ export async function GET(request: NextRequest) {
       timezone: "America/Argentina/Buenos_Aires",
     });
 
-    const res = await fetch(`${AIR_QUALITY_BASE}?${params}`, {
+    const res = await fetch(url, {
       next: { revalidate: 3600 },
     });
 

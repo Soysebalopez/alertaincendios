@@ -3,13 +3,38 @@ noon-local temp/RH/wind and the 24h precipitation sum — the inputs the FWI
 expects. Forecast and historical (archive) endpoints share `parse_daily`."""
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import dataclass
 
 import requests
 
-FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
-ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
+# WHI-907 part 1 — single switch for the paid plan (the free plan forbids
+# commercial use). OPEN_METEO_API_KEY set -> customer hosts + apikey. Read at
+# call time, not import time, so a key added to the environment takes effect.
+_HOSTS = {
+    "forecast": ("api.open-meteo.com", "/v1/forecast"),
+    "archive": ("archive-api.open-meteo.com", "/v1/archive"),
+}
+# Free-plan URLs, kept for callers and tests that compare against them.
+FORECAST_URL = "https://%s%s" % _HOSTS["forecast"]
+ARCHIVE_URL = "https://%s%s" % _HOSTS["archive"]
+
+
+def _api_key() -> str | None:
+    return (os.environ.get("OPEN_METEO_API_KEY") or "").strip() or None
+
+
+def endpoint(api: str) -> str:
+    """Base URL for an Open-Meteo API; customer host when OPEN_METEO_API_KEY is set."""
+    host, path = _HOSTS[api]
+    return f"https://{'customer-' + host if _api_key() else host}{path}"
+
+
+def with_key(params: dict) -> dict:
+    """Query params plus `apikey` when the paid plan is configured."""
+    key = _api_key()
+    return {**params, "apikey": key} if key else dict(params)
 TZ = "America/Argentina/Ushuaia"
 _HOURLY = "temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation"
 
@@ -82,12 +107,12 @@ def parse_daily(raw: dict, noon_hour: int = 12) -> list[DayWeather]:
 
 
 def _get(url: str, params: dict) -> dict:
-    resp = _request_with_retry(url, params, timeout=30)
+    resp = _request_with_retry(url, with_key(params), timeout=30)
     return resp.json()
 
 
 def fetch_forecast(lat: float, lng: float, days: int = 16) -> list[DayWeather]:
-    raw = _get(FORECAST_URL, {
+    raw = _get(endpoint("forecast"), {
         "latitude": lat, "longitude": lng, "hourly": _HOURLY,
         "wind_speed_unit": "kmh", "timezone": TZ, "forecast_days": days,
     })
@@ -95,7 +120,7 @@ def fetch_forecast(lat: float, lng: float, days: int = 16) -> list[DayWeather]:
 
 
 def fetch_history(lat: float, lng: float, start_date: str, end_date: str) -> list[DayWeather]:
-    raw = _get(ARCHIVE_URL, {
+    raw = _get(endpoint("archive"), {
         "latitude": lat, "longitude": lng, "hourly": _HOURLY,
         "wind_speed_unit": "kmh", "timezone": TZ,
         "start_date": start_date, "end_date": end_date,
@@ -104,7 +129,7 @@ def fetch_history(lat: float, lng: float, start_date: str, end_date: str) -> lis
 
 
 def _get_multi(url: str, params: dict) -> list[dict]:
-    resp = _request_with_retry(url, params, timeout=60)
+    resp = _request_with_retry(url, with_key(params), timeout=60)
     data = resp.json()
     # Open-Meteo returns a bare object for one location, a list for many.
     return data if isinstance(data, list) else [data]
@@ -119,12 +144,12 @@ def _points_params(points: list[tuple[float, float]]) -> dict:
 
 
 def fetch_forecast_multi(points: list[tuple[float, float]], days: int = 16) -> list[list[DayWeather]]:
-    blocks = _get_multi(FORECAST_URL, {**_points_params(points), "forecast_days": days})
+    blocks = _get_multi(endpoint("forecast"), {**_points_params(points), "forecast_days": days})
     return [parse_daily(b) for b in blocks]
 
 
 def fetch_history_multi(points: list[tuple[float, float]],
                         start_date: str, end_date: str) -> list[list[DayWeather]]:
-    blocks = _get_multi(ARCHIVE_URL, {**_points_params(points),
+    blocks = _get_multi(endpoint("archive"), {**_points_params(points),
                                       "start_date": start_date, "end_date": end_date})
     return [parse_daily(b) for b in blocks]

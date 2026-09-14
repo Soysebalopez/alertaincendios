@@ -12,15 +12,13 @@ import {
   isInternalCall,
   rateLimitHeaders,
 } from "@/lib/ratelimit";
+import { openMeteoUrl } from "@/lib/open-meteo";
 
 /**
  * GET /api/air-quality?lat=-34.6&lng=-58.38
  *
  * Returns current air quality for any lat/lng using Open-Meteo CAMS data.
  */
-
-const AIR_QUALITY_BASE =
-  "https://air-quality-api.open-meteo.com/v1/air-quality";
 
 // H-10 — 60 req/min/IP. Cubre el grid de 12 ciudades del hero (12 batches
 // de 10) + navegación normal a /calidad-aire (un click puede disparar 78).
@@ -59,14 +57,14 @@ export async function GET(request: NextRequest) {
 
   try {
     const vars = Object.values(POLLUTANT_VARS).join(",");
-    const params = new URLSearchParams({
+    const url = openMeteoUrl("air-quality", {
       latitude: lat,
       longitude: lng,
       current: vars,
       timezone: "America/Argentina/Buenos_Aires",
     });
 
-    const res = await fetch(`${AIR_QUALITY_BASE}?${params}`, {
+    const res = await fetch(url, {
       next: { revalidate: 1800 },
     });
 
