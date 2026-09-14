@@ -5,8 +5,9 @@
  *  - SMOKE: a sector downwind. Reach = wind speed × time (capped at 3 h);
  *    the half-angle stands for the uncertainty in wind direction, measured
  *    against the Bahía Blanca airport (see smokeHalfAngleDeg).
- *  - FIRE FRONT: only for a confirmed fire and only when the CSIRO grassfire
- *    rule applies (see fire-spread.ts). The head advances 20% of the wind;
+ *  - FIRE FRONT: only for a confirmed grassland fire (outside every forest
+ *    zone), November to April, when the CSIRO grassfire rule applies (see
+ *    fire-spread.ts). The head advances 20% of the wind;
  *    the shape is the Canadian FBP O-1 grass ellipse (length/breadth =
  *    1.1 × U^0.464, U = 10-m wind in km/h) with the fire at its rear focus.
  *
@@ -14,7 +15,7 @@
  * point ignition is ignored and gusts can surge ahead: the shapes mean "if the
  * wind holds", a near-worst case, not a simulation. Every shape expires.
  */
-import { CSIRO_SPREAD_FRACTION_OF_WIND, csiroConditionsMet } from "@/lib/fire-spread";
+import { CSIRO_SPREAD_FRACTION_OF_WIND, csiroConditionsMet, isGrassCuringSeason } from "@/lib/fire-spread";
 
 const EARTH_RADIUS_KM = 6371;
 export const SMOKE_MAX_MINUTES = 180;
@@ -93,6 +94,8 @@ export interface ProjectFireInput {
   rhPct: number | null;
   /** FIRMS-confirmed fire. A GOES preliminary only gets the smoke sector. */
   confirmed: boolean;
+  /** Outside every forest zone. The CSIRO front is a grassland rule. */
+  grassland: boolean;
   issuedAt?: Date;
   windSource?: string;
   halfAngleDeg?: number;
@@ -224,7 +227,7 @@ export function projectFire(input: ProjectFireInput): ProjectionCollection {
     { ...smoke, properties: { ...smoke.properties, possible_fire: !input.confirmed, ...common } },
   ];
 
-  if (input.confirmed && common.csiro_conditions_met) {
+  if (input.confirmed && input.grassland && isGrassCuringSeason(issued) && common.csiro_conditions_met) {
     for (const eta of FRONT_ETAS_MIN) {
       const front = frontIsochrone(input.origin, input.windFromDeg, input.windKmh, eta);
       features.push({ ...front, properties: { ...front.properties, ...common } });

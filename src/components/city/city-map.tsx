@@ -8,6 +8,7 @@ import { CaretDown, CaretUp } from "@phosphor-icons/react";
 import { AIR_LEVEL_COLORS, type AirLevel } from "@/lib/air-quality";
 import { showsFire, type CityFireFilter } from "@/lib/city-fires";
 import type { ProjectionCollection } from "@/lib/fire-projection";
+import { fireProjectionPath } from "@/lib/fire-projection-request";
 import { haversineKm } from "@/lib/geo";
 import {
   FRONT_LEGEND,
@@ -145,12 +146,13 @@ export function CityMap({
         lat: f.latitude,
         lng: f.longitude,
         confirmed: true,
+        forestZone: f.forestZone,
         distanceKm: haversineKm(origin.lat, origin.lng, f.latitude, f.longitude),
       }));
       // A focus from an alert whose fire is no longer listed still shows its
       // smoke, but only as a possible fire: nothing confirms it anymore.
       if (focusPoint && !targets.some((t) => t.distanceKm <= SAME_FIRE_KM)) {
-        targets.push({ ...focusPoint, confirmed: false, distanceKm: 0 });
+        targets.push({ ...focusPoint, confirmed: false, forestZone: undefined, distanceKm: 0 });
       }
       const chosen = targets
         .sort((a, b) => a.distanceKm - b.distanceKm)
@@ -159,9 +161,7 @@ export function CityMap({
 
       Promise.all(
         chosen.map((t) =>
-          fetch(
-            `/api/fire-projection?lat=${t.lat.toFixed(4)}&lng=${t.lng.toFixed(4)}${t.confirmed ? "&confirmed=1" : ""}`,
-          )
+          fetch(fireProjectionPath(t))
             .then((r) => (r.ok ? (r.json() as Promise<ProjectionResponse>) : null))
             .catch(() => null),
         ),
@@ -246,7 +246,9 @@ export function CityMap({
         });
 
         const drew = state.smoke || state.front || state.variable;
-        if (drew) map.fitBounds(bounds.pad(0.1), { maxZoom: 12 });
+        // Zoom out to the shapes only when following a fire from an alert: on
+        // a plain city page the city view (air quality, wind) stays in focus.
+        if (drew && focusPoint) map.fitBounds(bounds.pad(0.1), { maxZoom: 12 });
         if (drew || state.unavailable) setLegend(state);
       });
     }

@@ -88,6 +88,7 @@ describe("smoke half-angle, measured against the Bahía Blanca airport (2026-09-
       tempC: 22,
       rhPct: 60,
       confirmed: true,
+      grassland: false,
       windSource: "open-meteo",
     });
     expect(fc.features[0].properties.half_angle_deg).toBe(30);
@@ -107,6 +108,8 @@ describe("projectFire", () => {
   const base = {
     origin: ORIGIN,
     windFromDeg: 315,
+    // A grassland fire in the curing season, unless a test says otherwise.
+    grassland: true,
     issuedAt: new Date("2026-11-20T18:00:00.000Z"),
     windSource: "open-meteo",
   };
@@ -122,6 +125,24 @@ describe("projectFire", () => {
     const fc = projectFire({ ...base, windKmh: 40, tempC: 35, rhPct: 15, confirmed: true });
     const etas = fc.features.filter((f) => f.properties.kind === "front").map((f) => f.properties.eta_minutes);
     expect(etas).toEqual([30, 60, 120, 180]);
+  });
+
+  it("a forest fire gets smoke but never the grassland front", () => {
+    const fc = projectFire({ ...base, grassland: false, windKmh: 40, tempC: 35, rhPct: 15, confirmed: true });
+    expect(kinds(fc)).toContain("smoke");
+    expect(kinds(fc)).not.toContain("front");
+  });
+
+  it("outside the grass curing season there is no front", () => {
+    const fc = projectFire({
+      ...base,
+      issuedAt: new Date("2026-07-15T18:00:00.000Z"),
+      windKmh: 40,
+      tempC: 35,
+      rhPct: 15,
+      confirmed: true,
+    });
+    expect(kinds(fc)).not.toContain("front");
   });
 
   it("never draws a front with unknown humidity", () => {

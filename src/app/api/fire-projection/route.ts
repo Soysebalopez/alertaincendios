@@ -9,12 +9,13 @@ import {
 } from "@/lib/ratelimit";
 
 /**
- * GET /api/fire-projection?lat=-38.6&lng=-62.4&confirmed=1
+ * GET /api/fire-projection?lat=-38.6&lng=-62.4&confirmed=1&grass=1
  *
- * Smoke sector for one fire and, when it is confirmed (FIRMS) and the CSIRO
- * grassfire rule applies, fire-front isochrones — as GeoJSON for the city map
- * (WHI-907 part 11). Without `confirmed=1` it is a GOES preliminary: smoke
- * only, marked as a possible fire. Every shape expires an hour after issue.
+ * Smoke sector for one fire and, for a confirmed (FIRMS) fire outside every
+ * forest zone (`grass=1`), November to April, when the CSIRO grassfire rule
+ * applies, fire-front isochrones — as GeoJSON for the city map (WHI-907 part
+ * 11). Without `confirmed=1` it is a GOES preliminary: smoke only, marked as a
+ * possible fire. Every shape expires an hour after issue.
  */
 
 // Same budget as /api/wind: each call spends one wind lookup, and the city map
@@ -71,6 +72,7 @@ export async function GET(request: NextRequest) {
     tempC: wind.temperature,
     rhPct: wind.relativeHumidity,
     confirmed: params.get("confirmed") === "1",
+    grassland: params.get("grass") === "1",
     windSource: wind.source,
   });
 

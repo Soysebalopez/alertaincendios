@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 /**
@@ -20,7 +20,14 @@ import { GET } from "@/app/api/fire-projection/route";
 type Body = { type: string; features: Array<{ properties: Record<string, unknown> }> };
 const request = (query: string) => new NextRequest(`https://x/api/fire-projection?${query}`);
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 beforeEach(() => {
+  // The grassland front only exists November to April: freeze the clock there.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-12-10T15:00:00Z"));
   // 40 km/h, 35 °C, 15% RH: the CSIRO grassfire rule applies.
   fetchWind.mockReset().mockResolvedValue({
     windSpeed: 40,
@@ -39,8 +46,13 @@ describe("GET /api/fire-projection", () => {
     expect(fetchWind).not.toHaveBeenCalled();
   });
 
-  it("a confirmed fire gets smoke plus four front isochrones, labelled with the wind source", async () => {
-    const res = await GET(request("lat=-38.6&lng=-62.4&confirmed=1"));
+  it("a confirmed forest fire (no grass=1) gets smoke only", async () => {
+    const body = (await (await GET(request("lat=-38.6&lng=-62.4&confirmed=1"))).json()) as Body;
+    expect(body.features.map((f) => f.properties.kind)).toEqual(["smoke"]);
+  });
+
+  it("a confirmed grassland fire gets smoke plus four front isochrones, labelled with the wind source", async () => {
+    const res = await GET(request("lat=-38.6&lng=-62.4&confirmed=1&grass=1"));
     expect(res.status).toBe(200);
     const body = (await res.json()) as Body;
     expect(body.type).toBe("FeatureCollection");

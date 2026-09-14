@@ -4,7 +4,7 @@ import { getSupabase } from "@/lib/supabase";
 import { fetchFires, FirePoint } from "@/lib/firms";
 import { fetchWind, degreesToCardinal } from "@/lib/wind";
 import { alertMapLinks } from "@/lib/alert-links";
-import { formatFrontEta, grassFireFrontEtaMinutes } from "@/lib/fire-spread";
+import { alertFrontEtaMinutes, formatFrontEta } from "@/lib/fire-spread";
 import { bearingDegrees, haversineKm, smokeEtaMinutes, smokeHeadsTowardUser } from "@/lib/geo";
 import { sendMessage, escapeHtml } from "@/lib/telegram";
 import { buildFeedbackKeyboard } from "@/lib/feedback-keyboard";
@@ -99,16 +99,15 @@ export async function GET(request: Request) {
       }
       const smoke = smokeHeadsTowardUser(sub.lat, sub.lng, fire.latitude, fire.longitude, wind.windDirection);
       const eta = smokeEtaMinutes(distKm, wind.windSpeed, smoke.headsToward);
-      // WHI-907 part 5 — worst-case fire front ETA, only when the wind pushes
-      // the fire toward the user and the CSIRO grassfire conditions hold.
-      const frontEta = smoke.headsToward
-        ? grassFireFrontEtaMinutes({
-            distKm,
-            windKmh: wind.windSpeed,
-            tempC: wind.temperature,
-            rhPct: wind.relativeHumidity,
-          })
-        : null;
+      // WHI-907 part 5 — worst-case fire front ETA. Grassland only, so no
+      // alert gets it while alerts stay forest-only (see alert-pairs.ts).
+      const frontEta = alertFrontEtaMinutes({
+        headsToward: smoke.headsToward,
+        distKm,
+        wind,
+        forestZone: fire.forestZone,
+        at: new Date(),
+      });
 
       const level = classifyAlert(distKm, smoke.headsToward);
       if (level === "none") continue;
