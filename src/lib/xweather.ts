@@ -5,7 +5,8 @@
  * the ground. Xweather's `lightning/closest` answers that (pulse type "cg" =
  * cloud-to-ground) and locates it within ~1 km. Free "Developer" plan: 15,000
  * accesses a month, attribution required. Everything here is inert without
- * XWEATHER_CLIENT_ID and XWEATHER_CLIENT_SECRET.
+ * credentials: XWEATHER_API_KEY (the portal's single key,
+ * `<client_id>_<client_secret>`) or XWEATHER_CLIENT_ID + XWEATHER_CLIENT_SECRET.
  *
  * ⚠️ How many accesses one lightning query costs is not published for the free
  * plan. Until it is verified at sign-up we assume 10
@@ -38,13 +39,24 @@ function credential(env: Env, name: string): string | null {
   return env[name]?.trim() || null;
 }
 
+/** The separate id and secret, or the portal's single key split at its first underscore. */
+function credentials(env: Env): { id: string; secret: string } | null {
+  const id = credential(env, "XWEATHER_CLIENT_ID");
+  const secret = credential(env, "XWEATHER_CLIENT_SECRET");
+  if (id && secret) return { id, secret };
+  const key = credential(env, "XWEATHER_API_KEY");
+  const cut = key ? key.indexOf("_") : -1;
+  if (!key || cut <= 0 || cut === key.length - 1) return null;
+  return { id: key.slice(0, cut), secret: key.slice(cut + 1) };
+}
+
 function positiveNumber(value: string | undefined, fallback: number): number {
   const parsed = Number(value?.trim());
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 export function xweatherConfigured(env: Env = process.env): boolean {
-  return credential(env, "XWEATHER_CLIENT_ID") !== null && credential(env, "XWEATHER_CLIENT_SECRET") !== null;
+  return credentials(env) !== null;
 }
 
 /** Cloud-to-ground strikes of the last 5 minutes within `radiusKm` of a point. */
@@ -54,8 +66,9 @@ export function closestLightningUrl(lat: number, lng: number, radiusKm: number, 
   url.searchParams.set("radius", `${radiusKm}km`);
   url.searchParams.set("filter", "cg");
   url.searchParams.set("limit", "10");
-  url.searchParams.set("client_id", credential(env, "XWEATHER_CLIENT_ID") ?? "");
-  url.searchParams.set("client_secret", credential(env, "XWEATHER_CLIENT_SECRET") ?? "");
+  const creds = credentials(env);
+  url.searchParams.set("client_id", creds?.id ?? "");
+  url.searchParams.set("client_secret", creds?.secret ?? "");
   return url.toString();
 }
 

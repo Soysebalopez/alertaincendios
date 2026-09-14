@@ -44,6 +44,28 @@ describe("closestLightningUrl", () => {
   });
 });
 
+describe("the portal's single API key", () => {
+  // The new Xweather portal shows one key, `<client_id>_<client_secret>`
+  // (documented for their MCP server); the Weather API still wants both parts.
+  const env = { XWEATHER_API_KEY: " abc123CLIENTid_s3cretPART\n" };
+
+  it("counts as configured", () => {
+    expect(xweatherConfigured(env)).toBe(true);
+  });
+
+  it("is split at the first underscore into client_id and client_secret", () => {
+    const url = new URL(closestLightningUrl(-38.72, -62.27, 30, env));
+    expect(url.searchParams.get("client_id")).toBe("abc123CLIENTid");
+    expect(url.searchParams.get("client_secret")).toBe("s3cretPART");
+  });
+
+  it("a key without the underscore, or with an empty half, is not a key", () => {
+    expect(xweatherConfigured({ XWEATHER_API_KEY: "nounderscore" })).toBe(false);
+    expect(xweatherConfigured({ XWEATHER_API_KEY: "_secret" })).toBe(false);
+    expect(xweatherConfigured({ XWEATHER_API_KEY: "id_" })).toBe(false);
+  });
+});
+
 describe("parseLightningResponse", () => {
   it("reads the documented response shape", () => {
     expect(parseLightningResponse(fixture)).toEqual([

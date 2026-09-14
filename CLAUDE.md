@@ -242,7 +242,7 @@ Archivos: `scripts/sql/whi-907-wind.sql` y `scripts/sql/whi-907-lightning.sql`. 
 - Migrado al nuevo sistema de API keys de Supabase: `sb_publishable_*` (anon) + `sb_secret_*` (service role). Legacy JWT system disabled.
 - CRON_SECRET nunca literal en cron jobs (ver Config + API Routes — Cron para el doble path)
 - Secrets fuera del repo (.env*, scripts/*.env gitignored). Templates en *.env.example
-- Variables opcionales de WHI-907 (siempre con `.trim()`): `OPEN_METEO_API_KEY` (activa el plan pago), `XWEATHER_CLIENT_ID` + `XWEATHER_CLIENT_SECRET`, `XWEATHER_MONTHLY_ACCESSES` y `XWEATHER_ACCESSES_PER_LIGHTNING_QUERY` (cupo; por defecto 15000 y 10, con 10% de reserva). Sin ellas todo funciona como antes
+- Variables opcionales de WHI-907 (siempre con `.trim()`): `OPEN_METEO_API_KEY` (activa el plan pago), `XWEATHER_API_KEY` (la clave única del portal nuevo, que es `<client_id>_<client_secret>`) o `XWEATHER_CLIENT_ID` + `XWEATHER_CLIENT_SECRET`, `XWEATHER_MONTHLY_ACCESSES` y `XWEATHER_ACCESSES_PER_LIGHTNING_QUERY` (cupo; por defecto 15000 y 10, con 10% de reserva). Sin ellas todo funciona como antes
 - Procedimiento de rotación documentado en `SECURITY-AUDIT.md`
 
 ## Current focus
