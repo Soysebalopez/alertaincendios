@@ -51,12 +51,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "monthly",
       priority: 0.7,
     },
-    {
-      url: `${baseUrl}/cuarteles`,
-      lastModified: STATIC_LAST_MODIFIED,
-      changeFrequency: "monthly",
-      priority: 0.7,
-    },
   ];
 
   // All city pages (~78)

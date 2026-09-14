@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
   // `X-Telegram-Bot-API-Secret-Token` (cuyo valor se setea al registrar el
   // webhook con `setWebhook?secret_token=...`). Sin esta verificación,
   // cualquiera con el chat_id de una víctima podía hacer un POST manual y
-  // ejecutar comandos en su nombre (e.g. `/soybombero <code>`, `/cancelar`).
+  // ejecutar comandos en su nombre (e.g. `/cancelar`).
   //
   // Comportamiento si la env var no está seteada: WARN y dejar pasar. Esto es
   // un fallback de transición — una vez seteada en Vercel y re-registrado el
@@ -141,13 +141,6 @@ export async function POST(request: NextRequest) {
     } else if (text === "/cancelar") {
       await logBotCommand(chatId, "/cancelar");
       await handleCancelar(chatId);
-    } else if (text === "/dejarcuartel") {
-      await logBotCommand(chatId, "/dejarcuartel");
-      await handleDejarCuartel(chatId);
-    } else if (text.startsWith("/soybombero")) {
-      const arg = text.replace("/soybombero", "").trim();
-      await logBotCommand(chatId, "/soybombero", arg ? "<code>" : "");
-      await handleSoyBombero(chatId, arg);
     } else if (text.toLowerCase().startsWith("/rotarkey")) {
       // Admin-only, hidden. NEVER log the argument — it is the FIRMS secret.
       // Prefix match (not exact/space-anchored): a paste typo like
@@ -204,8 +197,6 @@ const HELP_TEXT =
   "🏙 /ciudad &lt;nombre&gt; — suscribirte por ciudad\n" +
   "📊 /estado — focos activos cerca tuyo\n" +
   "⚡ /rayos — activar/desactivar alerta de tormentas secas\n" +
-  "🚒 /soybombero &lt;código&gt; — modo bombero (para cuarteles)\n" +
-  "🚪 /dejarcuartel — volver a las alertas vecinales (bomberos)\n" +
   "ℹ️ /about — sobre el proyecto\n" +
   "❌ /cancelar — eliminar suscripción" +
   FOOTER;
@@ -321,7 +312,6 @@ async function handleStart(chatId: number) {
       "<b>Comandos disponibles:</b>\n" +
       "📊 /estado — focos activos en 100 km a tu alrededor\n" +
       "⚡ /rayos — activar/desactivar alertas de tormenta seca\n" +
-      "🚒 /soybombero — ¿sos bombero? activá el modo cuartel\n" +
       "ℹ️ /about — sobre el proyecto\n" +
       "❓ /help — esta lista de comandos\n" +
       "❌ /cancelar — eliminar tu suscripción" +
@@ -725,40 +715,6 @@ async function handleCancelar(chatId: number) {
   );
 }
 
-// P1-1 — salir del rol fireman sin perder la suscripción (vuelve a civilian,
-// conserva lat/lng/city_name). Antes la única salida era /cancelar, que borraba
-// todo. Un bombero que rota de cuartel no debería seguir recibiendo alertas
-// operativas ni perder su suscripción de vecino.
-async function handleDejarCuartel(chatId: number) {
-  const db = getSupabase();
-  const { data: sub } = await db
-    .from("subscribers")
-    .select("role")
-    .eq("chat_id", chatId)
-    .maybeSingle();
-
-  if (!sub || sub.role !== "fireman") {
-    await sendMessage(
-      chatId,
-      "ℹ️ Tu cuenta no está en ningún cuartel. Si querés cancelar tu suscripción, usá <code>/cancelar</code>." +
-        FOOTER
-    );
-    return;
-  }
-
-  await db
-    .from("subscribers")
-    .update({ role: "civilian", cuartel_name: null })
-    .eq("chat_id", chatId);
-
-  await sendMessage(
-    chatId,
-    "✅ <b>Listo</b>. Volviste a las alertas vecinales — tu suscripción sigue activa en tu zona y no perdés tu ubicación. " +
-      "Ya no vas a recibir los mensajes operativos de cuartel." +
-      FOOTER
-  );
-}
-
 // WHI-585 — relative minutes since the last fires_cache write (FIRMS sync).
 // Used in /estado to confirm system liveness when there are no fires.
 async function fetchLastFiresCheck(): Promise<number | null> {
@@ -777,13 +733,13 @@ async function fetchLastFiresCheck(): Promise<number | null> {
 
 // P1-4 — origen del alta (attribution). El deep link `/start <payload>` se guarda
 // en bot_commands_log; acá lo resolvemos a `source` la primera vez que el usuario
-// se suscribe. Convención del payload: `cuartel-<slug>` (ej. cuartel-bomberos-ushuaia)
-// o `src-<slug>` (campañas: QR, radio, etc.). Cualquier otra cosa → organic (null).
+// se suscribe. Convención del payload: `src-<slug>` (campañas: QR, radio, etc.).
+// Cualquier otra cosa → organic (null).
 function parseStartSource(payload: string): string | null {
   const p = payload.trim().toLowerCase().slice(0, 64);
-  const m = /^(cuartel|src)-([a-z0-9-]{1,48})$/.exec(p);
+  const m = /^src-([a-z0-9-]{1,48})$/.exec(p);
   if (!m) return null;
-  return (m[1] === "cuartel" ? "cuartel:" : "campaign:") + m[2];
+  return "campaign:" + m[1];
 }
 
 async function resolveSource(chatId: number): Promise<string | null> {
@@ -867,127 +823,6 @@ async function logBotCommand(chatId: number, command: string, args?: string) {
   } catch (e) {
     console.error("logBotCommand failed:", e);
   }
-}
-
-// WHI-588 Sprint 1 — /soybombero <code> elevates a subscriber to role 'fireman'.
-// El consumo del código va por la RPC `consume_fireman_code` (ver migration
-// scripts/sql/whi-fireman-codes-hardening.sql) que encapsula atómicamente:
-// validación, registro en fireman_code_usage, incremento de used_count y
-// promoción del subscriber. Sin esto había TOCTTOU + reuse por mismo chat_id.
-async function handleSoyBombero(chatId: number, code: string) {
-  if (!code) {
-    await sendMessage(
-      chatId,
-      "🚒 <b>Bomberos voluntarios</b>\n\n" +
-        "Si tu cuartel ya está en AlertaForestal, pedíle el código de invitación al jefe de cuartel y usalo así:\n" +
-        "<code>/soybombero TU-CODIGO</code>\n\n" +
-        "¿Tu cuartel todavía no se sumó? Mirá <b>alertaforestal.org/cuarteles</b>." +
-        FOOTER
-    );
-    return;
-  }
-
-  const db = getSupabase();
-
-  // Subscriber tiene que existir antes — la RPC promueve un row existente
-  // (no lo crea desde cero, así no perdemos lat/lng/city_name).
-  const { data: sub } = await db
-    .from("subscribers")
-    .select("chat_id, role")
-    .eq("chat_id", chatId)
-    .limit(1)
-    .maybeSingle();
-
-  if (!sub) {
-    await sendMessage(
-      chatId,
-      "🚒 Primero suscribite normalmente con /ciudad o compartiendo tu ubicación. " +
-        "Después validás tu rol de bombero con /soybombero." +
-        FOOTER
-    );
-    return;
-  }
-
-  type ConsumeResult = { status: string; cuartel_name: string | null };
-  const { data: rpcRows, error: rpcErr } = await db.rpc("consume_fireman_code", {
-    p_chat_id: chatId,
-    p_code: code,
-  });
-
-  if (rpcErr) {
-    log.error({
-      event: "bot.consume_fireman_code_rpc_failed",
-      chatId,
-      code: rpcErr.code,
-      err: rpcErr.message,
-    });
-    await sendMessage(
-      chatId,
-      "❌ Error interno al validar el código. Probá de nuevo en unos minutos." +
-        FOOTER
-    );
-    return;
-  }
-
-  // La RPC devuelve un SETOF (una row). Manejamos los 4 outcomes posibles.
-  const result = Array.isArray(rpcRows) ? (rpcRows[0] as ConsumeResult) : (rpcRows as ConsumeResult | null);
-  const status = result?.status ?? "unknown";
-  const cuartel = result?.cuartel_name;
-
-  if (status === "not_found") {
-    await sendMessage(
-      chatId,
-      "❌ Código inválido. Pedile a tu cuartel el código correcto." + FOOTER
-    );
-    return;
-  }
-  if (status === "exhausted") {
-    await sendMessage(
-      chatId,
-      "❌ Este código ya alcanzó su límite de usos. Pedile uno nuevo a tu cuartel." +
-        FOOTER
-    );
-    return;
-  }
-  if (status === "already_used") {
-    await sendMessage(
-      chatId,
-      `ℹ️ Tu cuenta ya está en el cuartel${cuartel ? ` ${escapeHtml(cuartel)}` : ""}. ` +
-        "Si querés volver a las alertas vecinales, usá <code>/dejarcuartel</code> (tu suscripción sigue activa). " +
-        "Para borrar todo, <code>/cancelar</code>." +
-        FOOTER
-    );
-    return;
-  }
-  if (status !== "ok" || !cuartel) {
-    log.error({
-      event: "bot.consume_fireman_code_unexpected",
-      chatId,
-      status,
-    });
-    await sendMessage(
-      chatId,
-      "❌ Error interno al validar el código. Probá de nuevo en unos minutos." +
-        FOOTER
-    );
-    return;
-  }
-
-  log.info({
-    event: "bot.fireman_promoted",
-    chatId,
-    cuartel,
-  });
-
-  await sendMessage(
-    chatId,
-    `✅ <b>Listo — cuartel ${escapeHtml(cuartel)}</b>\n\n` +
-      "Desde ahora vas a recibir <b>mensajes operativos</b> cuando se detecte un " +
-      "foco confirmado en tu zona. Más conciso, con info para coordinar respuesta.\n\n" +
-      "Si querés volver a las alertas vecinales, usá <code>/dejarcuartel</code> " +
-      "(tu suscripción sigue activa, sin perder tu ubicación)." +
-      FOOTER
-  );
 }
 
 /**

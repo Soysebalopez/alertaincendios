@@ -43,13 +43,11 @@ export async function GET(request: Request) {
       lat: number;
       lng: number;
       city_name: string;
-      role?: string;
-      cuartel_name?: string;
     };
     const subscribers = await fetchAllRows<Subscriber>(
       db,
       "subscribers",
-      "chat_id, lat, lng, city_name, role, cuartel_name",
+      "chat_id, lat, lng, city_name",
       (q) => q.order("chat_id")
     );
 
@@ -65,18 +63,6 @@ export async function GET(request: Request) {
     let alertsSent = 0;
     let confirmations = 0;
 
-    // M7 — unknown role falls back to civilian (forest-only) filtering.
-    // Surface it so a future role (e.g. institucional/B2G) isn't silently
-    // under-alerted by the string-equality check. Se recorre por suscriptor
-    // y no por par: antes esto se logueaba una vez por cada (foco × sub), o
-    // sea cientos de líneas idénticas por corrida para la misma persona.
-    for (const sub of subscribers) {
-      const role = sub.role ?? "civilian";
-      if (role !== "civilian" && role !== "fireman") {
-        log.warn({ event: "alerts.unknown_role", chatId: sub.chat_id, role });
-      }
-    }
-
     // 🔴 LOS FILTROS BARATOS VAN ANTES DE TOCAR LA BASE. Ver `lib/alert-pairs`
     // para el incidente del 2026-09-04: la consulta de dedup se hacía antes de
     // mirar la distancia, y el cron se cortaba a los 60 s haciendo 564
@@ -90,7 +76,6 @@ export async function GET(request: Request) {
     for (const { fire, sub, distKm } of pairs) {
       const fireKey = buildFireKey(fire);
       const zoneName = forestZoneName(fire.forestZone);
-      const isFireman = (sub.role ?? "civilian") === "fireman";
 
       // Pre-check de dedup. Es solo un fast-path para evitar hacer el fetch
       // de viento si ya alertamos — la garantía real anti-duplicado vive en
@@ -152,28 +137,18 @@ export async function GET(request: Request) {
       // alert we already sent to this subscriber?
       const match = await findPendingPreliminary(db, sub.chat_id, fire);
 
-      // WHI-588 — fireman role gets an operational message format, not the
-      // citizen-facing alert. Same data path, different tone + structure.
-      const cuartel = (sub as { cuartel_name?: string }).cuartel_name ?? null;
-      const message = isFireman
-        ? formatFiremanAlert(fire, sub, distKm, eta, level, cuartel, match != null, zoneName)
-        : match
-          ? await formatConfirmedFromPreliminary(fire, sub, distKm, eta, level, match.preliminary_sent_at, zoneName)
-          : await formatAlert(fire, sub, distKm, eta, level, zoneName);
+      const message = match
+        ? await formatConfirmedFromPreliminary(fire, sub, distKm, eta, level, match.preliminary_sent_at, zoneName)
+        : await formatAlert(fire, sub, distKm, eta, level, zoneName);
 
       // Si Telegram falla, la row de dedup ya quedó registrada. Loguear con
       // contexto suficiente (chat_id, fire_key) para reenvío manual desde
       // /dashboard si fuera necesario. Alternativa rechazada: revertir el
       // INSERT — abre una ventana de race nueva entre el delete y otro cron.
-      // Feedback comunitario: teclado de validación solo a civilian (el
-      // fireman valida despachando, no votando). alert_id = "f:"+fireKey.
-      const sendResult = await sendMessage(
-        sub.chat_id,
-        message,
-        isFireman
-          ? undefined
-          : { reply_markup: buildFeedbackKeyboard("f:" + fireKey) }
-      );
+      // Feedback comunitario: teclado de validación. alert_id = "f:"+fireKey.
+      const sendResult = await sendMessage(sub.chat_id, message, {
+        reply_markup: buildFeedbackKeyboard("f:" + fireKey),
+      });
       if (!sendResult.ok) {
         // Telegram rejected the send (403 block, 400 bad HTML, 429, timeout).
         // Do NOT count it as sent. The dedup row stays (documented tradeoff).
@@ -196,7 +171,6 @@ export async function GET(request: Request) {
         event: "alerts.sent",
         fireKey,
         chatId: sub.chat_id,
-        role: isFireman ? "fireman" : "civilian",
         distKm: Math.round(distKm),
         level,
         isConfirmation: match != null,
@@ -433,44 +407,6 @@ async function findPendingPreliminary(
     if (d <= 5) return { id: r.id, preliminary_sent_at: r.preliminary_sent_at };
   }
   return null;
-}
-
-// WHI-588 — operational alert for fireman role. Less interpretation, more data,
-// clear coordination tone. Same for FIRMS-only detections and confirmation
-// upgrades; the `wasPreliminary` flag adjusts the header only.
-function formatFiremanAlert(
-  fire: FirePoint,
-  sub: { lat: number; lng: number; city_name: string },
-  distKm: number,
-  etaMinutes: number,
-  level: "danger" | "warning" | "info",
-  cuartelName: string | null,
-  wasPreliminary: boolean,
-  zoneName: string | null
-): string {
-  const dist = Math.round(distKm * 10) / 10;
-  const gMapsUrl = `https://www.google.com/maps?q=${fire.latitude},${fire.longitude}&z=12`;
-  const cardinal = degreesToCardinal(
-    bearingDegrees(sub.lat, sub.lng, fire.latitude, fire.longitude)
-  );
-  const ageMin = minutesSinceDetection(fire.acqDate, fire.acqTime);
-  const windToward = etaMinutes > 0;
-
-  const header = wasPreliminary
-    ? `🚨 Foco CONFIRMADO a ${dist}km — coordinación`
-    : `🚨 Foco a ${dist}km — coordinación`;
-
-  let msg = `<b>${header}</b>\n\n`;
-  msg += `📍 ${dist} km · ${cardinal} (desde ${sub.city_name})\n`;
-  msg += `🔥 FRP ${fire.frp} MW · confianza ${fire.confidence}\n`;
-  msg += `💨 Viento: ${windToward ? `<b>hacia el suscriptor</b> (ETA humo ~${etaMinutes} min)` : "fuera del suscriptor"}\n`;
-  msg += `🛰️ ${wasPreliminary ? "GOES preliminar + " : ""}FIRMS VIIRS · detección hace ${ageMin} min\n`;
-  msg += `🧭 Coords: <code>${fire.latitude.toFixed(4)}, ${fire.longitude.toFixed(4)}</code>\n`;
-  msg += `🌲 Zona: ${zoneName ? escapeHtml(zoneName) : "fuera de zona forestal"}\n`;
-  msg += `📌 <a href="${gMapsUrl}">Maps</a>\n\n`;
-  msg += `<i>Mensaje operativo — sin interpretación AI, datos crudos.</i>`;
-  msg += `\n—\nClara · AlertaForestal.org · Coordinación interna${cuartelName ? ` · ${escapeHtml(cuartelName)}` : ""}`;
-  return msg;
 }
 
 async function formatConfirmedFromPreliminary(

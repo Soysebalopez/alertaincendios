@@ -36,7 +36,6 @@ export interface AlertableFire {
 export interface AlertableSubscriber {
   lat: number;
   lng: number;
-  role?: string;
 }
 
 export interface AlertPair<F, S> {
@@ -49,26 +48,19 @@ export interface AlertPair<F, S> {
 export interface AlertPairSelection<F, S> {
   pairs: AlertPair<F, S>[];
   /**
-   * WHI-758: pares (foco, civil) descartados porque el foco no cae en zona
+   * WHI-758: pares (foco, suscriptor) descartados porque el foco no cae en zona
    * forestal. Se reporta en la respuesta del cron para ver el efecto del filtro.
    */
   skippedNonForestCivilian: number;
 }
 
 /**
- * WHI-758: el civil recibe sólo focos en zona forestal; el bombero recibe
- * todo, porque el cuartel necesita la vista completa para coordinar respuesta.
- * M7: un rol desconocido cae en civil — filtrar de MENOS a alguien por un rol
- * nuevo sería mandarle ruido, filtrar de más es no avisarle. Preferimos lo
- * primero, y el llamador loguea el rol raro.
- */
-function receivesNonForestFires(role: string | undefined): boolean {
-  return role === "fireman";
-}
-
-/**
  * Devuelve los pares que merecen una consulta a la base, con la distancia ya
  * resuelta. Ambos filtros son puro cálculo local: ninguno toca la red.
+ *
+ * WHI-758: todo suscriptor recibe sólo focos en zona forestal. Hasta el
+ * 2026-09-14 existía un rol que recibía también los de fuera de zona; se retiró
+ * sin haberse usado nunca (WHI-907).
  */
 export function selectAlertPairs<F extends AlertableFire, S extends AlertableSubscriber>(
   fires: F[],
@@ -80,7 +72,7 @@ export function selectAlertPairs<F extends AlertableFire, S extends AlertableSub
 
   for (const fire of fires) {
     for (const sub of subscribers) {
-      if (!fire.forestZone && !receivesNonForestFires(sub.role)) {
+      if (!fire.forestZone) {
         skippedNonForestCivilian++;
         continue;
       }

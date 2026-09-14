@@ -20,8 +20,8 @@ export type SendResult = {
 
 /**
  * Escapes the five characters that break Telegram's HTML parse_mode. MUST be
- * applied to any externally-sourced string (city names from geocoding, cuartel
- * names, zone names) before interpolating it into an HTML message — an unescaped
+ * applied to any externally-sourced string (city names from geocoding, zone
+ * names) before interpolating it into an HTML message — an unescaped
  * `&`/`<`/`>` makes Telegram reject the message with HTTP 400 and the alert is
  * lost.
  */

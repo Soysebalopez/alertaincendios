@@ -35,8 +35,8 @@ Alertas tempranas de incendios forestales en Argentina vía Telegram. El bot del
 - Ciudad: `/ciudad/[province]/[city]` — SSG 78 páginas, dashboard completo por ciudad
 - Historial: `/historial` — Recharts evolución de focos
 - Cómo funciona: `/como-funciona` — FAQ ciudadano (8 preguntas, sin jerga)
-- Cuarteles: `/cuarteles` — landing para bomberos voluntarios (comparativa vecino/bombero, cómo activar el rol con código) + **form de alta de cuartel** que envía la solicitud por email vía Resend (`<CuartelRequestForm>` → `/api/cuarteles/request`). Opción A del onboarding fireman: contacto manual, sin auto-emisión de códigos todavía
-- Dashboard: `/dashboard`, `/dashboard/alerts`, `/dashboard/health`, `/dashboard/superadmin` — métricas internas (`superadmin` agrega breakdown de subscribers, top cuarteles, funnel GOES, latencias, forest split), gated por Supabase Auth allowlist (soysebalopez@gmail.com)
+- ~~Cuarteles~~: la función de bomberos voluntarios (rol, códigos de invitación, `/cuarteles`, `/soybombero`) **se retiró el 2026-09-14 sin haberse usado nunca** (WHI-907). `/cuarteles` redirige a `/`. Las tablas `fireman_codes` / `fireman_code_usage` y la columna `subscribers.cuartel_name` siguen en la base hasta el borrado con OK explícito
+- Dashboard: `/dashboard`, `/dashboard/alerts`, `/dashboard/health`, `/dashboard/superadmin` — métricas internas (`superadmin` agrega breakdown de subscribers, funnel GOES, latencias, forest split), gated por Supabase Auth allowlist (soysebalopez@gmail.com)
 - Login: `/login` — entry point del dashboard
 
 ### Route Groups
@@ -53,7 +53,6 @@ Alertas tempranas de incendios forestales en Argentina vía Telegram. El bot del
 - `/api/summary?lat=X&lng=Y&city=Name` — Groq summary
 - `/api/history?lat=X&lng=Y&pollutant=NO2&days=7` — historial por contaminante
 - `/api/simulate` — POST, dispersión gaussiana (Pasquill-Gifford)
-- `/api/cuarteles/request` — POST, recibe el form de alta de cuartel y manda email al owner vía **Resend** (lazy init, `from: onboarding@resend.dev`, reply-to al email del cuartel). Honeypot anti-spam + rate-limit 5/min/IP. Requiere `RESEND_API_KEY` en env (Production); sin la key devuelve `email_unavailable`
 - `/api/bot/telegram` — webhook Telegram
 - `/api/bot/sync-commands` — registra el menú nativo del bot (lo que Telegram muestra al tocar "/") vía `setMyCommands`. NO se deriva del webhook; re-ejecutar con `?secret=<CRON_SECRET>` cada vez que cambia la lista de comandos
 
@@ -83,8 +82,8 @@ Autorización vía `isCronAuthorized()` en `src/lib/cron-auth.ts`: acepta el sec
 ## Supabase Tables (shared project)
 
 ### Suscripción + estado del bot
-- `subscribers` (chat_id bigint PK, lat, lng, city_name, lightning_enabled bool default true, role text default 'civilian', cuartel_name text, created_at)
-- `fireman_codes` (code text PK, cuartel_name, used_count, max_uses) — WHI-588: invite codes
+- `subscribers` (chat_id bigint PK, lat, lng, city_name, lightning_enabled bool default true, role text default 'civilian', cuartel_name text, created_at) — `role` y `cuartel_name` quedaron sin uso desde el retiro de bomberos (2026-09-14); se borran con OK explícito
+- `fireman_codes` (code text PK, cuartel_name, used_count, max_uses) — **sin uso desde 2026-09-14** (WHI-907); pendiente de borrar con OK explícito
 - `bot_commands_log` (id bigserial PK, chat_id, command, args, created_at) — WHI-587: engagement
 
 ### FIRMS (cache + dedup)
@@ -149,7 +148,7 @@ Autorización vía `isCronAuthorized()` en `src/lib/cron-auth.ts`: acepta el sec
 - Dispersión: Gaussian plume (Pasquill-Gifford) en `src/lib/dispersion.ts`
 - Fire history backfill: `scripts/backfill-fires.sh` con MAP_KEY desde `scripts/backfill.env` (gitignored)
 - Leaflet maps con dynamic import + ssr:false
-- **Filtro forestal por rol (canónico)**: `subscribers.role` determina (a) qué focos llegan — civilian solo recibe alertas en zona forestal, fireman recibe todo — y (b) el tono del mensaje: civilian con AI interpretation, fireman operativo sin AI firmado por cuartel. Aplica en `/api/alerts` y `/api/goes-alerts`. El mismo filtro (sin rol) gobierna landing/mapa/`/ciudad` (ver Forest classification > Aplicado en).
+- **Filtro forestal (canónico)**: todo suscriptor recibe sólo alertas de focos en zona forestal, con interpretación AI. Aplica en `/api/alerts` y `/api/goes-alerts`. (Hasta el 2026-09-14 existía un rol de bombero que recibía todo con formato operativo; se retiró sin haberse usado nunca — WHI-907.) El mismo filtro gobierna landing/mapa/`/ciudad` (ver Forest classification > Aplicado en).
 - Doble confirmación: preliminary GOES → confirmation upgrade FIRMS si <5km/<2h → dismissal automático tras 4h
 - Preliminaries descartadas se BORRAN de goes_preliminary (cascade goes_alerted) — el landing metric "Preliminares activos" refleja solo lo pendiente
 - **Guard de body FIRMS**: NASA devuelve errores ("Invalid MAP_KEY.") con HTTP 200; `fires_sync_step2_process()` solo escribe `fires_cache` si el body empieza con el header CSV `latitude,...` — si no, marca `_clara_config.firms_sync_error` y el monitor alerta. Rotación semi-automática con el comando oculto de admin `/rotarkey <key>` (valida en vivo contra NASA antes de guardar; NO va en sync-commands)

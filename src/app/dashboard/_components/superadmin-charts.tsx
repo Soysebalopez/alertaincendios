@@ -280,7 +280,7 @@ export function ConfirmationTrend({
   );
 }
 
-// ─── Donut chart (civilian vs fireman, lightning, etc.) ─────────────────
+// ─── Donut chart (lightning opt-in, etc.) ───────────────────────────────
 
 export function DonutChart({
   data,

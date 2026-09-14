@@ -20,58 +20,30 @@ const cercaSinBosque = { latitude: -38.4, longitude: -69.2 };
 // Chaco: a más de 1.000 km del suscriptor de Neuquén.
 const lejos = { latitude: -24.0, longitude: -61.0, forestZone: "chaco-norte" };
 
-const civil = { lat: -38.39, lng: -69.16, role: "civilian" };
-const bombero = { lat: -38.39, lng: -69.16, role: "fireman" };
+const suscriptor = { lat: -38.39, lng: -69.16 };
 
 describe("selectAlertPairs", () => {
   it("descarta el foco lejano sin generar ningún par", () => {
-    const { pairs } = selectAlertPairs([lejos], [civil], ALERT_MAX_DISTANCE_KM);
-    expect(pairs).toHaveLength(0);
-  });
-
-  it("descarta el foco lejano también para un bombero (la distancia no perdona rol)", () => {
-    const { pairs } = selectAlertPairs([lejos], [bombero], ALERT_MAX_DISTANCE_KM);
+    const { pairs } = selectAlertPairs([lejos], [suscriptor], ALERT_MAX_DISTANCE_KM);
     expect(pairs).toHaveLength(0);
   });
 
   it("deja pasar el foco cercano en zona forestal, con su distancia ya calculada", () => {
-    const { pairs } = selectAlertPairs([cerca], [civil], ALERT_MAX_DISTANCE_KM);
+    const { pairs } = selectAlertPairs([cerca], [suscriptor], ALERT_MAX_DISTANCE_KM);
     expect(pairs).toHaveLength(1);
     expect(pairs[0].fire).toBe(cerca);
-    expect(pairs[0].sub).toBe(civil);
+    expect(pairs[0].sub).toBe(suscriptor);
     expect(pairs[0].distKm).toBeLessThan(10);
   });
 
-  it("al civil no le manda un foco cercano fuera de zona forestal, y lo cuenta", () => {
+  it("no manda un foco cercano fuera de zona forestal, y lo cuenta", () => {
     const { pairs, skippedNonForestCivilian } = selectAlertPairs(
       [cercaSinBosque],
-      [civil],
+      [suscriptor],
       ALERT_MAX_DISTANCE_KM
     );
     expect(pairs).toHaveLength(0);
     expect(skippedNonForestCivilian).toBe(1);
-  });
-
-  it("al bombero sí le manda un foco cercano fuera de zona forestal", () => {
-    const { pairs, skippedNonForestCivilian } = selectAlertPairs(
-      [cercaSinBosque],
-      [bombero],
-      ALERT_MAX_DISTANCE_KM
-    );
-    expect(pairs).toHaveLength(1);
-    expect(skippedNonForestCivilian).toBe(0);
-  });
-
-  it("un rol desconocido se trata como civil (no se le filtra de menos)", () => {
-    const raro = { lat: -38.39, lng: -69.16, role: "institucional" };
-    const { pairs } = selectAlertPairs([cercaSinBosque], [raro], ALERT_MAX_DISTANCE_KM);
-    expect(pairs).toHaveLength(0);
-  });
-
-  it("un suscriptor sin rol se trata como civil", () => {
-    const sinRol = { lat: -38.39, lng: -69.16 };
-    const { pairs } = selectAlertPairs([cercaSinBosque], [sinRol], ALERT_MAX_DISTANCE_KM);
-    expect(pairs).toHaveLength(0);
   });
 
   /**
@@ -86,9 +58,9 @@ describe("selectAlertPairs", () => {
       forestZone: "chaco-norte",
     }));
     const subs = [
-      { lat: -38.39, lng: -69.16, role: "civilian" },
-      { lat: -38.7196, lng: -62.2724, role: "civilian" },
-      { lat: 40.458, lng: 0.354, role: "civilian" },
+      { lat: -38.39, lng: -69.16 },
+      { lat: -38.7196, lng: -62.2724 },
+      { lat: 40.458, lng: 0.354 },
     ];
     const { pairs } = selectAlertPairs(focos, subs, ALERT_MAX_DISTANCE_KM);
     expect(pairs).toHaveLength(0);
@@ -97,7 +69,7 @@ describe("selectAlertPairs", () => {
   it("respeta el radio que se le pasa", () => {
     // El mismo foco, dos radios: adentro con 100 km, afuera con 1 km.
     const aUnosKm = { latitude: -38.45, longitude: -69.16, forestZone: "andino-patagonico" };
-    expect(selectAlertPairs([aUnosKm], [civil], 100).pairs).toHaveLength(1);
-    expect(selectAlertPairs([aUnosKm], [civil], 1).pairs).toHaveLength(0);
+    expect(selectAlertPairs([aUnosKm], [suscriptor], 100).pairs).toHaveLength(1);
+    expect(selectAlertPairs([aUnosKm], [suscriptor], 1).pairs).toHaveLength(0);
   });
 });

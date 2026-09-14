@@ -49,6 +49,11 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // WHI-907 — the volunteer firefighter page was retired on 2026-09-14 (never
+  // used). Keep old links and search results landing somewhere useful.
+  async redirects() {
+    return [{ source: "/cuarteles", destination: "/", permanent: true }];
+  },
   async headers() {
     return [
       {
