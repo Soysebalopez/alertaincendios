@@ -1,0 +1,34 @@
+{
+  "success": true,
+  "error": null,
+  "response": [
+    {
+      "id": "6835db25f31314afcf8bb8c5",
+      "loc": {
+        "long": -87.3311,
+        "lat": 32.9001
+      },
+      "ob": {
+        "timestamp": 1748359934,
+        "dateTimeISO": "2025-05-27T15:32:14+00:00",
+        "age": 113,
+        "pulse": {
+          "type": "cg",
+          "peakamp": -7000,
+          "numSensors": 5,
+          "chiSquare": 11.82
+        }
+      },
+      "recTimestamp": 1748359973,
+      "recISO": "2025-05-27T15:32:53+00:00",
+      "relativeTo": {
+        "lat": 32.97,
+        "long": -87.28,
+        "bearing": 212,
+        "bearingENG": "SSW",
+        "distanceKM": 9.119,
+        "distanceMI": 5.666
+      }
+    }
+  ]
+}
