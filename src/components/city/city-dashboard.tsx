@@ -6,6 +6,7 @@ import { WindCompassCard } from "./wind-card";
 import { Pill } from "@/components/clara-ui";
 import { ChartLineUp } from "@phosphor-icons/react/dist/ssr";
 import { PollutantChart } from "./pollutant-chart";
+import type { CityFireFilter } from "@/lib/city-fires";
 import {
   AIR_LEVEL_COLORS,
   AIR_LEVEL_LABELS,
@@ -79,11 +80,16 @@ export function CityDashboard({
   provinceName,
   lat,
   lng,
+  focus = null,
+  fireFilter = "forest",
 }: {
   cityName: string;
   provinceName: string;
   lat: number;
   lng: number;
+  /** Fire the map centers on (Bahía Blanca page, `?foco=`). */
+  focus?: { lat: number; lng: number } | null;
+  fireFilter?: CityFireFilter;
 }) {
   const [air, setAir] = useState<AirData | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
@@ -296,7 +302,13 @@ export function CityDashboard({
           background: "var(--surface)",
         }}
       >
-        <CityMap lat={lat} lng={lng} cityName={cityName} />
+        <CityMap
+          lat={lat}
+          lng={lng}
+          cityName={cityName}
+          focus={focus}
+          fireFilter={fireFilter}
+        />
       </div>
 
       {/* Evolution */}
