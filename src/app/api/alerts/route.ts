@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { getSupabase } from "@/lib/supabase";
 import { fetchFires, FirePoint } from "@/lib/firms";
 import { fetchWind, degreesToCardinal } from "@/lib/wind";
-import { haversineKm, isUpwind, smokeEtaMinutes } from "@/lib/geo";
+import { bearingDegrees, haversineKm, smokeEtaMinutes, smokeHeadsTowardUser } from "@/lib/geo";
 import { sendMessage, escapeHtml } from "@/lib/telegram";
 import { buildFeedbackKeyboard } from "@/lib/feedback-keyboard";
 import { forestZoneName } from "@/lib/forest-zones";
@@ -110,10 +110,10 @@ export async function GET(request: Request) {
         wind = await fetchWind(fire.latitude, fire.longitude);
         windCache.set(fireKey, wind);
       }
-      const upwind = isUpwind(sub.lat, sub.lng, fire.latitude, fire.longitude, wind.windDirection);
-      const eta = smokeEtaMinutes(distKm, wind.windSpeed, upwind.isUpwind);
+      const smoke = smokeHeadsTowardUser(sub.lat, sub.lng, fire.latitude, fire.longitude, wind.windDirection);
+      const eta = smokeEtaMinutes(distKm, wind.windSpeed, smoke.headsToward);
 
-      const level = classifyAlert(distKm, upwind.isUpwind);
+      const level = classifyAlert(distKm, smoke.headsToward);
       if (level === "none") continue;
 
       // H-08 — INSERT como lock primario. Si otra invocación del cron ganó
@@ -254,10 +254,10 @@ function buildFireKey(fire: FirePoint): string {
 
 function classifyAlert(
   distKm: number,
-  upwind: boolean
+  smokeTowardUser: boolean
 ): "danger" | "warning" | "info" | "none" {
-  if (distKm < 20 && upwind) return "danger";
-  if (distKm < 50 && upwind) return "warning";
+  if (distKm < 20 && smokeTowardUser) return "danger";
+  if (distKm < 50 && smokeTowardUser) return "warning";
   if (distKm < 50) return "info";
   return "none";
 }
@@ -274,23 +274,6 @@ function frpBars(frp: number): string {
   const level =
     frp < 1 ? 1 : frp < 5 ? 2 : frp < 20 ? 3 : frp < 50 ? 4 : 5;
   return "🟧".repeat(level) + "⬛".repeat(5 - level);
-}
-
-// Compass bearing from user to fire (degrees, 0=N).
-function bearingDegrees(
-  userLat: number,
-  userLng: number,
-  fireLat: number,
-  fireLng: number
-): number {
-  const φ1 = (userLat * Math.PI) / 180;
-  const φ2 = (fireLat * Math.PI) / 180;
-  const Δλ = ((fireLng - userLng) * Math.PI) / 180;
-  const y = Math.sin(Δλ) * Math.cos(φ2);
-  const x =
-    Math.cos(φ1) * Math.sin(φ2) -
-    Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
-  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
 // Minutes elapsed since FIRMS detection (acqDate is YYYY-MM-DD, acqTime is HHMM UTC).

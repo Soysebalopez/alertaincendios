@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { haversineKm } from "@/lib/geo";
+import { bearingDegrees, haversineKm } from "@/lib/geo";
 import { cardinalToSpanish, degreesToCardinal } from "@/lib/wind";
 import { forestZoneName } from "@/lib/forest-zones";
 
@@ -175,15 +175,6 @@ function minutesSinceDetection(acqDate: string, acqTime: string): number {
   const ts = Date.parse(`${acqDate}T${hh}:${mm}:00Z`);
   if (Number.isNaN(ts)) return 0;
   return Math.max(0, Math.round((Date.now() - ts) / 60000));
-}
-
-function bearingDegrees(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const φ1 = (lat1 * Math.PI) / 180;
-  const φ2 = (lat2 * Math.PI) / 180;
-  const Δλ = ((lng2 - lng1) * Math.PI) / 180;
-  const y = Math.sin(Δλ) * Math.cos(φ2);
-  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
-  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
 function formatAge(min: number): string {

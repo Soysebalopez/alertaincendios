@@ -19,34 +19,66 @@ export function haversineKm(
 }
 
 /**
- * Checks if a fire is upwind of a user (smoke blowing towards them).
- * Returns { isUpwind, angleDiff }.
+ * Initial great-circle bearing from one point to another, in degrees
+ * (0 = north, 90 = east, range [0, 360)).
  */
-export function isUpwind(
+export function bearingDegrees(
+  fromLat: number,
+  fromLng: number,
+  toLat: number,
+  toLng: number
+): number {
+  const φ1 = (fromLat * Math.PI) / 180;
+  const φ2 = (toLat * Math.PI) / 180;
+  const Δλ = ((toLng - fromLng) * Math.PI) / 180;
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x =
+    Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+/** Smallest absolute difference between two compass angles, in [0, 180]. */
+export function angleDiffDeg(a: number, b: number): number {
+  const d = (((a - b) % 360) + 360) % 360;
+  return d > 180 ? 360 - d : d;
+}
+
+/** Half-width of the sector around the wind axis counted as "smoke toward the user". */
+export const SMOKE_TOWARD_HALF_ANGLE_DEG = 60;
+
+/**
+ * Whether the wind carries a fire's smoke toward the user.
+ *
+ * `windFromDeg` uses the meteorological convention (Open-Meteo, METAR): the
+ * compass bearing the wind blows FROM. Smoke reaches the user when the fire
+ * sits on that side, i.e. when the bearing user→fire is close to windFromDeg.
+ * (WHI-908: the previous `isUpwind` compared against windFromDeg + 180 and
+ * reported the opposite.)
+ */
+export function smokeHeadsTowardUser(
   userLat: number,
   userLng: number,
   fireLat: number,
   fireLng: number,
-  windDirection: number
-): { isUpwind: boolean; angleDiff: number } {
-  const fireAngle =
-    Math.atan2(fireLng - userLng, fireLat - userLat) * (180 / Math.PI);
-  const windBearing = (windDirection + 180) % 360; // direction wind is GOING
-  let angleDiff = Math.abs(fireAngle - windBearing);
-  if (angleDiff > 180) angleDiff = 360 - angleDiff;
-  return { isUpwind: angleDiff < 60, angleDiff };
+  windFromDeg: number
+): { headsToward: boolean; angleDiff: number } {
+  const angleDiff = angleDiffDeg(
+    bearingDegrees(userLat, userLng, fireLat, fireLng),
+    windFromDeg
+  );
+  return { headsToward: angleDiff < SMOKE_TOWARD_HALF_ANGLE_DEG, angleDiff };
 }
 
 /**
  * Calculates smoke ETA in minutes given distance and wind speed.
- * Returns -1 if not applicable (not upwind or no wind).
+ * Returns -1 if the smoke is not heading toward the user or the wind is calm.
  */
 export function smokeEtaMinutes(
   distanceKm: number,
   windSpeedKmh: number,
-  upwind: boolean
+  headsToward: boolean
 ): number {
-  if (!upwind || windSpeedKmh <= 0) return -1;
+  if (!headsToward || windSpeedKmh <= 0) return -1;
   const windMs = windSpeedKmh / 3.6;
   return Math.round((distanceKm * 1000) / windMs / 60);
 }
