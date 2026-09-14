@@ -12,6 +12,8 @@ export const BAHIA_BLANCA = {
   lng: -62.2724,
 } as const;
 export const BAHIA_PAGE_PATH = "/bahia-blanca";
+/** The generic city URL, redirected to BAHIA_PAGE_PATH in next.config.ts. */
+export const BAHIA_GENERIC_CITY_PATH = "/ciudad/buenos-aires/bahia-blanca";
 export const BAHIA_BOT_URL = "https://t.me/alertaforestal_bot?start=ciudad-bahia-blanca";
 /** Fires this close get the "Ver hacia dónde va" link, and only they can be focused on the page. */
 export const BAHIA_FOCUS_RADIUS_KM = 100;

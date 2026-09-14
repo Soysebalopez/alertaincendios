@@ -1,5 +1,6 @@
 import { MetadataRoute } from "next";
 import { PROVINCES } from "@/lib/argentina-cities";
+import { BAHIA_GENERIC_CITY_PATH, BAHIA_PAGE_PATH } from "@/lib/bahia-blanca";
 
 function slugify(name: string): string {
   return name
@@ -53,11 +54,22 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
   ];
 
-  // All city pages (~78)
+  // WHI-907 — Bahía Blanca has its own page; its generic city URL redirects
+  // there, so only the new one is listed.
+  routes.push({
+    url: `${baseUrl}${BAHIA_PAGE_PATH}`,
+    lastModified: new Date("2026-09-14"),
+    changeFrequency: "hourly",
+    priority: 0.9,
+  });
+
+  // Every other city page (~77)
   for (const prov of PROVINCES) {
     for (const city of prov.cities) {
+      const path = `/ciudad/${prov.id}/${slugify(city.name)}`;
+      if (path === BAHIA_GENERIC_CITY_PATH) continue;
       routes.push({
-        url: `${baseUrl}/ciudad/${prov.id}/${slugify(city.name)}`,
+        url: `${baseUrl}${path}`,
         lastModified: STATIC_LAST_MODIFIED,
         changeFrequency: "daily",
         priority: 0.7,
