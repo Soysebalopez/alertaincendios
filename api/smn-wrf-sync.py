@@ -1,10 +1,11 @@
 """
 WHI-907 part 4 — SMN WRF 4 km wind forecast around Bahía Blanca.
 
-Triggered by Supabase pg_cron twice a day (scheduled after merge, checkpoint
-C5). A run's 73 hourly files are published ~2.5 h after it starts (the 00Z run
-of 2026-09-14 landed between 02:15 and 02:29 UTC), so the cron belongs at
-03:00 and 15:00 UTC. Picks the newest run whose first MAX_LEAD_HOURS files are
+Triggered by Supabase pg_cron four times a day (scheduled after merge,
+checkpoint C5). SMN starts a run every 6 hours (00, 06, 12 and 18 UTC) and its
+73 hourly files are published ~2.5 h later (the 00Z run of 2026-09-14 landed
+between 02:15 and 02:29 UTC), so the cron belongs at 02:45, 08:45, 14:45 and
+20:45 UTC. Picks the newest run whose first MAX_LEAD_HOURS files are
 all published and reads them ONE AT A TIME — each file is ~31 MB for the whole
 country — keeping only the grid cells within RADIUS_KM of Bahía Blanca, which
 are upserted into `wind_forecast`. Until the
@@ -39,8 +40,9 @@ from smn_wrf import extract
 
 BUCKET = "smn-ar-wrf"
 REGION = "us-west-2"
-# 18, not 12: a run is ingested ~3 h after it starts, so it has to cover until
-# the next run arrives (12 h later + ingestion delay + margin).
+# 18 h ahead: a new run arrives every 6 h plus ~2.5 h of publishing, and some
+# runs never appear (none for 2026-07-21 00Z, nor 2026-07-23 00Z and 12Z), so
+# each run must also cover for a missing next one.
 MAX_LEAD_HOURS = 18
 # Vercel stops the function at 300 s (maxDuration in vercel.json). Past this no
 # new download starts. Each file is written as soon as it is read and leads go

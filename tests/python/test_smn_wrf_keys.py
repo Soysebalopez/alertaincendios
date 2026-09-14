@@ -1,6 +1,8 @@
-"""WHI-907 part 4 — choosing which SMN WRF files to download. Runs start at
-00 and 12 UTC and their hourly files appear over time, so the sync uses the
-newest run whose first hours are all published."""
+"""WHI-907 part 4 — choosing which SMN WRF files to download. Runs start every
+6 hours (00, 06, 12 and 18 UTC, verified on 2026-09-13) and their hourly files
+appear ~2.5 h later. Some runs never appear (none for 2026-07-21 00Z, nor for
+2026-07-23 00Z and 12Z), so the sync looks a day back and uses the newest run
+whose first hours are all published."""
 from datetime import datetime, timezone
 
 from smn_wrf import extract
@@ -10,22 +12,29 @@ def key(day: str, run: str, lead: int) -> str:
     return f"DATA/WRF/DET/{day[:4]}/{day[4:6]}/{day[6:]}/{run}/WRFDETAR_01H_{day}_{run}_{lead:03d}.nc"
 
 
-def test_candidate_run_prefixes_are_newest_first():
+def test_candidate_run_prefixes_are_every_six_hours_newest_first():
     now = datetime(2026, 9, 14, 15, 30, tzinfo=timezone.utc)
     assert extract.candidate_run_prefixes(now) == [
         "DATA/WRF/DET/2026/09/14/12/",
+        "DATA/WRF/DET/2026/09/14/06/",
         "DATA/WRF/DET/2026/09/14/00/",
-        "DATA/WRF/DET/2026/09/13/12/",
+        "DATA/WRF/DET/2026/09/13/18/",
     ]
 
 
-def test_before_noon_the_newest_candidate_is_todays_00z_run():
+def test_in_the_morning_the_newest_candidate_is_todays_06z_run():
     now = datetime(2026, 9, 14, 9, 0, tzinfo=timezone.utc)
     assert extract.candidate_run_prefixes(now) == [
+        "DATA/WRF/DET/2026/09/14/06/",
         "DATA/WRF/DET/2026/09/14/00/",
+        "DATA/WRF/DET/2026/09/13/18/",
         "DATA/WRF/DET/2026/09/13/12/",
-        "DATA/WRF/DET/2026/09/13/00/",
     ]
+
+
+def test_at_night_the_newest_candidate_is_todays_18z_run():
+    now = datetime(2026, 9, 14, 20, 0, tzinfo=timezone.utc)
+    assert extract.candidate_run_prefixes(now)[0] == "DATA/WRF/DET/2026/09/14/18/"
 
 
 def test_picks_the_newest_complete_run():

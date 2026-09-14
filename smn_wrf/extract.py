@@ -94,16 +94,19 @@ def points_near(ds, lat: float, lng: float, radius_km: float) -> list[dict]:
 _S3_PREFIX = "DATA/WRF/DET"
 
 
-def candidate_run_prefixes(now: datetime, count: int = 3) -> list[str]:
-    """S3 prefixes of the `count` most recent 00/12 UTC runs, newest first.
-    A run's files are published over several hours, so older runs are kept
-    as fallbacks for when the newest one is still incomplete."""
+RUN_INTERVAL_HOURS = 6
+
+
+def candidate_run_prefixes(now: datetime, count: int = 4) -> list[str]:
+    """S3 prefixes of the `count` most recent runs, newest first. SMN starts a
+    run every 6 hours (00, 06, 12 and 18 UTC); its files take ~2.5 h to appear
+    and some runs never do, so older runs stay as fallbacks."""
     utc = now.astimezone(timezone.utc)
-    run = utc.replace(hour=12 if utc.hour >= 12 else 0, minute=0, second=0, microsecond=0)
+    run = utc.replace(hour=utc.hour - utc.hour % RUN_INTERVAL_HOURS, minute=0, second=0, microsecond=0)
     prefixes: list[str] = []
     for _ in range(count):
         prefixes.append(f"{_S3_PREFIX}/{run:%Y/%m/%d/%H}/")
-        run -= timedelta(hours=12)
+        run -= timedelta(hours=RUN_INTERVAL_HOURS)
     return prefixes
 
 
