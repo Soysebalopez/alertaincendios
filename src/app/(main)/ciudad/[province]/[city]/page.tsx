@@ -6,8 +6,10 @@ import { PROVINCES } from "@/lib/argentina-cities";
 import { CityDashboard } from "@/components/city/city-dashboard";
 import { CityForestFires } from "@/components/city/city-forest-fires";
 import { CitySatelliteCoverage } from "@/components/city/city-satellite-coverage";
+import { CityContext } from "@/components/city/city-context";
 import { CityJsonLd, CityBreadcrumbJsonLd } from "@/components/jsonld";
 import { Pill } from "@/components/clara-ui";
+import { SITE_URL as SITE_URL_CANONICO } from "@/lib/site-url";
 
 interface PageProps {
   params: Promise<{ province: string; city: string }>;
@@ -50,8 +52,8 @@ export async function generateMetadata({
   // WHI-759: doble entry SEO. Las páginas ya rankean por "calidad del aire en X";
   // ahora también por "incendios forestales / focos cerca de X". Title se mantiene
   // breve para evitar truncation en SERP — el detalle va en description y OG.
-  const title = `${match.city.name}, ${match.province.name} — Focos forestales y calidad del aire`;
-  const description = `Focos forestales cerca de ${match.city.name}, calidad del aire y monitoreo ambiental en tiempo real. Alertas tempranas vía Telegram.`;
+  const title = `Incendios forestales en ${match.city.name}, ${match.province.name} — focos activos`;
+  const description = `Focos de calor activos cerca de ${match.city.name} (${match.province.name}), detectados por satélite y actualizados cada 15 minutos. Calidad del aire, qué hacer si hay un foco cerca, y alertas gratis por Telegram.`;
 
   return {
     title,
@@ -80,8 +82,7 @@ export default async function CiudadPage({ params }: PageProps) {
     (c) => slugify(c.name) !== city,
   );
 
-  const siteUrl =
-    process.env.NEXT_PUBLIC_SITE_URL || "https://alertaforestal.org";
+  const siteUrl = SITE_URL_CANONICO;
 
   return (
     <>
@@ -131,7 +132,21 @@ export default async function CiudadPage({ params }: PageProps) {
                   margin: "14px 0 0",
                 }}
               >
-                {match.city.name}{" "}
+                {/*
+                  🔴 EL H1 DECÍA SÓLO «Tandil Buenos Aires» (WHI-919).
+
+                  Sin «incendios», sin «focos», sin nada que dijera de qué trata
+                  la página. 77 páginas casi idénticas con un nombre de ciudad
+                  cambiado es el patrón que un buscador trata como página puerta;
+                  lo que las saca de ahí es que digan algo.
+
+                  El nombre de la ciudad sigue siendo lo grande; el resto entra
+                  en la misma línea, más chico.
+                */}
+                {/* La coma va en el texto, no sólo a la vista: sin ella el H1
+                    se lee «...en Tandil Buenos Aires» para un buscador y para
+                    un lector de pantalla, que es como se lee de verdad. */}
+                Incendios forestales en {match.city.name},{" "}
                 <span
                   className="text-muted"
                   style={{ fontWeight: 300, fontSize: "0.5em" }}
@@ -186,6 +201,14 @@ export default async function CiudadPage({ params }: PageProps) {
           </div>
         </div>
       </section>
+
+      {/* WHI-919: contenido servido en el HTML inicial. Ver el porqué en el
+          propio archivo — antes de esto la página tenía 168 palabras y cero H2. */}
+      <CityContext
+        cityName={match.city.name}
+        provinceName={match.province.name}
+        provinceId={match.province.id}
+      />
 
       {otherCities.length > 0 && (
         <section

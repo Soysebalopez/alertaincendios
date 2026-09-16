@@ -1,3 +1,4 @@
+import { SITE_URL as SITE_URL_CANONICO } from "@/lib/site-url";
 export function WebsiteJsonLd() {
   const data = {
     "@context": "https://schema.org",
@@ -7,7 +8,7 @@ export function WebsiteJsonLd() {
     description:
       "Sistema de alerta temprana de incendios forestales en Argentina. Detección satelital y alertas por Telegram con modelo de dispersión de humo.",
     url:
-      process.env.NEXT_PUBLIC_SITE_URL || "https://alertaforestal.org",
+      SITE_URL_CANONICO,
     applicationCategory: "BrowserApplication",
     operatingSystem: "Web",
     inLanguage: "es-AR",
@@ -166,5 +167,67 @@ export function CityBreadcrumbJsonLd({
 
   return (
     <script type="application/ld+json">{JSON.stringify(data)}</script>
+  );
+}
+
+/**
+ * QUIÉN PUBLICA ESTE SITIO (WHI-919).
+ *
+ * `WebApplication` describe la herramienta; `Organization` describe a quien la
+ * hace. Son cosas distintas y un buscador las usa para cosas distintas: la
+ * segunda es la que permite atribuir el sitio a una entidad, que en una vertical
+ * donde el resto son organismos públicos es justamente lo que hay que dejar
+ * claro.
+ */
+export function OrganizationJsonLd() {
+  const data = {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: "AlertaForestal",
+    legalName: "Whitebay",
+    url: SITE_URL_CANONICO,
+    logo: `${SITE_URL_CANONICO}/icon.svg`,
+    description:
+      "Sistema independiente de alerta temprana de incendios forestales en Argentina. Detección satelital y avisos gratuitos por Telegram.",
+    areaServed: { "@type": "Country", name: "Argentina" },
+    inLanguage: "es-AR",
+    sameAs: ["https://t.me/alertaforestal_bot"],
+  };
+
+  return (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }}
+    />
+  );
+}
+
+/**
+ * Las preguntas frecuentes de `/como-funciona`, en datos estructurados.
+ *
+ * Recibe las respuestas EN TEXTO PLANO desde la página, que es la única que las
+ * tiene: sus `body` son React y de un árbol de React no se saca texto en el
+ * servidor sin renderizarlo.
+ */
+export function FaqJsonLd({
+  items,
+}: {
+  items: { q: string; plain: string }[];
+}) {
+  const data = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: items.map(({ q, plain }) => ({
+      "@type": "Question",
+      name: q,
+      acceptedAnswer: { "@type": "Answer", text: plain },
+    })),
+  };
+
+  return (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }}
+    />
   );
 }

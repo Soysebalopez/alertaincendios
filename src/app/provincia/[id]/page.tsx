@@ -5,6 +5,7 @@ import { PREVENTION_PROVINCE_IDS } from "@/lib/fire-danger";
 import { getProvinceDanger } from "@/lib/fire-danger-server";
 import { ProvinceView } from "@/components/danger/province-view";
 import { ProvinceJsonLd } from "@/components/jsonld";
+import { SITE_URL as SITE_URL_CANONICO } from "@/lib/site-url";
 
 export const revalidate = 3600;
 export const dynamicParams = false;
@@ -54,8 +55,7 @@ export default async function ProvinciaPage({ params }: PageProps) {
       </main>
     );
   }
-  const siteUrl =
-    process.env.NEXT_PUBLIC_SITE_URL || "https://alertaforestal.org";
+  const siteUrl = SITE_URL_CANONICO;
   const lat = data.zones.reduce((a, z) => a + z.lat, 0) / data.zones.length;
   const lng = data.zones.reduce((a, z) => a + z.lng, 0) / data.zones.length;
 

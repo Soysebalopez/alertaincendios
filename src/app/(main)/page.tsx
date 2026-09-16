@@ -259,7 +259,23 @@ export default async function Home() {
             <StaggerReveal delay={0.2}>
               {hasAnyForestActivity ? (
                 <div>
-                  <h1
+                  {/*
+                    🔴 EL CONTADOR YA NO ES EL H1 (WHI-919), Y NADA SE MOVIÓ DE
+                    LUGAR EN LA PANTALLA.
+
+                    El H1 es una de las señales más fuertes que tiene una página,
+                    y acá se gastaba en un número que cambia cada 15 minutos. Su
+                    texto completo era «507focos activos ahora mismoen toda
+                    Argentina»: pegado —los `<br>` separan a la vista pero no en
+                    el texto que lee un buscador o un lector de pantalla— y, peor,
+                    SIN LA PALABRA «incendios forestales» en ninguna parte.
+
+                    Ahora el número vive en un `<div>` con la misma tipografía y
+                    el mismo tamaño, y el H1 es la línea de abajo, que dice qué es
+                    este sitio. Un H1 no tiene que ser lo más grande de la página:
+                    tiene que decir de qué se trata.
+                  */}
+                  <div
                     className="clara-hero-h1 text-foreground m-0"
                     style={{
                       fontFamily: "var(--font-sans)",
@@ -289,18 +305,28 @@ export default async function Home() {
                       {forestTotal === 1
                         ? "foco activo ahora mismo"
                         : "focos activos ahora mismo"}
-                      <br />
-                      <span
-                        style={{
-                          fontSize: "0.7em",
-                          color:
-                            "color-mix(in oklab, var(--foreground) 55%, transparent)",
-                        }}
-                      >
-                        en toda Argentina
-                      </span>
                     </span>
-                  </h1>
+                    {/*
+                      El H1 va como hermano y no adentro del `<span>`: un
+                      encabezado dentro de un elemento de línea es HTML inválido y
+                      el navegador lo saca de ahí al parsear, con lo que el
+                      arreglo habría roto el bloque en vez de mejorarlo.
+                      El tamaño es el que tenía esta línea antes: 0,52 × 0,7.
+                    */}
+                    <h1
+                      className="m-0"
+                      style={{
+                        fontSize: "0.364em",
+                        fontWeight: 300,
+                        letterSpacing: "-0.02em",
+                        lineHeight: 1.1,
+                        color:
+                          "color-mix(in oklab, var(--foreground) 55%, transparent)",
+                      }}
+                    >
+                      Incendios forestales en Argentina
+                    </h1>
+                  </div>
                   {nonForestTotal > 0 && (
                     <p
                       className="font-mono mt-4 m-0"
@@ -315,7 +341,7 @@ export default async function Home() {
                   )}
                 </div>
               ) : (
-                <h1
+                <div
                   className="clara-hero-h1 text-foreground m-0"
                   style={{
                     fontFamily: "var(--font-sans)",
@@ -338,7 +364,22 @@ export default async function Home() {
                   >
                     sin focos forestales activos
                   </span>
-                </h1>
+                  {/* El día sin focos también necesita su H1: es el mismo sitio.
+                      Va como hermano del `<span>`, no adentro — ver la otra rama. */}
+                  <h1
+                    className="m-0"
+                    style={{
+                      fontSize: "0.42em",
+                      fontWeight: 300,
+                      letterSpacing: "-0.02em",
+                      lineHeight: 1.1,
+                      color:
+                        "color-mix(in oklab, var(--foreground) 55%, transparent)",
+                    }}
+                  >
+                    Incendios forestales en Argentina
+                  </h1>
+                </div>
               )}
               {!hasAnyForestActivity && nonForestTotal > 0 && (
                 <p

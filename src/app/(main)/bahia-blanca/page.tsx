@@ -9,6 +9,7 @@ import { CitySatelliteCoverage } from "@/components/city/city-satellite-coverage
 import { Pill } from "@/components/clara-ui";
 import { CityJsonLd } from "@/components/jsonld";
 import { BAHIA_BLANCA, BAHIA_BOT_URL, BAHIA_PAGE_PATH, parseFocus } from "@/lib/bahia-blanca";
+import { SITE_URL as SITE_URL_CANONICO } from "@/lib/site-url";
 
 /**
  * WHI-907 part 9 — Bahía Blanca's own page, with everything we have for the
@@ -39,7 +40,7 @@ export default async function BahiaBlancaPage({
 }) {
   const { foco } = await searchParams;
   const focus = parseFocus(foco);
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://alertaforestal.org";
+  const siteUrl = SITE_URL_CANONICO;
 
   return (
     <>

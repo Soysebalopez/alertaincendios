@@ -1,6 +1,7 @@
 import { MetadataRoute } from "next";
 import { PROVINCES } from "@/lib/argentina-cities";
 import { BAHIA_GENERIC_CITY_PATH, BAHIA_PAGE_PATH } from "@/lib/bahia-blanca";
+import { SITE_URL as SITE_URL_CANONICO } from "@/lib/site-url";
 
 function slugify(name: string): string {
   return name
@@ -18,8 +19,7 @@ function slugify(name: string): string {
 const STATIC_LAST_MODIFIED = new Date("2026-05-21");
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl =
-    process.env.NEXT_PUBLIC_SITE_URL || "https://alertaforestal.org";
+  const baseUrl = SITE_URL_CANONICO;
 
   const routes: MetadataRoute.Sitemap = [
     {
