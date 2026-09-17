@@ -23,25 +23,16 @@
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { countForestFireEvents } from "@/lib/fire-events";
 import { flagFlashAvailable, REFRESH_FLAG_KEY } from "@/lib/refresh-flag";
 
 interface FirePoint {
+  latitude: number;
+  longitude: number;
   type?: number;
   frp: number;
   /** WHI-757: foco está dentro de una de las zonas forestales argentinas. */
   forestZone?: string;
-}
-
-// WHI-757: el contador del hero ahora refleja focos forestales activos
-// (cualquier FRP), no solo los de alta intensidad. El threshold ≥ 20 dejaba
-// "0 focos destacados" la mayor parte del año fuera de temporada alta.
-function countForestActive(fires: FirePoint[]): number {
-  let n = 0;
-  for (const f of fires) {
-    const isWild = (f.type ?? 0) === 0 || f.type === 1;
-    if (isWild && f.forestZone) n++;
-  }
-  return n;
 }
 
 export function HeroAutoRefresh({ initialCount }: { initialCount: number }) {
@@ -76,7 +67,8 @@ export function HeroAutoRefresh({ initialCount }: { initialCount: number }) {
             if (!res.ok) return;
             const data = await res.json();
             const fires = (data.fires ?? []) as FirePoint[];
-            const forestActive = countForestActive(fires);
+            // Misma cuenta que el servidor: incendios distintos, no detecciones.
+            const forestActive = countForestFireEvents(fires);
             if (forestActive > baselineRef.current) {
               refreshingRef.current = true;
               try {

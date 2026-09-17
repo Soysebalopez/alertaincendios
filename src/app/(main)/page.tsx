@@ -14,6 +14,7 @@ import { StaggerReveal } from "@/components/stagger-reveal";
 import { FireMapLoader } from "@/components/fire-map-loader";
 import { LiveCityGrid } from "@/components/live-city-grid";
 import { HeroAutoRefresh } from "@/components/hero-auto-refresh";
+import { countForestFireEvents } from "@/lib/fire-events";
 import { HeroRefreshFlash } from "@/components/hero-refresh-flash";
 import { Beacon, Pill, DataSourceLogo } from "@/components/clara-ui";
 import {
@@ -60,6 +61,12 @@ interface FireCounts {
    * el mini-mapa hacía su propio fetch a /api/fires y podía mostrar otra cosa.
    */
   fires: import("@/lib/firms").FirePoint[];
+  /**
+   * Incendios distintos detrás de esas detecciones (WHI-920). El satélite ve
+   * un mismo fuego como varios píxeles: el 17/9 las 426 detecciones forestales
+   * del día eran 217 incendios. El número grande del hero dice "incendios".
+   */
+  forestEvents: number;
 }
 
 /**
@@ -78,7 +85,7 @@ async function getSatelliteData(): Promise<{
 
 async function getFireCounts(): Promise<FireCounts> {
   const empty: FireCounts = {
-    high: 0, moderate: 0, low: 0, nonForestWild: 0, industrial: 0, fires: [],
+    high: 0, moderate: 0, low: 0, nonForestWild: 0, industrial: 0, fires: [], forestEvents: 0,
   };
   try {
     const { fetchFires } = await import("@/lib/firms");
@@ -106,6 +113,7 @@ async function getFireCounts(): Promise<FireCounts> {
       industrial,
       // Pasamos el snapshot al mini-mapa para garantizar consistencia con el counter.
       fires,
+      forestEvents: countForestFireEvents(fires),
     };
   } catch {
     return empty;
@@ -181,11 +189,14 @@ export default async function Home() {
     nonForestWild,
     industrial: industrialCount,
     fires: heroFires,
+    forestEvents,
   } = fireCounts;
   // WHI-757: el hero refleja todos los focos forestales activos (no solo los
   // de alta intensidad). En temporada baja el número de "destacados FRP≥20"
   // suele ser 0, lo que daba un hero deprimente; mostrar el total da una
   // señal más honesta de presencia/ausencia de actividad forestal.
+  // Detecciones de satélite. El número grande muestra `forestEvents` (incendios
+  // distintos); `forestTotal` sólo decide si hay actividad que mostrar.
   const forestTotal = high + moderate + low;
   const hasAnyForestActivity = forestTotal > 0;
   // "Fuera de zona forestal" agrupa wildfires no forestales + industrial
@@ -215,7 +226,7 @@ export default async function Home() {
       {/* Auto-refresh discreto cuando entra un nuevo destacado al cache.
           Polea /api/fires cada 60s y dispara router.refresh() solo si
           high subió. No renderiza nada visible. */}
-      <HeroAutoRefresh initialCount={forestTotal} />
+      <HeroAutoRefresh initialCount={forestEvents} />
 
       {/* ─── HERO ─── */}
       <section className="relative border-b border-border">
@@ -326,7 +337,7 @@ export default async function Home() {
                       className="text-accent tabular-nums"
                       style={{ fontVariantNumeric: "tabular-nums" }}
                     >
-                      <FireCounter count={forestTotal} />
+                      <FireCounter count={forestEvents} />
                     </span>
                     {/*
                       🔴 `display: block` NO SOBRA: SIN ÉL ESTA LÍNEA SE ABRE SOLA
@@ -352,9 +363,9 @@ export default async function Home() {
                         letterSpacing: "-0.02em",
                       }}
                     >
-                      {forestTotal === 1
-                        ? "foco activo ahora mismo"
-                        : "focos activos ahora mismo"}
+                      {forestEvents === 1
+                        ? "incendio activo en las últimas 24 h"
+                        : "incendios activos en las últimas 24 h"}
                     </span>
                   </div>
                   {nonForestTotal > 0 && (
