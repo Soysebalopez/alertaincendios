@@ -364,8 +364,8 @@ export default async function Home() {
                       }}
                     >
                       {forestEvents === 1
-                        ? "incendio activo en las últimas 24 h"
-                        : "incendios activos en las últimas 24 h"}
+                        ? "foco activo en las últimas 24hs"
+                        : "focos activos en las últimas 24hs"}
                     </span>
                   </div>
                   {nonForestTotal > 0 && (

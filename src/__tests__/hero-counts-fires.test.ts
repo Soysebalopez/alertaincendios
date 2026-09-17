@@ -60,8 +60,8 @@ describe("el contador de la home cuenta incendios, no detecciones", () => {
     expect(enVivo).not.toContain("function countForestActive");
   });
 
-  it("el texto dice incendios y acota la ventana de tiempo", () => {
-    expect(page).toContain("incendios activos en las últimas 24 h");
+  it("el texto acota la ventana de tiempo y no vuelve al «ahora mismo»", () => {
+    expect(page).toContain("focos activos en las últimas 24hs");
     expect(page).not.toContain("focos activos ahora mismo");
   });
 });
