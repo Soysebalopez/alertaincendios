@@ -6,9 +6,11 @@ import { BahiaLightning } from "@/components/bahia/bahia-lightning";
 import { CityDashboard } from "@/components/city/city-dashboard";
 import { CityForestFires } from "@/components/city/city-forest-fires";
 import { CitySatelliteCoverage } from "@/components/city/city-satellite-coverage";
+import { CityContext } from "@/components/city/city-context";
 import { Pill } from "@/components/clara-ui";
 import { CityJsonLd } from "@/components/jsonld";
 import { BAHIA_BLANCA, BAHIA_BOT_URL, BAHIA_PAGE_PATH, parseFocus } from "@/lib/bahia-blanca";
+import { SITE_URL as SITE_URL_CANONICO } from "@/lib/site-url";
 
 /**
  * WHI-907 part 9 — Bahía Blanca's own page, with everything we have for the
@@ -21,13 +23,13 @@ const DESCRIPTION =
   "Focos de incendio cerca de Bahía Blanca, hacia dónde va el humo, viento medido en el aeropuerto, rayos y calidad del aire. Alertas gratis por Telegram.";
 
 export const metadata: Metadata = {
-  title: "Bahía Blanca — Focos de incendio, viento y rayos",
+  title: "Incendios forestales en Bahía Blanca — focos activos, viento y rayos",
   description: DESCRIPTION,
   alternates: { canonical: BAHIA_PAGE_PATH },
-  openGraph: { title: "Bahía Blanca — AlertaForestal", description: DESCRIPTION },
+  openGraph: { title: "Incendios forestales en Bahía Blanca — AlertaForestal", description: DESCRIPTION },
   twitter: {
     card: "summary_large_image",
-    title: "Bahía Blanca — AlertaForestal",
+    title: "Incendios forestales en Bahía Blanca — AlertaForestal",
     description: DESCRIPTION,
   },
 };
@@ -39,7 +41,7 @@ export default async function BahiaBlancaPage({
 }) {
   const { foco } = await searchParams;
   const focus = parseFocus(foco);
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://alertaforestal.org";
+  const siteUrl = SITE_URL_CANONICO;
 
   return (
     <>
@@ -73,7 +75,10 @@ export default async function BahiaBlancaPage({
                   margin: "14px 0 0",
                 }}
               >
-                Bahía Blanca
+                {/* Mismo criterio que las páginas de `/ciudad/`: el H1 decía sólo
+                    el nombre de la ciudad, sin «incendios» ni «focos» ni nada que
+                    dijera de qué trata la página. */}
+                Incendios forestales en Bahía Blanca
               </h1>
               <p className="text-muted m-0 mt-3 max-w-[640px]" style={{ fontSize: 15, lineHeight: 1.6 }}>
                 Focos de incendio, hacia dónde va el humo, viento y rayos alrededor de la ciudad, en un
@@ -123,6 +128,15 @@ export default async function BahiaBlancaPage({
       </section>
 
       {/* Subscribe */}
+      {/* WHI-919: el mismo contenido servido en el HTML inicial que llevan las
+          páginas de `/ciudad/`. Bahía Blanca tiene página propia (WHI-907) y
+          quedó afuera de ese cambio por estar fuera del patrón de rutas. */}
+      <CityContext
+        cityName={BAHIA_BLANCA.name}
+        provinceName={BAHIA_BLANCA.province}
+        provinceId="buenos-aires"
+      />
+
       <section
         className="clara-section-padded border-t border-border"
         style={{ padding: "48px 32px" }}

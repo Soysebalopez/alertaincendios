@@ -1,8 +1,8 @@
 import { MetadataRoute } from "next";
+import { SITE_URL as SITE_URL_CANONICO } from "@/lib/site-url";
 
 export default function robots(): MetadataRoute.Robots {
-  const baseUrl =
-    process.env.NEXT_PUBLIC_SITE_URL || "https://alertaforestal.org";
+  const baseUrl = SITE_URL_CANONICO;
 
   return {
     rules: [

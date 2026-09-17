@@ -4,6 +4,7 @@ import { Geist_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
+import { SITE_URL as SITE_URL_CANONICO } from "@/lib/site-url";
 
 const outfit = Outfit({
   variable: "--font-outfit",
@@ -16,7 +17,7 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://alertaforestal.org";
+const SITE_URL = SITE_URL_CANONICO;
 
 export const viewport: Viewport = {
   width: "device-width",

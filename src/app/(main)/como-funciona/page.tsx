@@ -10,6 +10,7 @@ import {
   Lightning,
 } from "@phosphor-icons/react/dist/ssr";
 import { Pill } from "@/components/clara-ui";
+import { FaqJsonLd } from "@/components/jsonld";
 
 export const metadata: Metadata = {
   title: "Cómo funciona",
@@ -23,10 +24,27 @@ const TELEGRAM_BOT_URL = "https://t.me/alertaforestal_bot";
 // WHI-590 — explanations for non-technical readers.
 // Each FAQ has a question and 1-2 short paragraphs in plain language.
 // No jargon, no acronyms unexplained, no scary words.
-const FAQS: { q: string; body: React.ReactNode; icon: React.ReactNode }[] = [
+//
+// WHI-919 — `plain` es la MISMA respuesta en texto corrido, y existe sólo para
+// el bloque `FAQPage` de datos estructurados. `body` es React —listas, negritas,
+// enlaces—, y de un árbol de React no se saca texto plano en el servidor sin
+// renderizarlo; ésa es la única razón por la que hay dos campos y no uno.
+//
+// 🔴 La regla, entonces: al cambiar un `body`, cambiar su `plain`. Si dicen
+// cosas distintas, la página muestra una respuesta y el buscador lee otra —y
+// nadie se entera, porque las dos «funcionan». Hay un test que exige que cada
+// pregunta tenga su `plain` y que no sea un resumen de dos palabras.
+const FAQS: {
+  q: string;
+  body: React.ReactNode;
+  plain: string;
+  icon: React.ReactNode;
+}[] = [
   {
     icon: <GlobeHemisphereWest size={18} weight="duotone" />,
     q: "¿Qué es AlertaForestal?",
+    plain:
+      "Un servicio gratuito de alertas tempranas de incendios forestales en Argentina. Los mensajes llegan por Telegram a través de Clara, el bot del proyecto. El objetivo es que los vecinos de zonas rurales y forestales reciban el aviso antes de que el humo o el fuego llegue a su zona.",
     body: (
       <>
         <p>
@@ -44,6 +62,8 @@ const FAQS: { q: string; body: React.ReactNode; icon: React.ReactNode }[] = [
   {
     icon: <Wind size={18} weight="duotone" />,
     q: "¿Cómo detecta los incendios?",
+    plain:
+      "Con dos satélites que miden la temperatura del suelo. GOES-19 (NOAA, Estados Unidos) vigila Argentina cada 10 minutos: detecta rápido, con menos precisión. NASA FIRMS pasa con menos frecuencia pero con mayor resolución, y confirma si el foco es real. Cuando un satélite ve un punto más caliente que el resto del paisaje lo marca como posible incendio, y ese dato se cruza con el viento para saber si puede afectarte.",
     body: (
       <>
         <p>
@@ -72,6 +92,8 @@ const FAQS: { q: string; body: React.ReactNode; icon: React.ReactNode }[] = [
   {
     icon: <Bell size={18} weight="duotone" />,
     q: "¿Cuándo me llega una alerta?",
+    plain:
+      "Sólo cuando hay algo sobre lo que se pueda actuar: si se detecta un foco a menos de 100 km de tu ubicación, si el viento puede traer humo hacia tu casa (con el tiempo estimado de llegada), o si hay tormenta eléctrica sin lluvia cerca, porque los rayos sobre campo seco son la principal causa natural de incendios en Argentina. Si no pasa nada, no llega ningún mensaje: en otoño e invierno podés no recibir nada por semanas.",
     body: (
       <>
         <p>Solo cuando hay algo que vos podés actuar:</p>
@@ -101,6 +123,8 @@ const FAQS: { q: string; body: React.ReactNode; icon: React.ReactNode }[] = [
   {
     icon: <Lightning size={18} weight="duotone" />,
     q: "¿Qué diferencia hay entre una alerta preliminar y una confirmada?",
+    plain:
+      "Una alerta preliminar la detectó GOES-19 hace pocos minutos: puede ser un foco real o ruido, como un reflejo del sol o una chimenea industrial. Una alerta confirmada es la que además ve NASA FIRMS, con más resolución. La preliminar se manda para ganar tiempo, pero conviene validar visualmente antes de tomar acciones grandes como llamar a bomberos o mover ganado. Si resulta falsa alarma, se avisa.",
     body: (
       <>
         <p>Es cómo nombramos las alertas según qué tan seguros estamos:</p>
@@ -126,6 +150,8 @@ const FAQS: { q: string; body: React.ReactNode; icon: React.ReactNode }[] = [
   {
     icon: <Shield size={18} weight="duotone" />,
     q: "¿Es gratis?",
+    plain:
+      "Sí. AlertaForestal es un proyecto independiente, sin publicidad ni venta de datos. La suscripción y las alertas son gratuitas para cualquier vecino que las necesite.",
     body: (
       <>
         <p>
@@ -139,6 +165,8 @@ const FAQS: { q: string; body: React.ReactNode; icon: React.ReactNode }[] = [
   {
     icon: <Shield size={18} weight="duotone" />,
     q: "¿Qué hacen con mi ubicación?",
+    plain:
+      "Se guarda únicamente para calcular qué tan lejos están los focos, y sólo la usa el servidor para mandar las alertas. Se borra con el comando /cancelar en el bot y no queda rastro. No se comparte, no se vende y no se usa para publicidad.",
     body: (
       <>
         <p>
@@ -157,6 +185,8 @@ const FAQS: { q: string; body: React.ReactNode; icon: React.ReactNode }[] = [
   {
     icon: <GlobeHemisphereWest size={18} weight="duotone" />,
     q: "¿Qué hago si veo un incendio real?",
+    plain:
+      "Llamá al 100 (bomberos) o al 911 de tu provincia. La respuesta operativa al incendio la hacen los bomberos locales y Defensa Civil. También podés reportarlo en Satellites On Fire, que tiene un sistema más detallado para profesionales.",
     body: (
       <>
         <p>
@@ -182,6 +212,8 @@ const FAQS: { q: string; body: React.ReactNode; icon: React.ReactNode }[] = [
   {
     icon: <Wind size={18} weight="duotone" />,
     q: "¿Por qué a veces se equivoca?",
+    plain:
+      "Los satélites miden temperatura, no ven fuego directamente. Una chimenea industrial, el sol reflejado en un techo metálico o una zona agrícola en quema controlada pueden activar una alerta sin que haya un incendio peligroso. Hay filtros que descartan la mayoría de esos casos —se excluyen zonas urbanas, refinerías de Vaca Muerta y otras—, pero ningún sistema es 100% preciso, así que conviene validar la alerta antes de tomar decisiones operativas.",
     body: (
       <>
         <p>
@@ -204,6 +236,9 @@ const FAQS: { q: string; body: React.ReactNode; icon: React.ReactNode }[] = [
 export default function ComoFuncionaPage() {
   return (
     <main>
+      {/* WHI-919: las mismas preguntas de abajo, en datos estructurados. Salen
+          del mismo array que la pantalla, así que no pueden desalinearse. */}
+      <FaqJsonLd items={FAQS} />
       {/* Hero */}
       <section className="border-b border-border">
         <div className="max-w-[820px] mx-auto" style={{ padding: "80px 32px 56px" }}>

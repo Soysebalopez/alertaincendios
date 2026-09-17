@@ -257,9 +257,62 @@ export default async function Home() {
             </StaggerReveal>
 
             <StaggerReveal delay={0.2}>
+              {/*
+                🔴 EL H1 VA ARRIBA DEL NÚMERO, Y ES UNO SOLO PARA LAS DOS RAMAS.
+
+                Dos cosas, y las dos se aprendieron mirando la pantalla:
+
+                1. ABAJO NO FUNCIONABA. Leído de corrido, el hero decía «507
+                   focos activos ahora mismo Incendios forestales en Argentina»:
+                   el título quedaba pegado al final de una frase que ya había
+                   terminado, y el conjunto no era una frase. Arriba funciona
+                   como lo que es —el nombre de lo que la página muestra— y el
+                   número queda como el dato. Lo levantó Seba mirando el preview.
+
+                2. UNO SOLO, FUERA DEL CONDICIONAL. Antes cada rama del hero
+                   —con focos y sin focos— tenía su propio H1 con el mismo texto.
+                   Dos copias de la señal más importante de la página es la forma
+                   de que una se actualice y la otra no, y el desfasaje sólo se
+                   ve en el estado que uno no estaba mirando.
+
+                ⚠️ El H1 no es lo más grande de la página, y está bien: tiene que
+                decir de qué se trata, no ganarle en tamaño al dato.
+              */}
+              <h1
+                className="text-foreground m-0"
+                style={{
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "clamp(17px, 2.2vw, 26px)",
+                  fontWeight: 500,
+                  letterSpacing: "-0.015em",
+                  lineHeight: 1.2,
+                  marginBottom: 10,
+                  color:
+                    "color-mix(in oklab, var(--foreground) 70%, transparent)",
+                }}
+              >
+                Incendios forestales en Argentina
+              </h1>
+
               {hasAnyForestActivity ? (
                 <div>
-                  <h1
+                  {/*
+                    🔴 EL CONTADOR YA NO ES EL H1 (WHI-919), Y NADA SE MOVIÓ DE
+                    LUGAR EN LA PANTALLA.
+
+                    El H1 es una de las señales más fuertes que tiene una página,
+                    y acá se gastaba en un número que cambia cada 15 minutos. Su
+                    texto completo era «507focos activos ahora mismoen toda
+                    Argentina»: pegado —los `<br>` separan a la vista pero no en
+                    el texto que lee un buscador o un lector de pantalla— y, peor,
+                    SIN LA PALABRA «incendios forestales» en ninguna parte.
+
+                    Ahora el número vive en un `<div>` con la misma tipografía y
+                    el mismo tamaño, y el H1 es la línea de abajo, que dice qué es
+                    este sitio. Un H1 no tiene que ser lo más grande de la página:
+                    tiene que decir de qué se trata.
+                  */}
+                  <div
                     className="clara-hero-h1 text-foreground m-0"
                     style={{
                       fontFamily: "var(--font-sans)",
@@ -275,10 +328,23 @@ export default async function Home() {
                     >
                       <FireCounter count={forestTotal} />
                     </span>
-                    <br />
+                    {/*
+                      🔴 `display: block` NO SOBRA: SIN ÉL ESTA LÍNEA SE ABRE SOLA
+                      CUANDO SE PARTE EN DOS.
+
+                      El `<span>` es un elemento de línea, así que sus renglones
+                      se arman dentro del contexto del padre —el número, con
+                      `lineHeight: 0.92` sobre 115 px— y cada renglón mide 106 px
+                      en vez de los 55 que le corresponden a su propio tamaño.
+                      Medido: el bloque ocupaba 182 px para dos renglones de 60 px.
+
+                      No se ve mientras el texto entra en una línea, y a ancho de
+                      notebook no entra. Como es bloque, el `<br>` de arriba sobra.
+                    */}
                     <span
                       className="clara-hero-h1-sub"
                       style={{
+                        display: "block",
                         fontWeight: 300,
                         fontSize: "0.52em",
                         color:
@@ -289,18 +355,8 @@ export default async function Home() {
                       {forestTotal === 1
                         ? "foco activo ahora mismo"
                         : "focos activos ahora mismo"}
-                      <br />
-                      <span
-                        style={{
-                          fontSize: "0.7em",
-                          color:
-                            "color-mix(in oklab, var(--foreground) 55%, transparent)",
-                        }}
-                      >
-                        en toda Argentina
-                      </span>
                     </span>
-                  </h1>
+                  </div>
                   {nonForestTotal > 0 && (
                     <p
                       className="font-mono mt-4 m-0"
@@ -315,7 +371,7 @@ export default async function Home() {
                   )}
                 </div>
               ) : (
-                <h1
+                <div
                   className="clara-hero-h1 text-foreground m-0"
                   style={{
                     fontFamily: "var(--font-sans)",
@@ -326,10 +382,11 @@ export default async function Home() {
                   }}
                 >
                   <span className="text-accent">Monitoreo</span>
-                  <br />
+                  {/* Bloque por el mismo motivo que la otra rama; ver ahí. */}
                   <span
                     className="clara-hero-h1-sub"
                     style={{
+                      display: "block",
                       fontWeight: 300,
                       fontSize: "0.6em",
                       color:
@@ -338,7 +395,7 @@ export default async function Home() {
                   >
                     sin focos forestales activos
                   </span>
-                </h1>
+                </div>
               )}
               {!hasAnyForestActivity && nonForestTotal > 0 && (
                 <p
