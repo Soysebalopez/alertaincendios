@@ -44,7 +44,7 @@ export interface RateLimitOptions {
  * pasar (fail-open) y loguea — preferimos UX caída a UX rota.
  */
 export async function checkRateLimit(opts: RateLimitOptions): Promise<RateLimitResult> {
-  const upstash = upstashEnv();
+  const upstash = resolveRedisEnv();
   if (upstash) {
     try {
       return await upstashCheck(opts, upstash);
@@ -61,9 +61,20 @@ export async function checkRateLimit(opts: RateLimitOptions): Promise<RateLimitR
 
 /* ─── Upstash REST API (sin SDK) ─── */
 
-function upstashEnv(): { url: string; token: string } | null {
-  const url = process.env.UPSTASH_REDIS_REST_URL?.trim();
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
+/**
+ * Resuelve la conexión a Redis desde las variables de entorno.
+ *
+ * La integración de Upstash en Vercel NO publica `UPSTASH_REDIS_REST_*`: al
+ * conectar el store, el proyecto recibe `KV_REST_API_URL` y `KV_REST_API_TOKEN`
+ * (nombres heredados de Vercel KV). AlertaForestal quedó conectado el 17/9 y,
+ * mirando sólo los nombres propios, el limitador habría seguido en memoria sin
+ * que nada avisara. Recibe el entorno por parámetro para poder probarlo.
+ */
+export function resolveRedisEnv(
+  env: Record<string, string | undefined> = process.env,
+): { url: string; token: string } | null {
+  const url = (env.UPSTASH_REDIS_REST_URL ?? env.KV_REST_API_URL)?.trim();
+  const token = (env.UPSTASH_REDIS_REST_TOKEN ?? env.KV_REST_API_TOKEN)?.trim();
   if (!url || !token) return null;
   return { url, token };
 }
