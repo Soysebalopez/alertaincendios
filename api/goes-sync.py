@@ -40,6 +40,7 @@ from botocore import UNSIGNED
 from botocore.client import Config
 from pyproj import Proj
 
+from argentina_geo import in_argentina
 from goes_mesoscale import coverage, selection
 
 # --- Config ---
@@ -58,29 +59,6 @@ MASK_LABELS = {
     30: "tf_fire_good_quality", 31: "tf_fire_saturated", 32: "tf_fire_cloud_contaminated",
     33: "tf_fire_high_probability", 34: "tf_fire_medium_probability", 35: "tf_fire_low_probability",
 }
-
-# Simplified Argentina polygon (lng, lat) clockwise from NW.
-# Production note: swap for GADM ADM0 when we have time.
-ARGENTINA_VERTICES = [
-    (-67.0, -22.0), (-65.5, -22.0), (-62.0, -22.0), (-58.0, -22.0),
-    (-55.0, -25.0), (-53.5, -27.0),
-    (-55.5, -28.0), (-58.0, -32.5), (-58.4, -34.0),
-    (-56.5, -38.0), (-62.5, -42.0), (-65.0, -45.0), (-68.0, -50.0),
-    (-68.5, -53.0),
-    (-69.5, -55.0), (-71.0, -55.0),
-    (-71.5, -52.0), (-72.0, -48.0), (-71.5, -45.0), (-71.5, -40.0),
-    (-70.5, -36.0), (-70.0, -33.0), (-69.5, -30.0), (-69.0, -27.0),
-    (-68.0, -25.0), (-67.0, -22.0),
-]
-
-# Isla Grande de Tierra del Fuego — porción argentina (ring separado; DEBE quedar
-# IDÉNTICO al de src/lib/argentina-polygon.ts). Borde oeste = meridiano -68.61
-# (límite con Chile en la isla). Captura Ushuaia, Río Grande, Tolhuin.
-TIERRA_DEL_FUEGO_VERTICES = [
-    (-68.61, -52.6), (-66.0, -52.7), (-64.5, -54.3),
-    (-65.0, -55.05), (-68.0, -55.0), (-68.61, -54.9),
-    (-68.61, -52.6),
-]
 
 URBAN_ZONES = [
     # (name, min_lat, max_lat, min_lng, max_lng)
@@ -120,20 +98,6 @@ AGRICULTURAL_ZONES = [
 
 
 # --- Filter helpers (inlined from scripts/goes-spike/filters.py) ---
-def point_in_polygon(lng: float, lat: float, poly: list[tuple[float, float]]) -> bool:
-    """Ray casting algorithm. Polygon is a closed ring of (lng, lat) tuples."""
-    n = len(poly)
-    inside = False
-    j = n - 1
-    for i in range(n):
-        xi, yi = poly[i]
-        xj, yj = poly[j]
-        if ((yi > lat) != (yj > lat)) and (lng < (xj - xi) * (lat - yi) / (yj - yi + 1e-12) + xi):
-            inside = not inside
-        j = i
-    return inside
-
-
 def haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     rlat1, rlat2 = math.radians(lat1), math.radians(lat2)
     dlat = rlat2 - rlat1
@@ -299,10 +263,8 @@ def extract_filtered_detections(nc_path: str) -> tuple[list[dict], str, dict]:
     for i, (lat, lng) in enumerate(zip(lats, lons)):
         flat = float(lat)
         flng = float(lng)
-        if not (
-            point_in_polygon(flng, flat, ARGENTINA_VERTICES)
-            or point_in_polygon(flng, flat, TIERRA_DEL_FUEGO_VERTICES)
-        ):
+        # El recorte del país vive en argentina_geo, gemelo del lado TypeScript.
+        if not in_argentina(flat, flng):
             continue
         after_polygon += 1
         if in_any_urban(flat, flng):
