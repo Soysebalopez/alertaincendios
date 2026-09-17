@@ -29,7 +29,7 @@ Alertas tempranas de incendios forestales en Argentina vía Telegram. El bot del
 ## Architecture
 
 ### Pages
-- Landing: `/` — split-screen hero (fire count + Leaflet map), live city slider, 6 data sources (3×2 grid), "Cómo funciona", evolución de focos, calidad del aire, CTA "Recibí la alerta antes"
+- Landing: `/` — split-screen hero (contador de **incendios distintos**, no detecciones + Leaflet map), live city slider, 6 data sources (3×2 grid), "Cómo funciona", evolución de focos, calidad del aire, CTA "Recibí la alerta antes"
 - Mapa: `/mapa` — fullscreen Leaflet con capas focos/aire/viento. Layout propio (sin footer)
 - Calidad del aire: `/calidad-aire` — selector de provincia → cards por ciudad
 - Ciudad: `/ciudad/[province]/[city]` — SSG 78 páginas, dashboard completo por ciudad
@@ -99,7 +99,7 @@ Autorización vía `isCronAuthorized()` en `src/lib/cron-auth.ts`: acepta el sec
 - `ai_alerted_fires` (fire_key text, chat_id bigint, alerted_at) — PK: (fire_key, chat_id)
 - `fires_cache` (id int PK=1, fires jsonb, count, fetched_at) — single-row cache
 - `_fires_sync_state` (id int PK=1, request_id, requested_at)
-- `fires_daily_history` (date PK, count, avg_frp, high_conf, created_at)
+- `fires_daily_history` (date PK, count, avg_frp, high_conf, created_at) — ⚠️ las filas anteriores al 2026-09-18 cuentan también focos de países limítrofes (recorte viejo, ver Key Patterns): el gráfico de evolución tiene un escalón hacia abajo ese día
 
 ### GOES (Fase 2)
 - `goes_preliminary` (id bigserial PK, lat, lng, mask, mask_label, frp_mw, area_m2, high_confidence bool, seen_in_scans int default 1, agricultural_zone bool, scan_start timestamptz, detected_at) — UNIQUE (lat, lng, scan_start)
@@ -155,6 +155,8 @@ Archivos: `scripts/sql/whi-907-wind.sql` y `scripts/sql/whi-907-lightning.sql`. 
 
 ## Key Patterns
 - FIRMS bloquea datacenter IPs pero NO Supabase (AWS us-east-1)
+- 🔴 **Recorte del país** (`src/lib/argentina-polygon.ts`, gemelo `argentina_geo/` para el pipeline Python): límite real (Natural Earth 10m, dominio público) simplificado a ~110 m, con margen de 3 km porque el trazo mundial deja a Ushuaia 0,6 km mar adentro. **Hasta el 2026-09-17 era una silueta de 21 puntos** cuyo borde norte iba derecho de Salta a Misiones: ese día, 856 de los 2.065 focos que el mapa llamaba argentinos (41%) estaban en Paraguay, en plena temporada de quemas, y al mismo tiempo rechazaba Puerto Iguazú y El Calafate como "fuera de cobertura". `vercel.json` excluye `src/**` del paquete de las funciones Python: por eso hay dos copias y un test de paridad que las compara punto por punto.
+- **Detecciones ≠ incendios** (`src/lib/fire-events.ts`): VIIRS ve un mismo fuego como varios píxeles de 375 m y lo repite en cada pasada. El 17/9/2026 las 426 detecciones forestales del día eran 217 incendios distintos, y 123 de ellos un solo punto. El contador del hero cuenta incendios (agrupa a ≤2 km, enlace simple) y el texto dice "en las últimas 24 h". Un guardián lee el código de la home y del refresco en vivo para que las dos superficies usen la misma función — y saca los comentarios antes de comparar, porque el archivo cita el texto viejo.
 - pg_cron + pg_net fetcha FIRMS desde Postgres
 - **GOES**: Python Vercel Function lee NetCDF de S3 (noaa-goes19 anonymous), procesa con xarray + pyproj, upsert a Supabase via PostgREST
 - **Auth**: Supabase Auth con `@supabase/ssr`, middleware en `src/middleware.ts` gating de `/dashboard/*` con allowlist de emails
@@ -245,6 +247,7 @@ Archivos: `scripts/sql/whi-907-wind.sql` y `scripts/sql/whi-907-lightning.sql`. 
 - CRON_SECRET nunca literal en cron jobs (ver Config + API Routes — Cron para el doble path)
 - Secrets fuera del repo (.env*, scripts/*.env gitignored). Templates en *.env.example
 - Variables opcionales de WHI-907 (siempre con `.trim()`): `OPEN_METEO_API_KEY` (activa el plan pago), `XWEATHER_API_KEY` (la clave única del portal nuevo, que es `<client_id>_<client_secret>`) o `XWEATHER_CLIENT_ID` + `XWEATHER_CLIENT_SECRET`, `XWEATHER_MONTHLY_ACCESSES` y `XWEATHER_ACCESSES_PER_LIGHTNING_QUERY` (cupo; por defecto 15000 y 10, con 10% de reserva). Sin ellas todo funciona como antes. ⚠️ El plan gratis de Xweather prohíbe el uso comercial ("sólo para probar"); decisión de Seba del 14/9: se usa mientras AlertaForestal no cobre, y se revisa si se vende la capa institucional
+- Limitador de pedidos: la integración de Upstash en Vercel publica `KV_REST_API_URL` / `KV_REST_API_TOKEN`, **no** `UPSTASH_REDIS_REST_*`. `resolveRedisEnv()` acepta los dos juegos y recorta espacios; sin ninguno, cae al limitador en memoria. AlertaForestal quedó conectado al store del equipo Pro el 2026-09-17
 - Procedimiento de rotación documentado en `SECURITY-AUDIT.md`
 
 ## Current focus
