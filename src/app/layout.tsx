@@ -52,7 +52,10 @@ export const metadata: Metadata = {
     "max-image-preview": "large",
   },
   // images for openGraph + twitter are auto-discovered from
-  // src/app/opengraph-image.tsx and src/app/twitter-image.tsx (WHI-582).
+  // src/app/opengraph-image.png and src/app/twitter-image.png.
+  // Son PNG, no ya los .tsx de WHI-582: se diseñan en Agencia/Marca/og y se
+  // regeneran con `node build.mjs` ahí. Cambiar el texto de la imagen NO se
+  // hace acá.
   openGraph: {
     type: "website",
     locale: "es_AR",
