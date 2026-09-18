@@ -45,7 +45,7 @@ export function Footer() {
         >
           <div>
             <div className="flex items-center gap-2.5 mb-3.5">
-              <BrandMark size={28} />
+              <BrandMark size={28} idPrefix="footer" />
               <div>
                 <div className="font-bold text-[15px]">AlertaForestal</div>
                 <div className="font-mono text-[9px] text-muted tracking-[0.1em]">
