@@ -58,7 +58,7 @@ export function Nav() {
       <div className="max-w-[1400px] mx-auto px-5 md:px-6 py-2.5 md:py-3.5 flex items-center justify-between gap-5">
         {/* Brand */}
         <Link href="/" className="flex items-center gap-2.5 text-foreground">
-          <BrandMark size={28} className="shrink-0" />
+          <BrandMark size={28} idPrefix="nav" className="shrink-0" />
           <div className="clara-brand-text leading-tight">
             <div
               className="clara-brand-name text-[14px] md:text-[16px] font-bold"
