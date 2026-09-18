@@ -27,14 +27,27 @@ select net.http_get(
   timeout_milliseconds := 30000
 );
 
+-- 3. Rayos reales del GLM cada 5 minutos. Aplicado el 2026-09-17 con OK de Seba,
+-- después de mudar el proyecto al equipo Pro (WHI-911): en el plan gratuito esta
+-- sola tarea gastaba varias veces el cupo mensual de CPU.
+select cron.schedule(
+  'glm-sync',
+  '*/5 * * * *',
+  $$SELECT net.http_get(
+      'https://alertaincendios.vercel.app/api/glm-sync?secret=' || clara_cron_secret(),
+      timeout_milliseconds := 120000
+    )$$
+);
+
+-- 4. Limpieza diaria del viento. BORRA las lecturas de más de 90 días (y los
+-- pronósticos de más de 3 días, tabla que está vacía). OK explícito de Seba el
+-- 2026-09-17; la primera vez que borre algo será a mediados de diciembre.
+select cron.schedule('purge-old-wind-data', '40 3 * * *', 'SELECT purge_old_wind_data()');
+
 -- PENDIENTE, NO APLICAR todavía:
 --
--- Limpieza diaria del viento. BORRA lo que tenga más de 90 días, así que necesita
--- un OK aparte (no tiene nada que borrar hasta mediados de diciembre de 2026):
---   select cron.schedule('purge-old-wind-data', '40 3 * * *', 'SELECT purge_old_wind_data()');
---
--- Rayos del GLM cada 5 minutos y su limpieza: después de mudar AlertaForestal al
--- equipo Pro de Vercel (WHI-911). En el plan gratis no entran.
+-- Limpieza de rayos: BORRA los flashes de más de 7 días. Necesita su propio OK.
+--   select cron.schedule('purge-old-lightning-flashes', '45 3 * * *', 'SELECT purge_old_lightning_flashes()');
 --
 -- smn-wrf-sync: NO se programa. El 14/9 el SMN midió peor que Open-Meteo en la
 -- dirección del viento; sin pronóstico cargado, fetchWind() usa Open-Meteo.

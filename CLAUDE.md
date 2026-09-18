@@ -121,7 +121,7 @@ Autorización vía `isCronAuthorized()` en `src/lib/cron-auth.ts`: acepta el sec
 Archivos: `scripts/sql/whi-907-wind.sql` y `scripts/sql/whi-907-lightning.sql`. RLS activo, sin policies y `REVOKE ALL` para anon/authenticated (RLS no gobierna TRUNCATE).
 - `wind_observations` (station, observed_at, wind_from_deg nullable = VRB, wind_kmh, gust_kmh, variable; PK (station, observed_at)) — METAR, retención 90 días
 - `wind_forecast` (source, run_at, valid_at, lat, lng, wind_from_deg, wind_kmh, temp_c, rh_pct; PK (source, run_at, valid_at, lat, lng)) — SMN WRF, retención 3 días. `fetchWind()` la prefiere a <30 km de Bahía (fila de la hora válida más cercana, después la celda más cercana, después la corrida más nueva). **Vacía a propósito:** el 14/9 se decidió no programar `smn-wrf-sync` porque el SMN midió peor que Open-Meteo en dirección; sin filas, `fetchWind()` usa Open-Meteo
-- `lightning_flashes` (flash_at, lat, lng, energy_j, area_m2, source; PK (flash_at, lat, lng)) — GLM, retención 7 días. Vacía hasta programar `glm-sync`, que espera la mudanza a Vercel Pro (WHI-911)
+- `lightning_flashes` (flash_at, lat, lng, energy_j, area_m2, source; PK (flash_at, lat, lng)) — GLM, retención 7 días. `glm-sync` la llena desde el 17/9/2026; la limpieza todavía no se programó
 - Funciones de retención `purge_old_wind_data()` y `purge_old_lightning_flashes()` (SECURITY DEFINER, borran filas viejas). **Sin programar:** borran datos, así que necesitan un OK aparte de Seba; la de rayos va junto con `glm-sync`
 
 ### Config
@@ -139,7 +139,9 @@ Archivos: `scripts/sql/whi-907-wind.sql` y `scripts/sql/whi-907-lightning.sql`. 
 - `satellites-sync-tles` (`30 4 * * *` daily, 01:30 ART) — `/api/satellites/sync-tles` baja TLEs frescos de CelesTrak (WHI-753)
 - `fire-danger-sync` (`0 9 * * *` daily, 06:00 ART) — `/api/fire-danger-sync` Python: FWI por zona TDF, 16-day forecast. Usa `trigger_fire_danger_sync()` + GUC `app.fire_danger_sync_url` + `clara_cron_secret()`. SQL en `scripts/sql/whi-fwi-cron.sql`
 - `metar-sync` (`10 * * * *`, desde el 14/9) — `/api/metar-sync`: METAR del aeropuerto → `wind_observations` (WHI-907). SQL en `scripts/sql/whi-907-crons.sql`
-- **Sin programar a propósito (WHI-907):** `glm-sync` (cada 5 min; espera la mudanza a Vercel Pro, WHI-911), `smn-wrf-sync` (el SMN midió peor que Open-Meteo) y las limpiezas `purge_old_wind_data()` / `purge_old_lightning_flashes()` (borran: OK aparte)
+- `glm-sync` (`*/5 * * * *`, desde el 17/9) — `/api/glm-sync` Python: rayos reales del GLM → `lightning_flashes` + latido. Esperó a la mudanza a Vercel Pro (WHI-911) porque en el plan gratuito no entraba
+- `purge-old-wind-data` (`40 3 * * *`, desde el 17/9) — BORRA lecturas de viento de más de 90 días
+- **Sin programar a propósito (WHI-907):** `smn-wrf-sync` (el SMN midió peor que Open-Meteo en dirección) y `purge_old_lightning_flashes()` (borra: falta OK)
 - `fires-freshness-monitor` (`7,22,37,52 * * * *`) — `/api/monitor/fires-freshness` staleness + key inválida.
   ⚠️ Corrido a `:07` el 2026-08-26: antes era `*/15`, o sea que revisaba en el
   MISMO minuto que `fires-fetch` (`0,15,30,45`) y 2 minutos ANTES de que
