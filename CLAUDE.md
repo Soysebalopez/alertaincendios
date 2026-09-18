@@ -99,7 +99,7 @@ Autorización vía `isCronAuthorized()` en `src/lib/cron-auth.ts`: acepta el sec
 - `ai_alerted_fires` (fire_key text, chat_id bigint, alerted_at) — PK: (fire_key, chat_id)
 - `fires_cache` (id int PK=1, fires jsonb, count, fetched_at) — single-row cache
 - `_fires_sync_state` (id int PK=1, request_id, requested_at)
-- `fires_daily_history` (date PK, count, avg_frp, high_conf, created_at) — ⚠️ las filas anteriores al 2026-09-18 cuentan también focos de países limítrofes (recorte viejo, ver Key Patterns): el gráfico de evolución tiene un escalón hacia abajo ese día
+- `fires_daily_history` (date PK, count, avg_frp, high_conf, created_at) — **recalculada el 2026-09-18** sobre el archivo de NASA (VIIRS S-NPP, ventanas de 5 días) con el límite real del país: 210 de los 260 días de 2026, y el total del año pasó de **117.354 a 71.413 focos (−39%)**. Corrige dos cosas a la vez: los focos de países limítrofes del recorte viejo y que la foto diaria se tomaba a las 23:55 UTC y a veces capturaba medio día (el 15/9 SUBIÓ de 314 a 1.241). ⚠️ **Quedan 50 días sin recalcular** (fines de abril, mayo y parte de julio): NASA todavía no publicó su archivo definitivo y el dato casi en tiempo real ya caducó — son el 3,9% del total, con 92 focos de promedio contra 537 en el resto. Rehacerlos cuando estén disponibles. Copia previa en `~/whitebay-backups/alertaforestal-historial-2026-09-18/`
 
 ### GOES (Fase 2)
 - `goes_preliminary` (id bigserial PK, lat, lng, mask, mask_label, frp_mw, area_m2, high_confidence bool, seen_in_scans int default 1, agricultural_zone bool, scan_start timestamptz, detected_at) — UNIQUE (lat, lng, scan_start)
