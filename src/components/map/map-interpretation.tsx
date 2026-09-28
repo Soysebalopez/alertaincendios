@@ -70,7 +70,12 @@ export function MapInterpretation() {
   const [fires, setFires] = useState<FirePoint[] | null>(null);
   const [airSamples, setAirSamples] = useState<AirSample[]>([]);
   const [windSamples, setWindSamples] = useState<WindSample[]>([]);
-  const [loading, setLoading] = useState(true);
+  // One loading flag PER CARD (review 28/9): the three used to wait together,
+  // so the fires card — one fast request — sat on "Leyendo datos…" until the
+  // 24 air and wind requests were done.
+  const [firesLoading, setFiresLoading] = useState(true);
+  const [airLoading, setAirLoading] = useState(true);
+  const [windLoading, setWindLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -83,7 +88,12 @@ export function MapInterpretation() {
       const firesPromise = fetch("/api/fires")
         .then((r) => r.json())
         .then((d) => (d.fires || []) as FirePoint[])
-        .catch(() => [] as FirePoint[]);
+        .catch(() => [] as FirePoint[])
+        .then((data) => {
+          if (cancelled) return;
+          setFires(data);
+          setFiresLoading(false);
+        });
 
       const airPromise = Promise.all(
         sampleCities.map((c) =>
@@ -100,7 +110,13 @@ export function MapInterpretation() {
             )
             .catch(() => null)
         )
-      ).then((arr) => arr.filter(Boolean) as AirSample[]);
+      )
+        .then((arr) => arr.filter(Boolean) as AirSample[])
+        .then((data) => {
+          if (cancelled) return;
+          setAirSamples(data);
+          setAirLoading(false);
+        });
 
       const windPromise = Promise.all(
         sampleCities.map((c) =>
@@ -117,18 +133,15 @@ export function MapInterpretation() {
             )
             .catch(() => null)
         )
-      ).then((arr) => arr.filter(Boolean) as WindSample[]);
+      )
+        .then((arr) => arr.filter(Boolean) as WindSample[])
+        .then((data) => {
+          if (cancelled) return;
+          setWindSamples(data);
+          setWindLoading(false);
+        });
 
-      const [firesData, airData, windData] = await Promise.all([
-        firesPromise,
-        airPromise,
-        windPromise,
-      ]);
-      if (cancelled) return;
-      setFires(firesData);
-      setAirSamples(airData);
-      setWindSamples(windData);
-      setLoading(false);
+      await Promise.all([firesPromise, airPromise, windPromise]);
     }
 
     load();
@@ -184,7 +197,7 @@ export function MapInterpretation() {
             color="#d2541d"
             title="Incendios"
             body={firesText}
-            loading={loading}
+            loading={firesLoading}
             cta={{ label: "Ver historial", href: "/historial" }}
           />
           <InterpCard
@@ -192,7 +205,7 @@ export function MapInterpretation() {
             color="#22c55e"
             title="Calidad del aire"
             body={airText}
-            loading={loading && airSamples.length === 0}
+            loading={airLoading}
             cta={{ label: "Ver 78 ciudades", href: "/calidad-aire" }}
           />
           <InterpCard
@@ -200,7 +213,7 @@ export function MapInterpretation() {
             color="#3b82f6"
             title="Viento"
             body={windText}
-            loading={loading && windSamples.length === 0}
+            loading={windLoading}
           />
         </div>
 
