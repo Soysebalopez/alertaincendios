@@ -55,7 +55,7 @@ export function Footer() {
             </div>
             <p className="text-[13px] text-muted leading-relaxed max-w-[40ch]">
               Plataforma abierta de monitoreo y alerta temprana de incendios
-              forestales en Argentina. Un proyecto de Whitebay.
+              forestales en Argentina. Un proyecto de Growing Bay.
             </p>
           </div>
 
@@ -88,7 +88,7 @@ export function Footer() {
         </div>
 
         <div className="max-w-[1400px] mx-auto mt-8 pt-6 border-t border-border flex flex-wrap justify-between gap-3 font-mono text-[10px] text-muted">
-          <span>© {new Date().getFullYear()} Whitebay · Código abierto</span>
+          <span>© {new Date().getFullYear()} Growing Bay · Código abierto</span>
           <span>Hecho con ❤ en Argentina · Datos de dominio público</span>
         </div>
       </div>

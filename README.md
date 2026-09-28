@@ -224,4 +224,4 @@ Ver Linear: [CLARA project](https://linear.app/white-bay/project/clara-2ad7d0757
 
 ## Licencia
 
-Proyecto [Whitebay](https://whitebay.dev). Hecho con cariño en Bahía Blanca.
+Proyecto [Growing Bay](https://growingbay.com). Hecho con cariño en Bahía Blanca.
