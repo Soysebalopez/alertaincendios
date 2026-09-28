@@ -544,7 +544,7 @@ async function handleLocation(chatId: number, lat: number, lng: number) {
   const cityName = geo?.name || `${lat.toFixed(2)}, ${lng.toFixed(2)}`;
   const province = geo?.admin1 || "";
 
-  await upsertSubscriber(chatId, lat, lng, cityName);
+  await upsertSubscriber(chatId, lat, lng, cityName, province);
 
   const label = escapeHtml(province ? `${cityName}, ${province}` : cityName);
   await sendMessage(chatId, subscribedMessage(label));
@@ -588,7 +588,7 @@ async function handleCiudad(chatId: number, query: string) {
     return;
   }
 
-  await upsertSubscriber(chatId, geo.lat, geo.lng, geo.name);
+  await upsertSubscriber(chatId, geo.lat, geo.lng, geo.name, geo.admin1);
 
   const label = escapeHtml(geo.admin1 ? `${geo.name}, ${geo.admin1}` : geo.name);
   await sendMessage(chatId, subscribedMessage(label));
@@ -597,7 +597,7 @@ async function handleCiudad(chatId: number, query: string) {
 // WHI-907 — t.me/alertaforestal_bot?start=ciudad-<slug>. The city comes from our
 // own list (PROVINCES), so there is nothing to geocode.
 async function handleCityStart(chatId: number, city: City, provinceName: string) {
-  await upsertSubscriber(chatId, city.lat, city.lng, city.name);
+  await upsertSubscriber(chatId, city.lat, city.lng, city.name, provinceName);
   await sendMessage(chatId, subscribedMessage(escapeHtml(`${city.name}, ${provinceName}`)));
 }
 
@@ -811,7 +811,8 @@ async function upsertSubscriber(
   chatId: number,
   lat: number,
   lng: number,
-  cityName: string
+  cityName: string,
+  province: string
 ) {
   const db = getSupabase();
   // First-write-wins: solo seteamos source si el sub es nuevo o no tenía origen,
@@ -849,6 +850,9 @@ async function upsertSubscriber(
     lat,
     lng,
     city_name: cityName,
+    // Read by the sign-up announcement trigger (whi-aviso-alta-con-provincia.sql).
+    // Empty when the geocoder does not know it: null, not "".
+    province: province || null,
   };
   if (!existing || existing.source == null) {
     const src = await resolveSource(chatId);
