@@ -288,10 +288,14 @@ body {
   font-family: var(--font-sans);
   color: var(--foreground);
   height: 100%;
-  overflow: hidden;
+  /* The WHOLE panel scrolls (review 28/9). Before, only the recent-fires list
+     did, and with the layer list open it got squeezed to zero height: the
+     heading showed and the list below it was invisible, with the data
+     footer cut off at the bottom. */
+  overflow-y: auto;
 }
 .clp-block { padding: 20px; border-bottom: 1px solid var(--border); }
-.clp-block--scroll { flex: 1; overflow-y: auto; min-height: 0; }
+.clp-block--scroll { flex: none; }
 .clp-foot {
   padding: 16px 20px;
   font-family: var(--font-mono);

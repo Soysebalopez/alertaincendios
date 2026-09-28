@@ -121,6 +121,9 @@ const LayersIcon = () => (
   </svg>
 );
 
+/** Argentina continental + Tierra del Fuego: [[sur, oeste], [norte, este]]. */
+const ARGENTINA_BOUNDS: [[number, number], [number, number]] = [[-55.1, -73.6], [-21.8, -53.6]];
+
 export function ArgentinaMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<L.Map | null>(null);
@@ -162,6 +165,8 @@ export function ArgentinaMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
   // zero forest fires (where intensityCounts wouldn't change from its initial).
   const [firesVersion, setFiresVersion] = useState(0);
   const [loading, setLoading] = useState(true);
+  /** Air quality keeps loading city by city after the fires are shown. */
+  const [airLoading, setAirLoading] = useState(true);
   const [stats, setStats] = useState({ fires: 0, cities: 0 });
   // Datos para el side panel del diseño: lista de focos forestales recientes
   // (ordenados por FRP) + timestamp de actualización del cache FIRMS.
@@ -204,15 +209,26 @@ export function ArgentinaMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
       zoomControl: false,
       attributionControl: false,
     });
+    // The whole country on screen, from La Quiaca to Ushuaia, whatever the
+    // screen size (review 28/9: a fixed zoom 5 cut off the north — where most
+    // fires are — on a laptop, and half the country on a phone).
+    const verArgentina = () => map.fitBounds(ARGENTINA_BOUNDS, { padding: [12, 12] });
+    verArgentina();
+
+    // Air quality draws UNDER the fires: a fire is what people come to see, and
+    // 78 city circles on top hid the dots (review 28/9).
+    const airPane = map.createPane("aire");
+    airPane.style.zIndex = "390";
 
     addBasemap(L, map);
 
     L.control.zoom({ position: "bottomright" }).addTo(map);
     mapInstance.current = map;
 
-    // Fix tile rendering — Leaflet needs a size invalidation after mount
-    setTimeout(() => map.invalidateSize(), 100);
-    setTimeout(() => map.invalidateSize(), 500);
+    // Fix tile rendering — Leaflet needs a size invalidation after mount. The
+    // real size is only known then, so the country is fitted again.
+    setTimeout(() => { map.invalidateSize(); verArgentina(); }, 100);
+    setTimeout(() => { map.invalidateSize(); verArgentina(); }, 500);
 
     // Create layer groups
     layerGroups.current.fires = L.layerGroup().addTo(map);
@@ -250,7 +266,13 @@ export function ArgentinaMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
             .slice(0, 14),
         );
         setUpdatedAt(typeof data.updated === "string" ? data.updated : null);
-      } catch {}
+      } catch {
+      } finally {
+        // The map is usable as soon as the FIRES are in. Air quality (78
+        // cities) and wind arrive after, on their own — waiting for ~100
+        // requests kept the map blank for 15+ s on a phone (review 28/9).
+        setLoading(false);
+      }
     }
 
     async function loadAirQuality(group: L.LayerGroup) {
@@ -283,11 +305,12 @@ export function ArgentinaMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
           const color =
             AIR_LEVEL_COLORS[data.worstLevel as AirLevel] || "#22c55e";
           const marker = L.circleMarker([city.lat, city.lng], {
-            radius: 8,
+            pane: "aire",
+            radius: 6,
             color,
             fillColor: color,
-            fillOpacity: 0.3,
-            weight: 1.5,
+            fillOpacity: 0.18,
+            weight: 1,
           });
           marker.bindTooltip(
             `<b>${city.name}</b> (${city.provinceName})<br/>${data.worstLevelLabel || "Bueno"}`,
@@ -298,7 +321,7 @@ export function ArgentinaMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
         }
         setStats((s) => ({ ...s, cities: loaded }));
       }
-      setLoading(false);
+      setAirLoading(false);
     }
 
     async function loadWind(group: L.LayerGroup) {
@@ -480,8 +503,13 @@ export function ArgentinaMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
           </span>
           <h2 className="clp-title">Argentina en vivo</h2>
           <p className="clp-sub">
-            {stats.fires} focos · {stats.cities} ciudades
+            {/* Says WHICH fires: the number is the forest ones, and the
+                summary below the map counts every fire — two different
+                totals side by side read as a bug (review 28/9). */}
+            {stats.fires} focos forestales · {nonForestCount} fuera de bosque
             {updatedAt ? ` · actualizado ${timeAgo(updatedAt)}` : ""}
+            <br />
+            {airLoading ? "Calidad del aire: cargando ciudades…" : `Calidad del aire en ${stats.cities} ciudades`}
           </p>
         </div>
 
