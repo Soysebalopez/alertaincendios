@@ -17,6 +17,17 @@ import {
 // H-10 — protege la cuota de Open-Meteo. 60 req/min por IP es generoso para
 // uso real (todo el grid de 12 ciudades en el hero cuenta como 12), pero corta
 // loops de abuso. /api/summary llama internamente — usa el bypass header.
+/**
+ * Vercel's CDN may reuse a good answer for 10 minutes, per point (the query
+ * string is part of the key), for EVERY visitor (review 28/9). The upstream
+ * call is already cached 30 min (`revalidate: 1800` below), so this adds no
+ * staleness — it only stops each visitor from running the function again.
+ * The /mapa page alone asks for 78 cities; before this, a reload inside the
+ * same minute hit the per-IP limit and cities silently dropped off the map.
+ * A reused answer never reaches the function, so it never counts toward it.
+ */
+const CACHE_CDN = "public, s-maxage=600, stale-while-revalidate=1200";
+
 const RATE_LIMIT_PER_MIN = 60;
 
 export async function GET(request: NextRequest) {
@@ -75,7 +86,7 @@ export async function GET(request: NextRequest) {
       temperature: c.temperature_2m,
       humidity: c.relative_humidity_2m,
       weatherCode: c.weather_code,
-    });
+    }, { headers: { "Cache-Control": CACHE_CDN } });
   } catch (error) {
     console.error("Wind API error:", error);
     return NextResponse.json(
