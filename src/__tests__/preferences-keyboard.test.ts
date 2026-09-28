@@ -3,21 +3,33 @@ import { buildPreferencesKeyboard, parsePreferencesCallback } from "@/lib/prefer
 
 describe("buildPreferencesKeyboard", () => {
   it("includes a lightning toggle row", () => {
-    const kb = buildPreferencesKeyboard({ lightning: true, prevention: "off", covered: false });
+    const kb = buildPreferencesKeyboard({ lightning: true, campo: true, prevention: "off", covered: false });
     const flat = kb.inline_keyboard.flat();
     expect(flat.some((b) => b.callback_data === "prefs|lightning")).toBe(true);
   });
   it("omits prevention rows when the sub is not in a covered zone", () => {
-    const kb = buildPreferencesKeyboard({ lightning: true, prevention: "off", covered: false });
+    const kb = buildPreferencesKeyboard({ lightning: true, campo: true, prevention: "off", covered: false });
     const flat = kb.inline_keyboard.flat();
     expect(flat.some((b) => b.callback_data.startsWith("prefs|prev:"))).toBe(false);
   });
   it("shows the three prevention options when covered", () => {
-    const kb = buildPreferencesKeyboard({ lightning: false, prevention: "alerts", covered: true });
+    const kb = buildPreferencesKeyboard({ lightning: false, campo: true, prevention: "alerts", covered: true });
     const data = kb.inline_keyboard.flat().map((b) => b.callback_data);
     expect(data).toContain("prefs|prev:daily");
     expect(data).toContain("prefs|prev:alerts");
     expect(data).toContain("prefs|prev:off");
+  });
+});
+
+describe("campo y pastizal (28/9)", () => {
+  it("always shows its toggle, with its state", () => {
+    const on = buildPreferencesKeyboard({ lightning: true, campo: true, prevention: "off", covered: false }).inline_keyboard.flat();
+    const off = buildPreferencesKeyboard({ lightning: true, campo: false, prevention: "off", covered: false }).inline_keyboard.flat();
+    expect(on.find((b) => b.callback_data === "prefs|campo")?.text).toMatch(/Activado/);
+    expect(off.find((b) => b.callback_data === "prefs|campo")?.text).toMatch(/Desactivado/);
+  });
+  it("parses its callback", () => {
+    expect(parsePreferencesCallback("prefs|campo")).toEqual({ kind: "campo" });
   });
 });
 
