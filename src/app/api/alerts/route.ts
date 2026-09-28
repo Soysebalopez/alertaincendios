@@ -13,6 +13,13 @@ import { isCronAuthorized } from "@/lib/cron-auth";
 import { fetchAllRows } from "@/lib/paginate";
 import { selectAlertPairs } from "@/lib/alert-pairs";
 import { log } from "@/lib/logger";
+import {
+  selectCampoPairs,
+  campoFireKey,
+  yaAvisadoMismoIncendio,
+  CAMPO_KEY_PREFIX,
+  CAMPO_INCIDENT_HOURS,
+} from "@/lib/campo-alerts";
 
 /**
  * GET /api/alerts
@@ -45,11 +52,12 @@ export async function GET(request: Request) {
       lat: number;
       lng: number;
       city_name: string;
+      campo_enabled: boolean | null;
     };
     const subscribers = await fetchAllRows<Subscriber>(
       db,
       "subscribers",
-      "chat_id, lat, lng, city_name",
+      "chat_id, lat, lng, city_name, campo_enabled",
       (q) => q.order("chat_id")
     );
 
@@ -198,6 +206,10 @@ export async function GET(request: Request) {
       alertsSent++;
     }
 
+    // Capa "campo y pastizal" (28/9): aparte y DESPUÉS de la de bosque, que
+    // no cambia. Ver lib/campo-alerts.ts.
+    const campo = await sendCampoAlerts(db, fires, subscribers, windCache);
+
     // Invalidar el segment cache de Next 16 para / y /mapa: estas páginas
     // están en ISR (revalidate: 60 y 300). Sin esta llamada, una visita
     // fresca entre revalidaciones sigue viendo el conteo viejo aunque
@@ -216,6 +228,8 @@ export async function GET(request: Request) {
       // forestal. Si es mucho más alto que `alerts`, el filtro está cortando
       // ruido como esperamos.
       skippedNonForestCivilian,
+      campoAlerts: campo.sent,
+      campoSkippedSameIncident: campo.skippedSameIncident,
       revalidated: ["/", "/mapa"],
     });
   } catch (error) {
@@ -471,5 +485,133 @@ async function formatConfirmedFromPreliminary(
   msg += `\n${alertMapLinks(fire.latitude, fire.longitude)}`;
   msg += `\n\n—\nClara · AlertaForestal.org · GOES-19 + NASA FIRMS`;
 
+  return msg;
+}
+
+/**
+ * Capa "campo y pastizal" (Seba, 28/9): pastizal, campo, arbustal y quemas
+ * FUERA de las zonas de bosque, a ≤ 20 km, sólo fuegos intensos, sin
+ * industrias. Un aviso por INCIDENTE: si esta persona ya recibió uno de campo
+ * a ≤ 2 km en las últimas 24 h, éste es el mismo incendio y no se repite.
+ *
+ * Mismo lock que la de bosque (INSERT en `ai_alerted_fires`), con claves
+ * prefijadas "c:" para no chocar con las suyas.
+ */
+async function sendCampoAlerts(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any,
+  fires: FirePoint[],
+  subscribers: { chat_id: number; lat: number; lng: number; city_name: string; campo_enabled: boolean | null }[],
+  windCache: Map<string, Awaited<ReturnType<typeof fetchWind>>>
+): Promise<{ sent: number; skippedSameIncident: number }> {
+  let sent = 0;
+  let skippedSameIncident = 0;
+  const pairs = selectCampoPairs(fires, subscribers);
+  if (pairs.length === 0) return { sent, skippedSameIncident };
+
+  // Sus claves de campo de las últimas 24 h, leídas una vez por persona y
+  // actualizadas al mandar: dos detecciones del mismo incendio en la misma
+  // corrida también cuentan como uno.
+  const desde = new Date(Date.now() - CAMPO_INCIDENT_HOURS * 3600e3).toISOString();
+  const recientesPorChat = new Map<number, string[]>();
+
+  for (const { fire, sub, distKm } of pairs) {
+    const fireKey = campoFireKey(fire);
+    let recientes: string[] | undefined = recientesPorChat.get(sub.chat_id);
+    if (recientes === undefined) {
+      const { data, error } = await db
+        .from("ai_alerted_fires")
+        .select("fire_key")
+        .eq("chat_id", sub.chat_id)
+        .like("fire_key", `${CAMPO_KEY_PREFIX}%`)
+        .gte("alerted_at", desde);
+      if (error) {
+        // Without the history we cannot tell a new fire from a repeat: skip
+        // this person this run rather than risk a burst of duplicates.
+        log.error({ event: "campo.history_failed", chatId: sub.chat_id, err: error.message });
+        continue;
+      }
+      const leidas: string[] = (data ?? []).map((r: { fire_key: string }) => r.fire_key);
+      recientesPorChat.set(sub.chat_id, leidas);
+      recientes = leidas;
+    }
+    if (yaAvisadoMismoIncendio(fire, recientes)) {
+      skippedSameIncident++;
+      continue;
+    }
+
+    const { data: claimed, error: claimErr } = await db
+      .from("ai_alerted_fires")
+      .insert({ fire_key: fireKey, chat_id: sub.chat_id, alerted_at: new Date().toISOString() })
+      .select("fire_key")
+      .single();
+    if (claimErr || !claimed) {
+      if (claimErr && claimErr.code !== "23505") {
+        log.error({ event: "campo.claim_failed", fireKey, chatId: sub.chat_id, code: claimErr.code, err: claimErr.message });
+      }
+      continue;
+    }
+    recientes.push(fireKey);
+
+    let wind = windCache.get(fireKey);
+    if (!wind) {
+      wind = await fetchWind(fire.latitude, fire.longitude);
+      windCache.set(fireKey, wind);
+    }
+    const smoke = smokeHeadsTowardUser(sub.lat, sub.lng, fire.latitude, fire.longitude, wind.windDirection);
+    const eta = smokeEtaMinutes(distKm, wind.windSpeed, smoke.headsToward);
+    const frontEta = alertFrontEtaMinutes({
+      headsToward: smoke.headsToward,
+      distKm,
+      wind,
+      forestZone: fire.forestZone,
+      at: new Date(),
+    });
+
+    const sendResult = await sendMessage(sub.chat_id, formatCampoAlert(fire, sub, distKm, eta, frontEta), {
+      reply_markup: buildFeedbackKeyboard("f:" + fireKey),
+    });
+    if (!sendResult.ok) {
+      log.error({ event: "campo.send_failed", fireKey, chatId: sub.chat_id, status: sendResult.status, err: sendResult.description });
+      continue;
+    }
+    log.info({ event: "campo.sent", fireKey, chatId: sub.chat_id, distKm: Math.round(distKm) });
+    sent++;
+  }
+  return { sent, skippedSameIncident };
+}
+
+/**
+ * El aviso de campo. Dice lo que es — un incendio de campo o pastizal, no de
+ * bosque — para que no se lea como una emergencia forestal, y cómo apagarlo.
+ */
+function formatCampoAlert(
+  fire: FirePoint,
+  sub: { lat: number; lng: number; city_name: string },
+  distKm: number,
+  etaMinutes: number,
+  frontEtaMinutes: number | null
+): string {
+  const dist = Math.round(distKm * 10) / 10;
+  const cardinal = degreesToCardinal(bearingDegrees(sub.lat, sub.lng, fire.latitude, fire.longitude));
+  const ageMin = minutesSinceDetection(fire.acqDate, fire.acqTime);
+  const windToward = etaMinutes > 0;
+
+  let msg = `🌾 <b>Incendio de campo a ${dist} km${windToward ? ` — humo en ~${etaMinutes} min` : ""}</b>\n\n`;
+  msg += `📍 A <b>${dist} km</b> de ${escapeHtml(sub.city_name)}\n`;
+  msg += `🧭 Dirección: ${cardinal}\n`;
+  msg += `💨 Viento: ${windToward ? "<b>hacia tu posición</b>" : "fuera de tu posición"}`;
+  if (windToward) msg += ` (ETA humo ~${etaMinutes} min)`;
+  msg += `\n`;
+  const frontText = formatFrontEta(frontEtaMinutes);
+  if (frontText) {
+    msg += `🔥 Si el viento se mantiene, el fuego podría llegar en <b>${frontText}</b> (estimación de peor caso)\n`;
+  }
+  msg += `${frpBars(fire.frp)} ${fire.frp} MW — ${frpLabel(fire.frp).split(" (")[0]}\n`;
+  msg += `🛰️ Fuente: NASA FIRMS · detectado hace ${ageMin} min\n`;
+  msg += `\n<i>Fuera de las zonas de bosque: puede ser pastizal, campo, arbustal o una quema agrícola que se extendió. Si ves humo o fuego cerca, llamá al 100 (bomberos).</i>\n`;
+  msg += `\n${alertMapLinks(fire.latitude, fire.longitude)}`;
+  msg += `\n\n—\nClara · AlertaForestal.org`;
+  msg += `\n<i>Para dejar de recibir avisos de campo y pastizal: /campo</i>`;
   return msg;
 }
