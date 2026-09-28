@@ -41,9 +41,21 @@ export const BASEMAP_ATTRIBUTION = "&copy; Esri";
 /** Esri Light Gray no publica mosaicos más allá de este zoom. */
 export const BASEMAP_MAX_ZOOM = 16;
 
+/**
+ * Pane de las etiquetas (nombres de ciudades, países): POR ENCIMA de los
+ * círculos y marcadores dibujados (overlayPane 400, markerPane 600 queda
+ * arriba igual) y por debajo de tooltips y popups. Antes iban con el relieve,
+ * debajo de todo, y los círculos de calidad del aire tapaban "Córdoba",
+ * "Rosario" o "Buenos Aires" (revisión del mapa, 28/9). No recibe clics.
+ */
+export const BASEMAP_LABELS_PANE = "etiquetas";
+
 /** Agrega el fondo (relieve + etiquetas) a un mapa de Leaflet ya creado. */
 export function addBasemap(L: typeof LeafletNS, map: LeafletNS.Map): void {
   const opciones = { maxZoom: BASEMAP_MAX_ZOOM, attribution: BASEMAP_ATTRIBUTION };
   L.tileLayer(BASEMAP_BASE_URL, opciones).addTo(map);
-  L.tileLayer(BASEMAP_LABELS_URL, opciones).addTo(map);
+  const pane = map.getPane(BASEMAP_LABELS_PANE) ?? map.createPane(BASEMAP_LABELS_PANE);
+  pane.style.zIndex = "450";
+  pane.style.pointerEvents = "none";
+  L.tileLayer(BASEMAP_LABELS_URL, { ...opciones, pane: BASEMAP_LABELS_PANE }).addTo(map);
 }
