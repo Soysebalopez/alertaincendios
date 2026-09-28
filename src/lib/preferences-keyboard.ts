@@ -7,6 +7,7 @@
  *
  * callback_data format:
  *   "prefs|lightning"        — toggle lightning alerts
+ *   "prefs|campo"            — toggle field & grass fire alerts (28/9)
  *   "prefs|prev:<mode>"      — set prevention mode (off | alerts | daily)
  */
 
@@ -14,6 +15,8 @@ export type PreventionMode = "off" | "alerts" | "daily";
 
 export interface PreferencesState {
   lightning: boolean;
+  /** Field & grass fire layer (28/9). On by default. */
+  campo: boolean;
   prevention: PreventionMode;
   covered: boolean; // sub's location falls in a covered FWI zone
 }
@@ -24,6 +27,7 @@ export type InlineKeyboard = {
 
 export type PreferencesAction =
   | { kind: "lightning" }
+  | { kind: "campo" }
   | { kind: "prevention"; mode: PreventionMode };
 
 const PREVENTION_MODES: PreventionMode[] = ["off", "alerts", "daily"];
@@ -35,6 +39,13 @@ export function buildPreferencesKeyboard(state: PreferencesState): InlineKeyboar
     {
       text: `⚡ Rayos: ${state.lightning ? "✅ Activado" : "❌ Desactivado"}`,
       callback_data: "prefs|lightning",
+    },
+  ]);
+
+  rows.push([
+    {
+      text: `🌾 Campo y pastizal: ${state.campo ? "✅ Activado" : "❌ Desactivado"}`,
+      callback_data: "prefs|campo",
     },
   ]);
 
@@ -55,6 +66,7 @@ export function parsePreferencesCallback(data: string | null | undefined): Prefe
   if (!data || !data.startsWith("prefs|")) return null;
   const rest = data.slice("prefs|".length);
   if (rest === "lightning") return { kind: "lightning" };
+  if (rest === "campo") return { kind: "campo" };
   if (rest.startsWith("prev:")) {
     const mode = rest.slice("prev:".length) as PreventionMode;
     if (PREVENTION_MODES.includes(mode)) return { kind: "prevention", mode };

@@ -132,6 +132,9 @@ export async function POST(request: NextRequest) {
     } else if (text === "/rayos") {
       await logBotCommand(chatId, "/rayos");
       await handleRayosToggle(chatId);
+    } else if (text === "/campo") {
+      await logBotCommand(chatId, "/campo");
+      await handleCampoToggle(chatId);
     } else if (text === "/preferencias" || text === "/prevencion") {
       await logBotCommand(chatId, text);
       await handlePreferencesCommand(chatId);
@@ -206,6 +209,7 @@ const HELP_TEXT =
   "🏙 /ciudad &lt;nombre&gt; — suscribirte por ciudad\n" +
   "📊 /estado — focos activos cerca tuyo\n" +
   "⚡ /rayos — activar/desactivar alerta de tormentas secas\n" +
+  "🌾 /campo — activar/desactivar avisos de incendios de campo y pastizal\n" +
   "ℹ️ /about — sobre el proyecto\n" +
   "❌ /cancelar — eliminar suscripción" +
   FOOTER;
@@ -321,6 +325,7 @@ async function handleStart(chatId: number) {
       "<b>Comandos disponibles:</b>\n" +
       "📊 /estado — focos activos en 100 km a tu alrededor\n" +
       "⚡ /rayos — activar/desactivar alertas de tormenta seca\n" +
+      "🌾 /campo — activar/desactivar avisos de incendios de campo y pastizal\n" +
       "ℹ️ /about — sobre el proyecto\n" +
       "❓ /help — esta lista de comandos\n" +
       "❌ /cancelar — eliminar tu suscripción" +
@@ -382,6 +387,35 @@ async function handleRayosToggle(chatId: number) {
   );
 }
 
+// Capa "campo y pastizal" (28/9): prendida por defecto, se apaga acá. Misma
+// forma que /rayos (read-modify-write; ver la nota M8 de arriba).
+async function handleCampoToggle(chatId: number) {
+  const db = getSupabase();
+  const { data: sub } = await db
+    .from("subscribers")
+    .select("campo_enabled")
+    .eq("chat_id", chatId)
+    .limit(1)
+    .maybeSingle();
+
+  if (!sub) {
+    await sendMessage(chatId, "🌾 Primero suscribite con /ciudad o compartiendo tu ubicación." + FOOTER);
+    return;
+  }
+
+  const next = sub.campo_enabled === false; // toggle
+  await db.from("subscribers").update({ campo_enabled: next }).eq("chat_id", chatId);
+
+  await sendMessage(
+    chatId,
+    next
+      ? "🌾 Avisos de campo y pastizal <b>activados</b>.\n\nVas a recibir un aviso cuando haya un incendio intenso de pastizal, campo o una quema a menos de 20 km, fuera de las zonas de bosque." +
+          FOOTER
+      : "🌾 Avisos de campo y pastizal <b>desactivados</b>.\n\nSeguís recibiendo los avisos de incendios en zonas de bosque. Usá /campo otra vez para reactivarlos." +
+          FOOTER
+  );
+}
+
 // Builds the preferences menu (body + keyboard) for an existing subscriber, or
 // null if the chat has no subscriber yet. Shared by the command and the callback
 // so the menu can be rendered (sendMessage) or updated in place (editMessageText).
@@ -391,7 +425,7 @@ async function preferencesView(
   const db = getSupabase();
   const { data: sub } = await db
     .from("subscribers")
-    .select("lat, lng, lightning_enabled, prevention_mode")
+    .select("lat, lng, lightning_enabled, campo_enabled, prevention_mode")
     .eq("chat_id", chatId)
     .limit(1)
     .maybeSingle();
@@ -405,13 +439,15 @@ async function preferencesView(
 
   const keyboard = buildPreferencesKeyboard({
     lightning: sub.lightning_enabled !== false,
+    campo: sub.campo_enabled !== false,
     prevention: (sub.prevention_mode ?? "off") as "off" | "alerts" | "daily",
     covered,
   });
 
   const body =
     "⚙️ <b>Tus avisos</b>\n\n" +
-    "🔥 Focos cercanos — <b>siempre activos</b> (es el corazón del servicio)\n" +
+    "🔥 Focos en zonas de bosque — <b>siempre activos</b> (es el corazón del servicio)\n" +
+    "🌾 Incendios de campo y pastizal a menos de 20 km — activalos o desactivalos abajo\n" +
     (covered ? "🌲 Elegí si querés avisos de prevención de incendio." : "");
 
   return { body, keyboard };
@@ -451,6 +487,11 @@ async function handlePreferencesCallback(cb: {
       const next = sub?.lightning_enabled === false;
       await db.from("subscribers").update({ lightning_enabled: next }).eq("chat_id", chatId);
       await answerCallbackQuery(cb.id, next ? "Rayos activados" : "Rayos desactivados");
+    } else if (action.kind === "campo") {
+      const { data: sub } = await db.from("subscribers").select("campo_enabled").eq("chat_id", chatId).limit(1).maybeSingle();
+      const next = sub?.campo_enabled === false;
+      await db.from("subscribers").update({ campo_enabled: next }).eq("chat_id", chatId);
+      await answerCallbackQuery(cb.id, next ? "Campo y pastizal activado" : "Campo y pastizal desactivado");
     } else {
       await db.from("subscribers").update({ prevention_mode: action.mode }).eq("chat_id", chatId);
       // starting fresh: drop any stale episode so a new crossing re-alerts cleanly
@@ -522,6 +563,8 @@ async function handleLocation(chatId: number, lat: number, lng: number) {
       {
         reply_markup: buildPreferencesKeyboard({
           lightning: true,
+          // A brand-new subscriber: the column default is on (28/9).
+          campo: true,
           prevention: "off",
           covered: true,
         }),
