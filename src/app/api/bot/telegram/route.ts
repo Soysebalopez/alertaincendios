@@ -200,7 +200,7 @@ const ABOUT_TEXT =
   "que la NASA desde Argentina. Si sos una empresa, gobierno, forestal o " +
   "aseguradora, te recomendamos satellitesonfire.com.\n\n" +
   "AlertaForestal es para vos, que vivís en zona de riesgo. Gratis, siempre.\n\n" +
-  "Hecho con cariño en Bahía Blanca por Whitebay." +
+  "Hecho con cariño en Bahía Blanca por Growing Bay." +
   FOOTER;
 
 const HELP_TEXT =

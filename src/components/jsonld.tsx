@@ -26,7 +26,7 @@ export function WebsiteJsonLd() {
     },
     publisher: {
       "@type": "Organization",
-      name: "Whitebay",
+      name: "Growing Bay",
     },
   };
 
@@ -184,7 +184,7 @@ export function OrganizationJsonLd() {
     "@context": "https://schema.org",
     "@type": "Organization",
     name: "AlertaForestal",
-    legalName: "Whitebay",
+    legalName: "Growing Bay",
     url: SITE_URL_CANONICO,
     logo: `${SITE_URL_CANONICO}/icon.svg`,
     description:
