@@ -81,7 +81,7 @@ export function CityDashboard({
   lat,
   lng,
   focus = null,
-  fireFilter = "forest",
+  fireFilter = "vegetation",
   mapHeight = 360,
 }: {
   cityName: string;

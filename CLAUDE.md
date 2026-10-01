@@ -29,7 +29,7 @@ Alertas tempranas de incendios forestales en Argentina vía Telegram. El bot del
 ## Architecture
 
 ### Pages
-- Landing: `/` — split-screen hero (contador de **incendios distintos**, no detecciones + Leaflet map), live city slider, 6 data sources (3×2 grid), "Cómo funciona", evolución de focos, calidad del aire, CTA "Recibí la alerta antes"
+- Landing: `/` — split-screen hero (contador de **incendios distintos**, no detecciones, **de bosque y de campo** desde el 1/10, con el desglose debajo + Leaflet map), live city slider, 6 data sources (3×2 grid), "Cómo funciona", evolución de focos, calidad del aire, CTA "Recibí la alerta antes"
 - Mapa: `/mapa` — fullscreen Leaflet con capas focos/aire/viento. Layout propio (sin footer)
 - Calidad del aire: `/calidad-aire` — selector de provincia → cards por ciudad
 - Ciudad: `/ciudad/[province]/[city]` — SSG 78 páginas, dashboard completo por ciudad
@@ -175,7 +175,7 @@ Archivos: `scripts/sql/whi-907-wind.sql` y `scripts/sql/whi-907-lightning.sql`. 
 - Dispersión: Gaussian plume (Pasquill-Gifford) en `src/lib/dispersion.ts`
 - Fire history backfill: `scripts/backfill-fires.sh` con MAP_KEY desde `scripts/backfill.env` (gitignored)
 - Leaflet maps con dynamic import + ssr:false
-- **Filtro forestal (canónico)**: todo suscriptor recibe sólo alertas de focos en zona forestal, con interpretación AI. Aplica en `/api/alerts` y `/api/goes-alerts`. (Hasta el 2026-09-14 existía un rol de bombero que recibía todo con formato operativo; se retiró sin haberse usado nunca — WHI-907.) El mismo filtro gobierna landing/mapa/`/ciudad` (ver Forest classification > Aplicado en), **excepto `/bahia-blanca`**, que muestra todos los focos de vegetación (`showsFire(f, "vegetation")` en `src/lib/city-fires.ts`).
+- **Filtro forestal (canónico)**: todo suscriptor recibe sólo alertas de focos en zona forestal, con interpretación AI. Aplica en `/api/alerts` y `/api/goes-alerts`. (Hasta el 2026-09-14 existía un rol de bombero que recibía todo con formato operativo; se retiró sin haberse usado nunca — WHI-907.) 🔴 **La WEB ya no aplica este filtro (desde el 2026-10-01, pedido de Seba):** landing, mini mapa, `/mapa`, las páginas de ciudad y el `/estado` del bot informan **todo incendio —bosque y campo— salvo las fuentes fijas de calor** (antorchas, acerías, refinerías, volcanes: `type ≠ 0` o en la lista `isStaticHeatSource`). La regla vive en UNA función, `fireKind()` en `src/lib/reported-fires.ts` (`bosque` | `campo` | `excluido`), y las tres pantallas la llaman; un test mira su código para que no vuelvan a tener copias. En los mapas, bosque = punto relleno y campo = anillo, cada uno con su botón. Los AVISOS del bot no cambiaron: bosque (≤50 km) + capa de campo (≤20 km, FRP > 10).
   - 🔴 **Bahía Blanca no está en ninguna de las 7 zonas forestales** (son sólo bosques). Como las dos alertas del bot aplican el filtro, **hoy un incendio de pastizal cerca de Bahía no genera alerta**. Cambiarlo es decisión de producto (volumen, quemas agrícolas, antorchas de Ingeniero White) y quedó pendiente con Seba. **Si se habilita, las alertas tienen que descartar también las antorchas por posición** (`isStaticHeatSource`, como la página): hoy `/api/alerts` sólo filtra por `type`, y el feed casi en tiempo real no lo trae.
 - Doble confirmación: preliminary GOES → confirmation upgrade FIRMS si <5km/<2h → dismissal automático tras 4h
 - Preliminaries descartadas se BORRAN de goes_preliminary (cascade goes_alerted) — el landing metric "Preliminares activos" refleja solo lo pendiente
@@ -183,7 +183,7 @@ Archivos: `scripts/sql/whi-907-wind.sql` y `scripts/sql/whi-907-lightning.sql`. 
 
 ## Forest classification (Fase 4 — WHI-756 a WHI-761)
 
-**Pivote conceptual del producto**: CLARA pasó de "monitor de detecciones térmicas con filtros de exclusión" a "monitor de focos en zona forestal con opcional ver todo". El landing, mapa, /ciudad y bot Telegram aplican el mismo filtro.
+**Pivote conceptual del producto**: CLARA pasó de "monitor de detecciones térmicas con filtros de exclusión" a "monitor de focos en zona forestal con opcional ver todo". ⚠️ **Revertido en la web el 2026-10-01**: la web vuelve a mostrar todo incendio (sin fuentes fijas), y la zona forestal pasó a ser una CLASE (`bosque` vs `campo`) en vez de un filtro. Lo de abajo sigue valiendo para los avisos del bot y para saber qué es "bosque".
 
 ### Datos
 - **Fuente**: MapBiomas Argentina Colección 2 (2024), clase 3 "Formación Forestal". 7 polígonos pre-procesados a JSON:
@@ -204,9 +204,7 @@ Archivos: `scripts/sql/whi-907-wind.sql` y `scripts/sql/whi-907-lightning.sql`. 
 - Fast path (point-in-polygon con bbox filter) → slow path (cross-track distance al ring) solo si el primer no matchea.
 
 ### Aplicado en
-- **Hero**: `forestTotal = high + moderate + low` (todos los wildfires en forestZone). Sub-line muestra "+N fuera de zona forestal".
-- **Mapa `/`**: capa Focos forestales filtra `f.forestZone` truthy. Toggle "+ No forestal" muestra los grises translúcidos (no-forestal con opacidad baja para no competir visualmente).
-- **`/ciudad/[p]/[c]`**: bloque `<CityForestFires>` muestra los 3 focos forestales más cercanos en 100km. Si 0, mensaje positivo "Sin actividad forestal en 100 km" (tono `--good`).
+- **Hero, mapas y `/ciudad`** (desde el 1/10): ya no filtran por zona, la usan para clasificar — ver Key Patterns > Filtro forestal.
 - **Bot Telegram**: `/api/alerts` y `/api/goes-alerts` filtran por zona forestal (ver Key Patterns > Filtro forestal). Mensaje incluye línea "🌲 Zona: {nombre}". Si el foco está a <100 km de Bahía Blanca, la alerta agrega "🗺️ Ver hacia dónde va" con el link a `/bahia-blanca?foco=`, antes del de Google Maps.
 
 ## Satellite trajectories (WHI-752 a WHI-755)

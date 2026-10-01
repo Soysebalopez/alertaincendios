@@ -23,7 +23,7 @@
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
-import { countForestFireEvents } from "@/lib/fire-events";
+import { countReportedFireEvents } from "@/lib/reported-fires";
 import { flagFlashAvailable, REFRESH_FLAG_KEY } from "@/lib/refresh-flag";
 
 interface FirePoint {
@@ -68,8 +68,8 @@ export function HeroAutoRefresh({ initialCount }: { initialCount: number }) {
             const data = await res.json();
             const fires = (data.fires ?? []) as FirePoint[];
             // Misma cuenta que el servidor: incendios distintos, no detecciones.
-            const forestActive = countForestFireEvents(fires);
-            if (forestActive > baselineRef.current) {
+            const active = countReportedFireEvents(fires).total;
+            if (active > baselineRef.current) {
               refreshingRef.current = true;
               try {
                 sessionStorage.setItem(REFRESH_FLAG_KEY, Date.now().toString());

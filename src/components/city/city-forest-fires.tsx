@@ -41,7 +41,7 @@ export function CityForestFires({
   lat,
   lng,
   cityName,
-  fireFilter = "forest",
+  fireFilter = "vegetation",
 }: {
   lat: number;
   lng: number;

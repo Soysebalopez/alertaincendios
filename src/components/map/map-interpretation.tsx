@@ -15,12 +15,14 @@ import { Fire, Wind as WindIcon, Drop, ArrowRight } from "@phosphor-icons/react/
 import Link from "next/link";
 import { PROVINCES } from "@/lib/argentina-cities";
 import type { AirLevel } from "@/lib/air-quality";
+import { isReportedFire, frpBucket } from "@/lib/reported-fires";
 
 interface FirePoint {
   latitude: number;
   longitude: number;
   frp: number;
   type?: number;
+  forestZone?: string;
 }
 
 interface AirSample {
@@ -48,12 +50,6 @@ const AIR_LEVEL_PUBLIC: Record<AirLevel, string> = {
   bad: "regular",
   dangerous: "peligrosa",
 };
-
-function frpBucket(frp: number): "high" | "moderate" | "low" {
-  if (frp >= 20) return "high";
-  if (frp >= 5) return "moderate";
-  return "low";
-}
 
 function latitudeBand(lat: number): "norte" | "centro" | "sur" {
   if (lat > -30) return "norte";
@@ -242,8 +238,9 @@ function buildFiresText(fires: FirePoint[] | null): React.ReactNode {
   const buckets = { high: 0, moderate: 0, low: 0, industrial: 0 };
   const bands = { norte: 0, centro: 0, sur: 0 };
   for (const f of fires) {
-    const isWild = (f.type ?? 0) === 0 || f.type === 1;
-    if (!isWild) {
+    // Misma regla que los mapas: las fuentes fijas (antorchas, industrias) no
+    // son incendios, las marque o no VIIRS (lib/reported-fires).
+    if (!isReportedFire(f)) {
       buckets.industrial++;
       continue;
     }
@@ -263,7 +260,7 @@ function buildFiresText(fires: FirePoint[] | null): React.ReactNode {
         {buckets.high > 0 ? (
           <>
             <strong>{buckets.high}</strong> de alta intensidad (FRP ≥ 20 MW —
-            incendio forestal significativo)
+            incendio significativo)
             {buckets.moderate + buckets.low > 0 ? ", " : "."}
           </>
         ) : (
@@ -294,8 +291,8 @@ function buildFiresText(fires: FirePoint[] | null): React.ReactNode {
         <p className="text-muted" style={{ fontSize: 13 }}>
           + {buckets.industrial} {pluralFocos(buckets.industrial)} adicional
           {buckets.industrial === 1 ? "" : "es"} clasificado
-          {buckets.industrial === 1 ? "" : "s"} como flaring industrial u
-          offshore (excluidos del conteo de incendios).
+          {buckets.industrial === 1 ? "" : "s"} como antorchas, industrias u
+          otras fuentes fijas de calor (excluidos del conteo de incendios).
         </p>
       )}
     </>

@@ -29,11 +29,14 @@ export function isForestFire(fire: EventFire): boolean {
   return isWild && Boolean(fire.forestZone);
 }
 
-/** Cuántos incendios distintos representan estas detecciones. */
-export function countFireEvents(
-  fires: EventFire[],
+/**
+ * Agrupa las detecciones en incendios: devuelve un grupo por incendio, con
+ * las detecciones que le pertenecen (enlace simple a ≤ `radiusKm`).
+ */
+export function groupFireEvents<F extends EventFire>(
+  fires: F[],
   radiusKm: number = FIRE_EVENT_RADIUS_KM,
-): number {
+): F[][] {
   const parent = fires.map((_, i) => i);
   const find = (i: number): number => {
     while (parent[i] !== i) {
@@ -58,9 +61,22 @@ export function countFireEvents(
     }
   }
 
-  const roots = new Set<number>();
-  for (let i = 0; i < fires.length; i++) roots.add(find(i));
-  return roots.size;
+  const grupos = new Map<number, F[]>();
+  fires.forEach((f, i) => {
+    const r = find(i);
+    const g = grupos.get(r);
+    if (g) g.push(f);
+    else grupos.set(r, [f]);
+  });
+  return [...grupos.values()];
+}
+
+/** Cuántos incendios distintos representan estas detecciones. */
+export function countFireEvents(
+  fires: EventFire[],
+  radiusKm: number = FIRE_EVENT_RADIUS_KM,
+): number {
+  return groupFireEvents(fires, radiusKm).length;
 }
 
 /** Incendios forestales distintos entre estas detecciones. */

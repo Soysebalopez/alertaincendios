@@ -47,21 +47,25 @@ describe("el contador de la home cuenta incendios, no detecciones", () => {
   const enVivo = leer("src/components/hero-auto-refresh.tsx");
 
   it("el servidor calcula los incendios con la función compartida", () => {
-    expect(page).toContain("countForestFireEvents(fires)");
+    expect(page).toContain("countReportedFireEvents(fires)");
   });
 
   it("el número grande muestra esos incendios", () => {
-    expect(page).toContain("<FireCounter count={forestEvents} />");
-    expect(page).toContain("<HeroAutoRefresh initialCount={forestEvents} />");
+    expect(page).toContain("<FireCounter count={events.total} />");
+    expect(page).toContain("<HeroAutoRefresh initialCount={events.total} />");
   });
 
   it("el refresco en vivo usa la misma función, no su propia cuenta", () => {
-    expect(enVivo).toContain("countForestFireEvents(fires)");
+    expect(enVivo).toContain("countReportedFireEvents(fires).total");
     expect(enVivo).not.toContain("function countForestActive");
   });
 
   it("el texto acota la ventana de tiempo y no vuelve al «ahora mismo»", () => {
     expect(page).toContain("focos activos en las últimas 24hs");
     expect(page).not.toContain("focos activos ahora mismo");
+  });
+
+  it("🔴 el desglose bosque/campo sale de la misma cuenta, así suma el total", () => {
+    expect(page).toContain("{events.bosque} en zona de bosque · {events.campo} en campo y pastizal");
   });
 });
