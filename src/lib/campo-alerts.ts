@@ -11,7 +11,22 @@
  *
  *   radio 100 km, todo       → ciudad típica 135 avisos/año, peor 2.097
  *   radio  20 km, todo       → 8,5 / año, peor 360 (Concepción, Tucumán)
- *   radio  20 km, FRP > 10   → 1,5 / año, peor 72   ← ELEGIDO
+ *   radio  20 km, FRP > 10   → 1,5 / año, peor 72   ← ELEGIDO el 28/9
+ *
+ * 🔴 SUBIDO A 15 MW EL 2026-10-01, CON LOS TRES SATÉLITES (decisión de Seba).
+ * Ese día se empezó a pedir NOAA-20 y NOAA-21 además de Suomi-NPP, y el mismo
+ * umbral pasó a dar más del doble de avisos: cada satélite es una oportunidad
+ * más de ver el fuego en un momento fuerte. Medido (scripts/medir-avisos-campo.ts
+ * reproduce la tabla de arriba con Suomi-NPP solo: 1,3 / 74):
+ *
+ *   2023–2024, Suomi-NPP + NOAA-20, FRP > 10   → 2,5 / año, peor 143
+ *   ago–sep 2026, 78 ciudades, avisos en 60 días (NOAA-21 no tiene archivo):
+ *     un satélite FRP > 10 → 142 · tres FRP > 10 → 332 (×2,3)
+ *     tres FRP > 15 → 201 (×1,4)   ← ELEGIDO · tres FRP > 20 → 126 (×0,9)
+ *
+ * 20 MW devolvía el volumen del 28/9 pero dejaba de avisar incendios medianos
+ * que antes llegaban; 15 MW es el punto medio. Si se cambian los satélites o
+ * el radio, este número hay que volver a medirlo.
  *
  * Un aviso que llega siempre deja de leerse, y en una alerta de incendio eso es
  * lo peor que puede pasar. Por eso el radio es chico y sólo pasan fuegos
@@ -31,8 +46,8 @@ import {
 
 /** Distancia máxima al suscriptor. */
 export const CAMPO_RADIUS_KM = 20;
-/** Potencia mínima (MW): "fuego intenso". Iguala al umbral preliminar de GOES. */
-export const CAMPO_MIN_FRP_MW = 10;
+/** Potencia mínima (MW): "fuego intenso". 15 desde el 1/10 (tres satélites; ver arriba). */
+export const CAMPO_MIN_FRP_MW = 15;
 /**
  * Un incendio = detecciones a ≤ 2 km en ≤ 24 h. Con esta unión se midieron los
  * volúmenes de arriba; avisar por detección los triplicaba. Desde el 1/10 el

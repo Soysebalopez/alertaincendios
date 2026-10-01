@@ -28,7 +28,12 @@ describe("qué foco entra en la capa de campo", () => {
   it("🔴 un foco en zona de bosque: NO — lo sigue avisando la capa de bosque, como siempre", () => {
     expect(esFocoDeCampo({ ...CAMPO, forestZone: "yungas" })).toBe(false);
   });
-  it("🔴 un foco débil (FRP ≤ 10): no", () => {
+  it("🔴 desde el 1/10 (tres satélites) el piso es 15 MW: un fuego de 12 MW ya no avisa", () => {
+    expect(CAMPO_MIN_FRP_MW).toBe(15);
+    expect(esFocoDeCampo({ ...CAMPO, frp: 12 })).toBe(false);
+    expect(esFocoDeCampo({ ...CAMPO, frp: 16 })).toBe(true);
+  });
+  it("🔴 un foco débil (FRP ≤ piso): no", () => {
     expect(esFocoDeCampo({ ...CAMPO, frp: CAMPO_MIN_FRP_MW })).toBe(false);
     expect(esFocoDeCampo({ ...CAMPO, frp: 3 })).toBe(false);
   });
