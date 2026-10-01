@@ -106,7 +106,7 @@ const STEPS = [
     n: "02",
     icon: <GlobeHemisphereWest size={16} weight="duotone" />,
     title: "Los satélites escanean Argentina",
-    body: "Cuatro satélites de la NASA y la agencia meteorológica de Estados Unidos recorren el país constantemente buscando puntos de calor anómalos.",
+    body: "Tres satélites de la NASA y la agencia meteorológica de Estados Unidos recorren el país constantemente buscando puntos de calor anómalos.",
   },
   {
     n: "03",

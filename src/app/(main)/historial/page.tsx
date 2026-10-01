@@ -55,9 +55,10 @@ export default function HistorialPage() {
             }}
           >
             Histórico diario agregado desde NASA FIRMS. Cada punto representa
-            el total de detecciones del satélite Suomi-NPP en el país en un
-            día. El mapa y las alertas usan tres satélites, pero el historial
-            cuenta siempre el mismo para que los años se puedan comparar.
+            el total de detecciones de un solo satélite en el país en un día,
+            para que los años se puedan comparar: Suomi-NPP hasta septiembre de
+            2026 y NOAA-20 desde octubre, porque la NASA da de baja a Suomi-NPP
+            el 1 de noviembre. Los dos miden prácticamente igual.
           </p>
         </div>
       </section>

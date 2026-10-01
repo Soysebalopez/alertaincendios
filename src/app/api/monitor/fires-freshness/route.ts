@@ -12,6 +12,7 @@ import {
   buildSourceRecoveredAlert,
 } from "@/lib/fires-freshness";
 import { FIRMS_MAP_KEY_FORM_URL } from "@/lib/firms-key";
+import { activeViirsSatellites } from "@/lib/viirs-sources";
 
 /**
  * GET /api/monitor/fires-freshness
@@ -101,7 +102,11 @@ export async function GET(request: Request) {
   // (clave inválida o caché viejo ya dicen "no entra nada"), y sólo si se pudo
   // leer el estado.
   const lastOkBySource = (syncState?.source_ok_at ?? null) as Record<string, string> | null;
-  const sourcesAlerted = (cfg["firms_sources_alerted"] ?? "").split(",").filter(Boolean);
+  // Satélites con aviso abierto. Uno retirado (ya no activo) se descarta acá:
+  // así el flag se limpia solo y no queda un aviso abierto para siempre.
+  const sourcesAlertedRaw = (cfg["firms_sources_alerted"] ?? "").split(",").filter(Boolean);
+  const activos = activeViirsSatellites();
+  const sourcesAlerted = sourcesAlertedRaw.filter((s: string) => activos.includes(s));
   const sources =
     syncStateError || cacheError || keyError || stale
       ? { alert: [] as string[], recovered: [] as string[] }
@@ -221,7 +226,7 @@ export async function GET(request: Request) {
     if (sent.ok) alertedNow = alertedNow.filter((s: string) => !sources.recovered.includes(s));
     else allSent = false;
   }
-  if (alertedNow.join(",") !== sourcesAlerted.join(",")) {
+  if (alertedNow.join(",") !== sourcesAlertedRaw.join(",")) {
     if (alertedNow.length > 0) {
       await db.from("_clara_config").upsert({
         key: "firms_sources_alerted",
