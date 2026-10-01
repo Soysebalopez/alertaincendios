@@ -1,7 +1,7 @@
 // `escapeHtml` es una función pura y `telegram.ts` no importa nada: traerla
 // acá no rompe la promesa de "sin I/O" de este módulo.
 import { escapeHtml } from "./telegram";
-import { VIIRS_SATELLITES, satelliteLabel } from "./viirs-sources";
+import { activeViirsSatellites, satelliteLabel } from "./viirs-sources";
 
 /**
  * Decide whether to notify about FIRMS data freshness. Pure — no I/O. The caller
@@ -162,7 +162,10 @@ export function decideSourceActions(input: {
   // columna no existe aún): no hay nada que medir. NO es "los tres caídos".
   if (Object.keys(okAt).length === 0) return { alert: [], recovered: [] };
 
-  const stale = VIIRS_SATELLITES.filter((sat) => {
+  // Sólo los satélites que siguen entregando datos: uno retirado (Suomi-NPP,
+  // desde el 1/11/2026) no es "uno caído", y avisar de él sería ruido eterno.
+  const activos = activeViirsSatellites(input.nowMs);
+  const stale = activos.filter((sat) => {
     const t = okAt[sat] ? Date.parse(okAt[sat]) : NaN;
     // Una fuente sin anotación mientras las otras sí tienen nunca trajo dato
     // bueno: cuenta como caída, no como "no sé".
@@ -172,7 +175,9 @@ export function decideSourceActions(input: {
 
   return {
     alert: stale.filter((s) => !input.alerted.includes(s)),
-    recovered: input.alerted.filter((s) => !stale.includes(s as (typeof VIIRS_SATELLITES)[number])),
+    // Un aviso abierto de un satélite retirado se cierra en silencio (no es
+    // que "volvió"): por eso sólo se da por recuperado lo que sigue activo.
+    recovered: input.alerted.filter((s) => activos.includes(s) && !stale.includes(s)),
   };
 }
 

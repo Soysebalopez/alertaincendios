@@ -197,7 +197,7 @@ export function FireHistoryDashboard() {
         className="font-mono text-[10px] text-muted text-center mt-6"
         style={{ letterSpacing: "0.06em" }}
       >
-        Fuente: NASA FIRMS VIIRS (Suomi-NPP) · Agregación diaria vía Supabase pg_cron ·
+        Fuente: NASA FIRMS VIIRS (Suomi-NPP hasta sep 2026, NOAA-20 desde oct 2026) · Agregación diaria vía Supabase pg_cron ·
         Backfill manual para fechas anteriores
       </p>
     </div>

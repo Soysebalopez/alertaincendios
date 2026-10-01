@@ -1,8 +1,12 @@
 -- Escenarios del paso 1 y el paso 2 con tres fuentes. Lo corre run.sh.
 \set ON_ERROR_STOP 1
 create function t_csv(sat text, n int, conf text default 'n') returns text language sql as $$
+  -- Fecha y hora de "hace una hora", NUNCA escritas a mano: con el vencimiento
+  -- de 24 h, una fecha fija hace que la prueba falle sola al día siguiente.
   select 'latitude,longitude,bright_ti4,scan,track,acq_date,acq_time,satellite,instrument,confidence,version,bright_ti5,frp,daynight' || E'\n' ||
-   string_agg(format('-3%s.1234%s,-6%s.5,306.05,0.61,0.54,2026-10-01,438,%s,VIIRS,%s,2.0NRT,286.7,1.18,N', i, i, i, sat, conf), E'\n') || E'\n'
+   string_agg(format('-3%s.1234%s,-6%s.5,306.05,0.61,0.54,%s,%s,%s,VIIRS,%s,2.0NRT,286.7,1.18,N', i, i, i,
+     to_char((now() - interval '1 hour') at time zone 'UTC', 'YYYY-MM-DD'),
+     ltrim(to_char((now() - interval '1 hour') at time zone 'UTC', 'HH24MI'), '0'), sat, conf), E'\n') || E'\n'
   from generate_series(1,n) i $$;
 create function t_reply(src text, status int, body text) returns void language sql as $$
   insert into net._http_response select (s.requests->>src)::bigint, status, body, null from _fires_sync_state s where id=1 $$;
@@ -24,7 +28,7 @@ select t_assert((select (select count(*) from jsonb_object_keys(source_ok_at))=3
 select t_assert((select requests is null from _fires_sync_state), 'estado limpio');
 select t_assert((select count(*) from net._http_response)=0, 'respuestas borradas');
 select t_assert((select count(*) from _clara_config where key in ('firms_sync_error','firms_upstream_error'))=0, 'flags borrados');
-select t_assert((select (f->>'latitude')::float = -31.12341 and f->>'acqTime'='438' and (f->>'frp')::float=1.18 and f->>'confidence'='n' from fires_cache c, jsonb_array_elements(c.fires) f where f->>'satellite'='N' limit 1), 'columnas parseadas igual que antes');
+select t_assert((select (f->>'latitude')::float = -31.12341 and length(f->>'acqTime') between 1 and 4 and (f->>'frp')::float=1.18 and f->>'confidence'='n' from fires_cache c, jsonb_array_elements(c.fires) f where f->>'satellite'='N' limit 1), 'columnas parseadas igual que antes');
 
 -- ===== 2. NOAA-21 da 500: sus focos anteriores se conservan, el resto se renueva
 update _fires_sync_state set source_ok_at = jsonb_set(source_ok_at, '{N21}', '"2026-01-01T00:00:00Z"');
@@ -82,3 +86,13 @@ select fires_sync_step2_process();
 select t_assert(t_count('N')=0 and t_count('N20')=0 and t_count('N21')=2, 'low descartado; NOAA-20 sin focos queda en 0');
 select t_assert((select count from fires_cache)=2, 'count = 2');
 select t_assert((select count(*) from _clara_config where key='firms_upstream_error')=0, 'recuperado: upstream_error borrado');
+
+-- ===== 9. 🔴 un foco conservado de un satélite caído VENCE a las 24 h
+update fires_cache set fires = fires || jsonb_build_array(jsonb_build_object(
+  'latitude', -40, 'longitude', -70, 'satellite', 'N20', 'confidence', 'n', 'frp', 3, 'type', 0,
+  'acqDate', to_char((now() - interval '30 hours') at time zone 'UTC', 'YYYY-MM-DD'),
+  'acqTime', to_char((now() - interval '30 hours') at time zone 'UTC', 'HH24MI')));
+select fires_sync_step1_fetch();
+select t_reply('VIIRS_SNPP_NRT',200,t_csv('N',1)); select t_reply('VIIRS_NOAA20_NRT',500,'x'); select t_reply('VIIRS_NOAA21_NRT',200,t_csv('N21',1));
+select fires_sync_step2_process();
+select t_assert(t_count('N20')=0, 'foco de N20 de hace 30 h NO se conserva aunque N20 esté caído');

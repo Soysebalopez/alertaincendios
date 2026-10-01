@@ -12,7 +12,7 @@ import { getSupabase } from "./supabase";
 import { classifyFireType } from "./fire-classification";
 import { isInArgentina } from "./argentina-polygon";
 import { findForestZone } from "./forest-zones-geo";
-import { FIRMS_VIIRS_SOURCES } from "./viirs-sources";
+import { activeFirmsSources } from "./viirs-sources";
 
 export interface FirePoint {
   latitude: number;
@@ -42,7 +42,7 @@ const BBOX = {
   north: -21.8,
 };
 
-function getFirmsUrl(source: (typeof FIRMS_VIIRS_SOURCES)[number]): string {
+function getFirmsUrl(source: string): string {
   const key = process.env.FIRMS_API_KEY || "OPEN_KEY";
   return `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${key}/${source}/${BBOX.west},${BBOX.south},${BBOX.east},${BBOX.north}/1`;
 }
@@ -90,11 +90,11 @@ export async function syncFiresFromFirms(): Promise<{
   count: number;
   error?: string;
 }> {
-  // Las tres fuentes o ninguna: este camino manual REEMPLAZA el caché entero,
+  // Todas las fuentes activas o ninguna: este camino manual REEMPLAZA el caché entero,
   // así que escribir con una fuente caída borraría sus focos del mapa. (El
   // camino de producción, en SQL, sí conserva los de la fuente caída.)
   const csvs: string[] = [];
-  for (const source of FIRMS_VIIRS_SOURCES) {
+  for (const source of activeFirmsSources()) {
     let res: Response;
     try {
       // FIRMS CSV can be large; allow a generous timeout but never hang forever.

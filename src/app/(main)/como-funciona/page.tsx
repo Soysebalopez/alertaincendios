@@ -63,11 +63,11 @@ const FAQS: {
     icon: <Wind size={18} weight="duotone" />,
     q: "¿Cómo detecta los incendios?",
     plain:
-      "Con cuatro satélites que miden la temperatura del suelo. GOES-19 (NOAA, Estados Unidos) vigila Argentina cada 10 minutos: detecta rápido, con menos precisión. Otros tres —Suomi-NPP, NOAA-20 y NOAA-21, cuyos datos publica NASA FIRMS— pasan con menos frecuencia pero con mayor resolución, y confirman si el foco es real. Cuando un satélite ve un punto más caliente que el resto del paisaje lo marca como posible incendio, y ese dato se cruza con el viento para saber si puede afectarte.",
+      "Con tres satélites que miden la temperatura del suelo. GOES-19 (NOAA, Estados Unidos) vigila Argentina cada 10 minutos: detecta rápido, con menos precisión. Otros dos —NOAA-20 y NOAA-21, cuyos datos publica NASA FIRMS— pasan con menos frecuencia pero con mayor resolución, y confirman si el foco es real. Cuando un satélite ve un punto más caliente que el resto del paisaje lo marca como posible incendio, y ese dato se cruza con el viento para saber si puede afectarte.",
     body: (
       <>
         <p>
-          Usamos <strong>cuatro satélites</strong> que sobrevuelan Argentina
+          Usamos <strong>tres satélites</strong> que sobrevuelan Argentina
           todo el día y miden la temperatura del suelo:
         </p>
         <ul style={{ paddingLeft: 18, marginTop: 6, lineHeight: 1.7 }}>
@@ -77,7 +77,7 @@ const FAQS: {
             menos precisión.
           </li>
           <li>
-            <strong>Suomi-NPP, NOAA-20 y NOAA-21</strong> (datos de NASA
+            <strong>NOAA-20 y NOAA-21</strong> (datos de NASA
             FIRMS): cada uno pasa unas pocas veces por día, a distintas horas,
             pero ve con mucho más detalle. Confirman si el foco es real.
           </li>

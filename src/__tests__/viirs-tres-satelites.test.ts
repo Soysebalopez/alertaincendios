@@ -10,6 +10,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
+import * as v from "@/lib/viirs-sources";
 import { FIRMS_VIIRS_SOURCES, VIIRS_SATELLITES, satelliteLabel } from "@/lib/viirs-sources";
 import { posicionDeClave, yaAvisadoMismoIncendio } from "@/lib/fire-incident";
 import { yaAvisadoMismoIncendio as yaAvisadoCampo, campoFireKey } from "@/lib/campo-alerts";
@@ -33,14 +34,14 @@ const claveBosque = (f: { latitude: number; longitude: number; acqDate: string }
 
 describe("la app y la base piden las MISMAS tres fuentes", () => {
   it("🔴 el SQL de producción pide exactamente FIRMS_VIIRS_SOURCES", () => {
-    const sql = leer("scripts/sql/whi-viirs-tres-satelites.sql");
+    const sql = leer("scripts/sql/whi-retiro-suomi-npp.sql");
     const pedidas = sql.match(/array\[([^\]]+)\]/)?.[1] ?? "";
     const fuentes = [...pedidas.matchAll(/'(VIIRS_[A-Z0-9]+_NRT)'/g)].map((m) => m[1]);
     expect(fuentes).toEqual([...FIRMS_VIIRS_SOURCES]);
   });
 
   it("🔴 el SQL traduce cada fuente al código de satélite de la app", () => {
-    const sql = leer("scripts/sql/whi-viirs-tres-satelites.sql");
+    const sql = leer("scripts/sql/whi-retiro-suomi-npp.sql");
     const pares = [...sql.matchAll(/when '(VIIRS_[A-Z0-9]+_NRT)'\s+then '([A-Z0-9]+)'/g)].map(
       (m) => [m[1], m[2]]
     );
@@ -174,5 +175,59 @@ describe("/estado del bot", () => {
     const filtro = bot.indexOf(".filter(isReportedFire)");
     expect(filtro).toBeGreaterThan(0);
     expect(bot.indexOf("countFireEvents(nearby)")).toBeGreaterThan(filtro);
+  });
+});
+
+describe("retiro de Suomi-NPP (1/11/2026 13:00 UTC)", () => {
+  const antes = Date.parse("2026-11-01T12:59:00Z");
+  const despues = Date.parse("2026-11-01T13:00:00Z");
+
+  it("🔴 la base y la app cortan en la MISMA fecha", () => {
+    const sql = leer("scripts/sql/whi-retiro-suomi-npp.sql");
+    const m = sql.match(/'VIIRS_SNPP_NRT' and now\(\) >= timestamptz '([^']+)'/);
+    expect(m).not.toBeNull();
+    expect(Date.parse(m![1].replace(" ", "T").replace("+00", "Z"))).toBe(v.SUOMI_NPP_RETIRED_AT);
+  });
+
+  it("hasta el corte se piden y vigilan los tres; desde el corte, dos", () => {
+    expect(v.activeFirmsSources(antes)).toEqual(["VIIRS_SNPP_NRT", "VIIRS_NOAA20_NRT", "VIIRS_NOAA21_NRT"]);
+    expect(v.activeFirmsSources(despues)).toEqual(["VIIRS_NOAA20_NRT", "VIIRS_NOAA21_NRT"]);
+    expect(v.activeViirsSatellites(despues)).toEqual(["N20", "N21"]);
+    expect(v.isActiveViirsNorad(37849, antes)).toBe(true);
+    expect(v.isActiveViirsNorad(37849, despues)).toBe(false);
+    expect(v.isActiveViirsNorad(43013, despues)).toBe(true);
+  });
+
+  it("🔴 tras el corte, Suomi-NPP sin dato NO es 'un satélite caído'", () => {
+    const ok = new Date(despues - 5 * 60000).toISOString();
+    const r = decideSourceActions({
+      lastOkBySource: { N: "2026-10-31T00:00:00Z", N20: ok, N21: ok },
+      nowMs: despues,
+      thresholdMinutes: 60,
+      alerted: [],
+    });
+    expect(r).toEqual({ alert: [], recovered: [] });
+  });
+
+  it("🔴 un aviso abierto de Suomi-NPP se cierra en silencio, no como 'volvió'", () => {
+    const ok = new Date(despues - 5 * 60000).toISOString();
+    const r = decideSourceActions({
+      lastOkBySource: { N20: ok, N21: ok },
+      nowMs: despues,
+      thresholdMinutes: 60,
+      alerted: ["N"],
+    });
+    expect(r.recovered).toEqual([]);
+  });
+
+  it("🔴 el historial cuenta NOAA-20 (con Suomi-NPP retirado daría 0)", () => {
+    const sql = leer("scripts/sql/whi-retiro-suomi-npp.sql");
+    const snap = sql.slice(sql.indexOf("'fires-daily-snapshot'"));
+    expect(snap).toContain("f->>'satellite' = 'N20'");
+    expect(snap).not.toMatch(/'N'\)/);
+  });
+
+  it("🔴 los focos conservados de un satélite caído vencen a las 24 h", () => {
+    expect(leer("scripts/sql/whi-retiro-suomi-npp.sql")).toMatch(/> now\(\) - interval '24 hours'/);
   });
 });

@@ -105,7 +105,7 @@ export function CityContext({
           <p style={P}>
             Lo que los satélites detectan no es fuego: es{" "}
             <strong>calor</strong>. El sensor VIIRS, a bordo de los satélites
-            Suomi-NPP, NOAA-20 y NOAA-21, mide la temperatura de la superficie y marca los
+            NOAA-20 y NOAA-21, mide la temperatura de la superficie y marca los
             puntos anormalmente calientes. Eso incluye incendios forestales, pero
             también quemas agrícolas controladas, antorchas industriales,
             volcanes y plantas de energía.
@@ -119,7 +119,7 @@ export function CityContext({
           </p>
           <p style={P}>
             La otra limitación es el horario: cada satélite de órbita polar pasa
-            unas pocas veces por día. Usamos los tres para que las pasadas estén
+            unas pocas veces por día. Usamos los dos para que las pasadas estén
             más seguidas, pero entre una y otra igual puede empezar un incendio
             y no aparecer todavía. La página muestra cuándo fue la última pasada
             sobre {cityName} y cuándo es la próxima, justamente para que se pueda

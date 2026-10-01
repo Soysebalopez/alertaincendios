@@ -1,6 +1,7 @@
 import "server-only";
 import { getSupabase } from "@/lib/supabase";
 import type { SatelliteTLE } from "@/lib/satellites";
+import { isActiveViirsNorad } from "@/lib/viirs-sources";
 
 /**
  * Server-side fetch de TLEs desde `satellite_tles`. WHI-753/754.
@@ -18,7 +19,9 @@ export async function fetchTLEs(): Promise<SatelliteTLE[]> {
       .from("satellite_tles")
       .select("norad_id, name, line1, line2, fetched_at");
     if (error || !data) return [];
-    return data as SatelliteTLE[];
+    // Un satélite retirado (Suomi-NPP desde el 1/11/2026) no se dibuja ni
+    // cuenta como "próximo pase": su pase ya no trae datos.
+    return (data as SatelliteTLE[]).filter((t) => isActiveViirsNorad(t.norad_id));
   } catch {
     return [];
   }
