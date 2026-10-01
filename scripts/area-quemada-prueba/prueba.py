@@ -330,7 +330,6 @@ def prithvi(img: np.ndarray, epsg, tf, carpeta: Path) -> np.ndarray:
     Corre la inferencia oficial del repositorio del modelo (inference.py). Las
     unidades de entrada se deciden leyendo las medias de normalización de su
     config: si están en miles, el modelo espera valores HLS crudos (×10.000)."""
-    import rasterio
     import yaml
     from huggingface_hub import snapshot_download
 
@@ -345,23 +344,72 @@ def prithvi(img: np.ndarray, epsg, tf, carpeta: Path) -> np.ndarray:
     crudo = bool(medias) and float(medias[0]) > 10
     datos = np.nan_to_num(img * (10000 if crudo else 1), nan=(FILL if crudo else 0))
 
+    # inference.py corta la imagen en ventanas de 512 px SIN solape, y el modelo
+    # ve poco contexto cerca del borde de cada ventana: el contorno sale con
+    # cortes rectos. Se corre dos veces, la segunda corrida media ventana, y cada
+    # píxel toma la pasada en la que quedó más lejos de un borde.
+    return sin_cortes(datos, lambda d, nombre: _inferencia_prithvi(
+        d, epsg, tf, carpeta / nombre, repo, script, configs[0], ckpts[0]))
+
+
+MEDIA_VENTANA = 256  # inference.py usa ventanas de 512 px
+
+
+def sin_cortes(datos: np.ndarray, inferir) -> np.ndarray:
+    """Cuatro pasadas de `inferir(datos, nombre)`: sin correr, corrida media
+    ventana en filas, en columnas y en las dos. Cada píxel sale de la pasada
+    donde está más lejos de un borde. Con dos (sin correr y corrida en diagonal)
+    no alcanza: queda el píxel que en una toca un corte vertical y en la otra
+    uno horizontal."""
+    alto, ancho = datos.shape[1:]
+    filas, cols = np.arange(alto), np.arange(ancho)
+    mejor = np.full((alto, ancho), -1)
+    salida = np.zeros((alto, ancho), bool)
+    for df in (0, MEDIA_VENTANA):
+        for dc in (0, MEDIA_VENTANA):
+            corrido = np.pad(datos, ((0, 0), (df, 0), (dc, 0)), mode="reflect")
+            pred = inferir(corrido, f"pasada_{df}_{dc}")[df:, dc:]
+            dist = distancia_a_corte(filas, cols, df, dc)
+            gana = dist > mejor
+            salida[gana], mejor[gana] = pred[gana], dist[gana]
+    return salida
+
+
+def distancia_a_corte(filas: np.ndarray, cols: np.ndarray, corr_filas: int, corr_cols: int) -> np.ndarray:
+    """(alto, ancho): píxeles hasta el borde de ventana más cercano, para una
+    pasada cuyas ventanas empiezan corr_filas/corr_cols píxeles antes de la imagen."""
+    v = 2 * MEDIA_VENTANA
+
+    def d(i, corr):
+        p = (i + corr) % v
+        return np.minimum(p, v - 1 - p)
+
+    return np.minimum(d(filas, corr_filas)[:, None], d(cols, corr_cols)[None, :])
+
+
+def _inferencia_prithvi(datos, epsg, tf, carpeta: Path, repo, script, config, ckpt) -> np.ndarray:
+    import rasterio
+
     carpeta.mkdir(parents=True, exist_ok=True)
     entrada = carpeta / "entrada_prithvi.tif"
     with rasterio.open(entrada, "w", driver="GTiff", height=datos.shape[1], width=datos.shape[2], count=6,
                        dtype="float32", crs=f"EPSG:{epsg}", transform=tf) as dst:
         dst.write(datos.astype(np.float32))
     salida = carpeta / "salida_prithvi"
-    cmd = [sys.executable, str(script), "--data_file", str(entrada), "--config", str(configs[0]),
-           "--checkpoint", str(ckpts[0]), "--output_dir", str(salida)]
+    cmd = [sys.executable, str(script), "--data_file", str(entrada), "--config", str(config),
+           "--checkpoint", str(ckpt), "--output_dir", str(salida)]
     r = subprocess.run(cmd, cwd=repo, capture_output=True, text=True)
     if r.returncode != 0:
         ayuda = subprocess.run([sys.executable, str(script), "--help"], cwd=repo, capture_output=True, text=True)
         raise RuntimeError(f"inference.py falló:\n{r.stderr[-2000:]}\n--- su --help ---\n{ayuda.stdout[-2000:]}")
-    tifs = sorted(salida.glob("*.tif"))
+    # inference.py escribe pred_<entrada>.tiff (0/255) y rgb_pred_<entrada>.tiff (la vista).
+    tifs = sorted(salida.glob("pred_*.tif*"))
     if not tifs:
-        raise RuntimeError(f"inference.py no dejó un .tif en {salida}: {r.stdout[-1000:]}")
+        raise RuntimeError(f"inference.py no dejó un pred_*.tif en {salida}: {r.stdout[-1000:]}")
     with rasterio.open(tifs[0]) as src:
         pred = src.read(1)
+    if pred.shape != datos.shape[1:]:
+        raise RuntimeError(f"Prithvi devolvió {pred.shape}, se esperaba {datos.shape[1:]}")
     return pred > 0
 
 

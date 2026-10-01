@@ -61,12 +61,24 @@ repositorio del modelo (`inference.py`). Si falla, el script guarda el error y
 la ayuda de ese programa en `prithvi_error`, sin frenar el dNBR: mandámelo y lo
 ajusto.
 
-Para Córdoba se puede medir el **contorno**, no sólo el total, si se descarga el
-polígono oficial de IDECOR en GeoJSON:
+**Cortes rectos:** `inference.py` corta la imagen en ventanas de 512 px sin
+solape, y cerca del borde de cada ventana el modelo ve poco alrededor: el
+contorno salía con líneas rectas que no existen en el terreno. Por eso el script
+lo corre **cuatro veces** (sin correr, corrido media ventana en filas, en
+columnas y en las dos) y cada píxel sale de la pasada donde quedó más lejos de
+un borde. Con dos pasadas no alcanza: queda el píxel que en una toca un corte
+vertical y en la otra uno horizontal (lo vigila
+`test_sin_cortes_ningun_pixel_depende_de_un_borde_de_ventana`).
+
+Para Córdoba se puede medir el **contorno**, no sólo el total, contra el
+polígono oficial de IDECOR (servicio WFS de Mapas Córdoba, capa
+`idecor:area_quemada_2024`; el incendio es `id_sicc` 5465):
 
 ```bash
+curl -s "https://idecor-ws.mapascordoba.gob.ar/geoserver/idecor/wfs?service=WFS&version=2.0.0&request=GetFeature&typeNames=idecor:area_quemada_2024&outputFormat=application/json&srsName=EPSG:4326" \
+  | jq '{type:"FeatureCollection",features:[.features[]|select(.properties.id_sicc=="5465")]}' > idecor_capilla_2024.geojson
 python prueba.py --caso cordoba-capilla-del-monte-2024 \
-  --referencia cordoba-capilla-del-monte-2024=idecor_2024.geojson
+  --referencia cordoba-capilla-del-monte-2024=idecor_capilla_2024.geojson
 ```
 
 ## Qué devuelve

@@ -90,3 +90,23 @@ def test_leer_en_grilla_junta_dos_tiles_y_respeta_nodata(tmp_path):
     assert out[50, 10] == 1000           # sólo tile a
     assert out[50, 95] == 2000           # hueco de a (nodata) lo llena b
     assert out[50, 195] == -9999         # sin dato en ninguno
+
+
+def test_sin_cortes_ningun_pixel_depende_de_un_borde_de_ventana():
+    from prueba import MEDIA_VENTANA, distancia_a_corte, sin_cortes
+
+    # Un "modelo" que acierta (todo quemado) salvo a menos de 20 px de los
+    # bordes de sus propias ventanas de 512, donde falla: el defecto real.
+    def inferir(d, nombre):
+        alto, ancho = d.shape[1:]
+        return distancia_a_corte(np.arange(alto), np.arange(ancho), 0, 0) >= 20
+
+    datos = np.zeros((6, 1300, 900), np.float32)
+    assert not inferir(datos, "a").all()  # una sola pasada sí tiene cortes
+    combinado = sin_cortes(datos, inferir)
+    assert combinado.shape == (1300, 900)
+    assert combinado.all()
+    # Y la pasada elegida nunca queda a menos de un cuarto de ventana del borde.
+    f, c = np.arange(1300), np.arange(900)
+    mejor = np.max([distancia_a_corte(f, c, df, dc) for df in (0, MEDIA_VENTANA) for dc in (0, MEDIA_VENTANA)], 0)
+    assert mejor.min() >= MEDIA_VENTANA // 2 - 1
