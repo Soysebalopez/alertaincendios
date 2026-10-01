@@ -7,6 +7,9 @@ import {
   FRESHNESS_THRESHOLD_MINUTES,
   buildStaleAlert,
   buildRecoveredAlert,
+  decideSourceActions,
+  buildSourceStaleAlert,
+  buildSourceRecoveredAlert,
 } from "@/lib/fires-freshness";
 import { FIRMS_MAP_KEY_FORM_URL } from "@/lib/firms-key";
 
@@ -19,6 +22,9 @@ import { FIRMS_MAP_KEY_FORM_URL } from "@/lib/firms-key";
  *   Telegram alert with rotation instructions. Supersedes the generic alert.
  * - fires_cache.fetched_at older than FRESHNESS_THRESHOLD_MINUTES → generic staleness
  *   alert (cron/pg_net down, etc).
+ * - Por satélite (desde el 2026-10-01): una de las tres fuentes VIIRS sin dato
+ *   bueno hace más que el umbral → aviso que la nombra. El caché sigue
+ *   actualizándose con las otras dos, así que el aviso genérico no lo ve.
  * Anti-spam flags and admin_chat_id live in _clara_config. Gated by CRON_SECRET.
  */
 export async function GET(request: Request) {
@@ -55,7 +61,21 @@ export async function GET(request: Request) {
       // sync. No cambia CUÁNDO se avisa, sólo QUÉ dice el aviso — ver
       // `buildStaleAlert`.
       "firms_upstream_error",
+      // Satélites con aviso de "sin datos" ya mandado, separados por coma.
+      "firms_sources_alerted",
     ]);
+
+  // Última vez que cada satélite trajo dato bueno. Si la lectura falla (o la
+  // columna todavía no existe), no se avisa nada por satélite: "no pude leer"
+  // no es "no hay datos".
+  const { data: syncState, error: syncStateError } = await db
+    .from("_fires_sync_state")
+    .select("source_ok_at")
+    .eq("id", 1)
+    .maybeSingle();
+  if (syncStateError) {
+    console.error("[fires-freshness] no se pudo leer _fires_sync_state:", syncStateError.message);
+  }
 
   const cfg = Object.fromEntries((cfgRows ?? []).map((r) => [r.key, r.value]));
   const adminChatId = cfg["admin_chat_id"];
@@ -77,8 +97,24 @@ export async function GET(request: Request) {
   const stale = ageMinutes > FRESHNESS_THRESHOLD_MINUTES;
   const ageOut = Number.isFinite(ageMinutes) ? Math.round(ageMinutes) : null;
 
-  if (freshness === "none" && key === "none") {
-    return NextResponse.json({ ageMinutes: ageOut, stale, freshness, key, notified: false });
+  // Por satélite: sólo cuando el aviso general no está cubriendo el problema
+  // (clave inválida o caché viejo ya dicen "no entra nada"), y sólo si se pudo
+  // leer el estado.
+  const lastOkBySource = (syncState?.source_ok_at ?? null) as Record<string, string> | null;
+  const sourcesAlerted = (cfg["firms_sources_alerted"] ?? "").split(",").filter(Boolean);
+  const sources =
+    syncStateError || cacheError || keyError || stale
+      ? { alert: [] as string[], recovered: [] as string[] }
+      : decideSourceActions({
+          lastOkBySource,
+          nowMs: Date.now(),
+          thresholdMinutes: FRESHNESS_THRESHOLD_MINUTES,
+          alerted: sourcesAlerted,
+        });
+  const sourcesAction = sources.alert.length > 0 || sources.recovered.length > 0;
+
+  if (freshness === "none" && key === "none" && !sourcesAction) {
+    return NextResponse.json({ ageMinutes: ageOut, stale, freshness, key, sources, notified: false });
   }
 
   if (!adminChatId) {
@@ -88,6 +124,7 @@ export async function GET(request: Request) {
       stale,
       freshness,
       key,
+      sources,
       notified: false,
       reason: "admin_chat_id not configured",
     });
@@ -167,7 +204,36 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json({ ageMinutes: ageOut, stale, freshness, key, notified: allSent });
+  // --- Por satélite ---
+  // El flag guarda la lista de satélites con aviso abierto. Se actualiza sólo
+  // con lo que efectivamente se mandó: un envío fallido se reintenta.
+  let alertedNow: string[] = sourcesAlerted;
+  if (sources.alert.length > 0) {
+    const sent = await sendMessage(
+      Number(adminChatId),
+      buildSourceStaleAlert({ sources: sources.alert, lastOkBySource: lastOkBySource ?? {} })
+    );
+    if (sent.ok) alertedNow = [...alertedNow, ...sources.alert];
+    else allSent = false;
+  }
+  if (sources.recovered.length > 0) {
+    const sent = await sendMessage(Number(adminChatId), buildSourceRecoveredAlert({ sources: sources.recovered }));
+    if (sent.ok) alertedNow = alertedNow.filter((s: string) => !sources.recovered.includes(s));
+    else allSent = false;
+  }
+  if (alertedNow.join(",") !== sourcesAlerted.join(",")) {
+    if (alertedNow.length > 0) {
+      await db.from("_clara_config").upsert({
+        key: "firms_sources_alerted",
+        value: alertedNow.join(","),
+        updated_at: now,
+      });
+    } else {
+      await db.from("_clara_config").delete().eq("key", "firms_sources_alerted");
+    }
+  }
+
+  return NextResponse.json({ ageMinutes: ageOut, stale, freshness, key, sources, notified: allSent });
 }
 
 /**

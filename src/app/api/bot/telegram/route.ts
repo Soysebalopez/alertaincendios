@@ -9,6 +9,7 @@ import { geocodeCity, reverseGeocode } from "@/lib/geocode";
 import { isInArgentina } from "@/lib/argentina-polygon";
 import { fetchFires } from "@/lib/firms";
 import { haversineKm } from "@/lib/geo";
+import { countFireEvents, onePerFire } from "@/lib/fire-events";
 import { artHour } from "@/lib/time";
 import { log } from "@/lib/logger";
 import { validateMapKey, FIRMS_MAP_KEY_FORM_URL } from "@/lib/firms-key";
@@ -665,8 +666,13 @@ async function handleEstado(chatId: number) {
     return;
   }
 
+  // Incendios, no detecciones (como el contador de la home): con tres
+  // satélites el mismo fuego llega varias veces en lugares apenas distintos.
+  const nearbyFires = countFireEvents(nearby);
+  const closestPerFire = onePerFire(nearby);
+
   // Build fire data for AI interpretation
-  const fireData = nearby.slice(0, 5).map((f) => ({
+  const fireData = closestPerFire.slice(0, 5).map((f) => ({
     distKm: Math.round(f.distKm),
     frp: f.frp,
     confidence: f.confidence,
@@ -674,23 +680,23 @@ async function handleEstado(chatId: number) {
     lng: f.longitude,
   }));
 
-  const interpretation = await interpretFires(sub.city_name, fireData, nearby.length);
+  const interpretation = await interpretFires(sub.city_name, fireData, nearbyFires);
 
   let msg = `🔥 <b>Clara — Estado</b>\n\n`;
-  msg += `📍 <b>${escapeHtml(sub.city_name)}</b> — ${nearby.length} foco(s) en 100 km\n\n`;
+  msg += `📍 <b>${escapeHtml(sub.city_name)}</b> — ${nearbyFires} foco(s) en 100 km\n\n`;
 
   if (interpretation) {
     msg += `<i>${escapeHtml(interpretation)}</i>\n\n`;
   }
 
   // Add Google Maps links for top 3
-  for (const f of nearby.slice(0, 3)) {
+  for (const f of closestPerFire.slice(0, Math.min(3, nearbyFires))) {
     const bars = frpBars(f.frp);
     const gMapsUrl = `https://www.google.com/maps?q=${f.latitude},${f.longitude}&z=12`;
     msg += `${bars} <b>${f.frp} MW</b> a ${Math.round(f.distKm)} km — <a href="${gMapsUrl}">ver</a>\n`;
   }
-  if (nearby.length > 3) {
-    msg += `... y ${nearby.length - 3} mas\n`;
+  if (nearbyFires > 3) {
+    msg += `... y ${nearbyFires - 3} mas\n`;
   }
 
   msg += FOOTER;

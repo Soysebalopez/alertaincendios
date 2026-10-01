@@ -72,13 +72,13 @@ Autorización vía `isCronAuthorized()` en `src/lib/cron-auth.ts`: acepta el sec
 - ⚠️ **WHI-907: las tablas de estas tres rutas NO están aplicadas (checkpoint C2) y sus crons NO están programados (checkpoint C5).** Hasta entonces responden `table_missing` y todo cae en los caminos viejos
 - `/api/satellites/sync-tles` — baja TLEs de CelesTrak para Suomi NPP/NOAA-20/NOAA-21 (WHI-753)
 - `/api/fire-danger-sync` — **Python** (`api/fire-danger-sync.py`), diario 09:00 UTC (06:00 ART). Por cada zona TDF: lee estado llevado `(ffmc,dmc,dc)` (spin-up ~30 días históricos si ausente), fetcha forecast 16 días Open-Meteo, encadena FWI ecuaciones Van Wagner, clasifica `bajo→moderado→alto→muy alto→extremo`, persiste en `fire_danger` y `fire_danger_state`
-- `/api/monitor/fires-freshness` — monitor dual: staleness de `fires_cache` (>60 min) + flag `firms_sync_error` (key FIRMS inválida, escrito por el guard SQL). Alerta Telegram one-shot al `admin_chat_id`; la alerta de key suprime la genérica de staleness
+- `/api/monitor/fires-freshness` — monitor: staleness de `fires_cache` (>60 min) + flag `firms_sync_error` (key FIRMS inválida, escrito por el guard SQL) + **por satélite** (desde el 1/10): una fuente sin CSV válido hace >60 min según `source_ok_at` → aviso que la nombra (flag anti-spam `firms_sources_alerted`). El por-satélite existe porque con dos de tres fuentes andando el caché sigue fresco y el aviso genérico nunca se enteraría. Alerta Telegram one-shot al `admin_chat_id`; la alerta de key suprime la genérica de staleness, y las dos suprimen la de satélite
 
 ### API Routes — Públicas (sat data)
 - `/api/satellites/tles` — read-only, devuelve los TLEs almacenados. Cache CDN 1h + SWR 5min. Lo consume `<CitySatelliteCoverage>` para computar cobertura sin requerir cómputo server-side por las 78 páginas SSG.
 
 ## Data Sources (all free)
-- **NASA FIRMS VIIRS**: focos confirmados, ~15 min, 375m res
+- **NASA FIRMS VIIRS**: focos confirmados, ~15 min, 375m res. **Tres satélites desde el 2026-10-01**: Suomi-NPP, NOAA-20 y NOAA-21 (`VIIRS_SNPP_NRT`, `VIIRS_NOAA20_NRT`, `VIIRS_NOAA21_NRT`, lista única en `src/lib/viirs-sources.ts`). Hasta ese día se pedía sólo Suomi-NPP, aunque el mapa ya dibujaba los pases de los tres. Medido el 1/10 con el mismo recorte: 93 / 97 / 72 detecciones. **Cuota de NASA:** 5.000 transacciones cada 10 min por clave; las tres descargas gastan ~6, o sea <0,2% (medido contra `mapkey_status` el 1/10)
 - **NOAA GOES-19 ABI-L2-FDCF**: focos preliminares, 10 min, 2km res, vía AWS Open Data anonymous (`s3://noaa-goes19`)
 - **NOAA GOES-19 GLM** (`s3://noaa-goes19/GLM-L2-LCFA`): rayos reales, un archivo cada 20 s. Ubica con margen de 8–14 km y no distingue nube-tierra de nube-nube
 - **OpenWeather One Call 3.0 / Open-Meteo**: código de clima "tormenta". **No es detección de rayos**: sólo queda como fallback cuando GLM no está vivo
@@ -98,8 +98,9 @@ Autorización vía `isCronAuthorized()` en `src/lib/cron-auth.ts`: acepta el sec
 ### FIRMS (cache + dedup)
 - `ai_alerted_fires` (fire_key text, chat_id bigint, alerted_at) — PK: (fire_key, chat_id)
 - `fires_cache` (id int PK=1, fires jsonb, count, fetched_at) — single-row cache
-- `_fires_sync_state` (id int PK=1, request_id, requested_at)
-- `fires_daily_history` (date PK, count, avg_frp, high_conf, created_at) — **recalculada el 2026-09-18** sobre el archivo de NASA (VIIRS S-NPP, ventanas de 5 días) con el límite real del país: 210 de los 260 días de 2026, y el total del año pasó de **117.354 a 71.413 focos (−39%)**. Corrige dos cosas a la vez: los focos de países limítrofes del recorte viejo y que la foto diaria se tomaba a las 23:55 UTC y a veces capturaba medio día (el 15/9 SUBIÓ de 314 a 1.241). ⚠️ **Quedan 50 días sin recalcular** (fines de abril, mayo y parte de julio): NASA todavía no publicó su archivo definitivo y el dato casi en tiempo real ya caducó — son el 3,9% del total, con 92 focos de promedio contra 537 en el resto. Rehacerlos cuando estén disponibles. Copia previa en `~/whitebay-backups/alertaforestal-historial-2026-09-18/`
+- `_fires_sync_state` (id int PK=1, request_id (sin uso desde el 1/10), requested_at, requests jsonb = fuente → id de pg_net, source_ok_at jsonb = satélite → última vez que trajo CSV válido; lo lee el monitor)
+- Cada foco de `fires_cache.fires` lleva `satellite`: `N` (Suomi-NPP), `N20`, `N21` — el código del propio CSV de NASA. Los guardados antes del 1/10 no lo tienen y son de Suomi-NPP
+- `fires_daily_history` (date PK, count, avg_frp, high_conf, created_at) — 🔴 **cuenta SÓLO Suomi-NPP aunque el caché tenga tres satélites** (desde el 1/10, a propósito): la serie histórica es de Suomi-NPP y sumar los otros dos haría saltar el gráfico al triple sin más fuego. — **recalculada el 2026-09-18** sobre el archivo de NASA (VIIRS S-NPP, ventanas de 5 días) con el límite real del país: 210 de los 260 días de 2026, y el total del año pasó de **117.354 a 71.413 focos (−39%)**. Corrige dos cosas a la vez: los focos de países limítrofes del recorte viejo y que la foto diaria se tomaba a las 23:55 UTC y a veces capturaba medio día (el 15/9 SUBIÓ de 314 a 1.241). ⚠️ **Quedan 50 días sin recalcular** (fines de abril, mayo y parte de julio): NASA todavía no publicó su archivo definitivo y el dato casi en tiempo real ya caducó — son el 3,9% del total, con 92 focos de promedio contra 537 en el resto. Rehacerlos cuando estén disponibles. Copia previa en `~/whitebay-backups/alertaforestal-historial-2026-09-18/`
 
 ### GOES (Fase 2)
 - `goes_preliminary` (id bigserial PK, lat, lng, mask, mask_label, frp_mw, area_m2, high_confidence bool, seen_in_scans int default 1, agricultural_zone bool, scan_start timestamptz, detected_at) — UNIQUE (lat, lng, scan_start)
@@ -128,8 +129,8 @@ Archivos: `scripts/sql/whi-907-wind.sql` y `scripts/sql/whi-907-lightning.sql`. 
 - `_clara_config` (key PK, value text, updated_at) — `cron_secret`, `firms_map_key`, `admin_chat_id`, flags operativos (`fires_freshness_alerted_at`, `firms_sync_error`, `firms_key_alerted_at`) y `glm_last_sync_at` (latido del sync GLM, WHI-907). Cron jobs leen el secret via `clara_cron_secret()` SECURITY DEFINER
 
 ## Supabase pg_cron Jobs
-- `fires-fetch` (`0,15,30,45 * * * *`) — pg_net GET a FIRMS, stores request_id
-- `fires-process` (`2,17,32,47 * * * *`) — parsea CSV, REEMPLAZA fires_cache
+- `fires-fetch` (`0,15,30,45 * * * *`) — pg_net GET a FIRMS, **tres pedidos** (uno por satélite), guarda sus ids en `requests`
+- `fires-process` (`2,17,32,47 * * * *`) — parsea los tres CSV y REEMPLAZA fires_cache con los que llegaron bien; **la fuente que falló o sigue en vuelo conserva sus focos anteriores** (si no, un error de NOAA-21 borraría sus focos del mapa)
 - `fires-alerts` (`4,19,34,49 * * * *`) — `/api/alerts` (FIRMS + confirmation upgrades)
 - `fires-daily-snapshot` (`55 23 * * *` = 20:55 ART) — snapshot diario. DEBE correr al final del día UTC (no ART): FIRMS sirve solo "current UTC day" y `fires_cache` se reemplaza en cada fetch, así que el horario UTC tardío es lo único que garantiza ~24h del día UTC acumuladas. Correrlo temprano en UTC produce snapshots en 0 (cache casi vacío)
 - `goes-sync` (`5,15,25,35,45,55 * * * *`) — `/api/goes-sync` Python pipeline
@@ -150,14 +151,15 @@ Archivos: `scripts/sql/whi-907-wind.sql` y `scripts/sql/whi-907-lightning.sql`. 
   las falsas alarmas del 26/8** (ver más abajo), es ordenamiento.
 
 ## Supabase Functions / RPC
-- `fires_sync_step1_fetch()` — HTTP GET a FIRMS via pg_net
-- `fires_sync_step2_process()` — parsea CSV, REEMPLAZA fires_cache (WHI-378 fix) + guard de body no-CSV (aplicado 2026-07-21, ver Key Patterns). ⚠️ La función real de prod es RETURNS void — el archivo canónico sincronizado con prod es `scripts/sql/whi-firms-body-guard.sql`; inspeccionar prod antes de tocarla
+- `fires_sync_step1_fetch()` — HTTP GET a FIRMS via pg_net, una por satélite
+- `fires_sync_step2_process()` — evalúa cada fuente por separado, junta las buenas, conserva las caídas, REEMPLAZA fires_cache + guard de body no-CSV. `firms_sync_error` (= «MAP_KEY inválida») sólo si las TRES devuelven algo que no es CSV: una sola con cuerpo raro no acusa a la clave. ⚠️ Archivo canónico: `scripts/sql/whi-viirs-tres-satelites.sql` (reemplaza a `whi-firms-map-key-config.sql` y `whi-firms-upstream-error-guard.sql`), con prueba local en `scripts/sql/test/viirs-tres-satelites/run.sh` (Postgres descartable, nunca producción). Inspeccionar prod antes de tocarla
 - `clara_cron_secret()` SECURITY DEFINER — devuelve CRON_SECRET desde `_clara_config`, usado por pg_cron jobs así no queda literal en cron.job.command
 - `clara_cron_health()` SECURITY DEFINER — lectura de cron.job_run_details para el dashboard /health
 
 ## Key Patterns
 - FIRMS bloquea datacenter IPs pero NO Supabase (AWS us-east-1)
 - 🔴 **Recorte del país** (`src/lib/argentina-polygon.ts`, gemelo `argentina_geo/` para el pipeline Python): límite real (Natural Earth 10m, dominio público) simplificado a ~110 m, con margen de 3 km porque el trazo mundial deja a Ushuaia 0,6 km mar adentro. **Hasta el 2026-09-17 era una silueta de 21 puntos** cuyo borde norte iba derecho de Salta a Misiones: ese día, 856 de los 2.065 focos que el mapa llamaba argentinos (41%) estaban en Paraguay, en plena temporada de quemas, y al mismo tiempo rechazaba Puerto Iguazú y El Calafate como "fuera de cobertura". `vercel.json` excluye `src/**` del paquete de las funciones Python: por eso hay dos copias y un test de paridad que las compara punto por punto.
+- 🔴 **Un aviso por INCIDENTE, también en bosque** (`src/lib/fire-incident.ts`, desde el 1/10): con tres satélites el mismo incendio llega tres veces en lugares distintos (cada uno tiene su grilla de píxeles), y la clave de dedup (posición ~111 m + día) las tomaba como tres incendios. `/api/alerts` no avisa si la persona ya recibió un aviso de bosque a ≤2 km en las últimas 24 h — el mismo criterio que la capa de campo desde el 28/9. **Costo aceptado:** un incendio ya avisado como «info» no vuelve a avisar si se acerca menos de 2 km. Las listas (bot `/estado`, ciudad, panel del mapa) muestran uno por incendio (`onePerFire`).
 - **Detecciones ≠ incendios** (`src/lib/fire-events.ts`): VIIRS ve un mismo fuego como varios píxeles de 375 m y lo repite en cada pasada. El 17/9/2026 las 426 detecciones forestales del día eran 217 incendios distintos, y 123 de ellos un solo punto. El contador del hero cuenta incendios (agrupa a ≤2 km, enlace simple) y el texto dice "focos activos en las últimas 24hs" (pedido de Seba el 17/9: el número son incendios, pero cada uno es un foco real). Un guardián lee el código de la home y del refresco en vivo para que las dos superficies usen la misma función — y saca los comentarios antes de comparar, porque el archivo cita el texto viejo.
 - pg_cron + pg_net fetcha FIRMS desde Postgres
 - **GOES**: Python Vercel Function lee NetCDF de S3 (noaa-goes19 anonymous), procesa con xarray + pyproj, upsert a Supabase via PostgREST

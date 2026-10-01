@@ -12,6 +12,7 @@ import { getSupabase } from "./supabase";
 import { classifyFireType } from "./fire-classification";
 import { isInArgentina } from "./argentina-polygon";
 import { findForestZone } from "./forest-zones-geo";
+import { FIRMS_VIIRS_SOURCES } from "./viirs-sources";
 
 export interface FirePoint {
   latitude: number;
@@ -25,6 +26,12 @@ export interface FirePoint {
   type: number;
   /** WHI-757: id de la zona forestal si el foco cae adentro de una. */
   forestZone?: string;
+  /**
+   * Satélite que lo detectó, con el código del CSV de NASA: N (Suomi-NPP),
+   * N20 (NOAA-20), N21 (NOAA-21). Ausente en los focos guardados antes del
+   * 2026-10-01, que son todos de Suomi-NPP.
+   */
+  satellite?: string;
 }
 
 // Argentina bounding box (continental)
@@ -35,9 +42,9 @@ const BBOX = {
   north: -21.8,
 };
 
-function getFirmsUrl(): string {
+function getFirmsUrl(source: (typeof FIRMS_VIIRS_SOURCES)[number]): string {
   const key = process.env.FIRMS_API_KEY || "OPEN_KEY";
-  return `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${key}/VIIRS_SNPP_NRT/${BBOX.west},${BBOX.south},${BBOX.east},${BBOX.north}/1`;
+  return `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${key}/${source}/${BBOX.west},${BBOX.south},${BBOX.east},${BBOX.north}/1`;
 }
 
 /**
@@ -83,19 +90,29 @@ export async function syncFiresFromFirms(): Promise<{
   count: number;
   error?: string;
 }> {
-  let res: Response;
-  try {
-    // FIRMS CSV can be large; allow a generous timeout but never hang forever.
-    res = await fetch(getFirmsUrl(), { signal: AbortSignal.timeout(20000) });
-  } catch (e) {
-    return { count: 0, error: e instanceof Error ? e.message : String(e) };
-  }
-  if (!res.ok) {
-    return { count: 0, error: `FIRMS responded ${res.status}` };
+  // Las tres fuentes o ninguna: este camino manual REEMPLAZA el caché entero,
+  // así que escribir con una fuente caída borraría sus focos del mapa. (El
+  // camino de producción, en SQL, sí conserva los de la fuente caída.)
+  const csvs: string[] = [];
+  for (const source of FIRMS_VIIRS_SOURCES) {
+    let res: Response;
+    try {
+      // FIRMS CSV can be large; allow a generous timeout but never hang forever.
+      res = await fetch(getFirmsUrl(source), { signal: AbortSignal.timeout(20000) });
+    } catch (e) {
+      return { count: 0, error: `${source}: ${e instanceof Error ? e.message : String(e)}` };
+    }
+    if (!res.ok) {
+      return { count: 0, error: `${source}: FIRMS responded ${res.status}` };
+    }
+    const csv = await res.text();
+    if (!csv.trimStart().startsWith("latitude")) {
+      return { count: 0, error: `${source}: FIRMS no devolvió CSV: ${csv.slice(0, 120)}` };
+    }
+    csvs.push(csv);
   }
 
-  const csv = await res.text();
-  const fires = dedupFires(parseFirmsCSV(csv));
+  const fires = dedupFires(csvs.flatMap(parseFirmsCSV));
 
   const { error } = await getSupabase()
     .from("fires_cache")
@@ -113,14 +130,15 @@ export async function syncFiresFromFirms(): Promise<{
   return { count: fires.length };
 }
 
-// The natural unique key for a FIRMS detection is position + acquisition
-// timestamp. Same hotspot can be reported by overlapping satellite passes
-// with the same (lat, lng, acqDate, acqTime).
-function dedupFires(fires: FirePoint[]): FirePoint[] {
+// The natural unique key for a FIRMS detection is satellite + position +
+// acquisition timestamp. Two satellites practically never share an exact
+// coordinate, but the satellite is part of the identity anyway: dedup must
+// never merge detections from different passes.
+export function dedupFires(fires: FirePoint[]): FirePoint[] {
   const seen = new Set<string>();
   const out: FirePoint[] = [];
   for (const f of fires) {
-    const key = `${f.latitude}|${f.longitude}|${f.acqDate}|${f.acqTime}`;
+    const key = `${f.satellite ?? "N"}|${f.latitude}|${f.longitude}|${f.acqDate}|${f.acqTime}`;
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(f);
@@ -128,7 +146,7 @@ function dedupFires(fires: FirePoint[]): FirePoint[] {
   return out;
 }
 
-function parseFirmsCSV(csv: string): FirePoint[] {
+export function parseFirmsCSV(csv: string): FirePoint[] {
   const lines = csv.trim().split("\n");
   if (lines.length < 2) return [];
 
@@ -142,6 +160,7 @@ function parseFirmsCSV(csv: string): FirePoint[] {
     time: headers.indexOf("acq_time"),
     frp: headers.indexOf("frp"),
     type: headers.indexOf("type"),
+    satellite: headers.indexOf("satellite"),
   };
 
   if (idx.lat === -1 || idx.lng === -1) return [];
@@ -159,6 +178,9 @@ function parseFirmsCSV(csv: string): FirePoint[] {
         acqTime: idx.time >= 0 ? cols[idx.time] : "",
         frp: idx.frp >= 0 ? parseFloat(cols[idx.frp]) : 0,
         type: idx.type >= 0 ? parseInt(cols[idx.type], 10) : 0,
+        ...(idx.satellite >= 0 && cols[idx.satellite]
+          ? { satellite: cols[idx.satellite].trim() }
+          : {}),
       };
     })
     .filter(

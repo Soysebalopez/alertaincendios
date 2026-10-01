@@ -55,7 +55,9 @@ export default function HistorialPage() {
             }}
           >
             Histórico diario agregado desde NASA FIRMS. Cada punto representa
-            el total de detecciones VIIRS en el país en un día.
+            el total de detecciones del satélite Suomi-NPP en el país en un
+            día. El mapa y las alertas usan tres satélites, pero el historial
+            cuenta siempre el mismo para que los años se puedan comparar.
           </p>
         </div>
       </section>
