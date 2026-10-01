@@ -1,0 +1,53 @@
+{
+  "_nota": "Incendios de prueba elegidos con Seba el 2026-10-01. 'semilla' es un punto aproximado del incendio: el área de análisis NO sale de acá sino de las detecciones VIIRS de esas fechas (el grupo de focos más grande a menos de 'radio_semilla_km'). Las superficies oficiales y sus fuentes están en el README.",
+  "casos": [
+    {
+      "id": "cordoba-capilla-del-monte-2024",
+      "nombre": "Capilla del Monte – Los Cocos (Córdoba)",
+      "ambiente": "Sierras: pastizal de altura, arbustal, bosque serrano",
+      "semilla": [-30.88, -64.50],
+      "radio_semilla_km": 40,
+      "fuego": ["2024-09-19", "2024-10-02"],
+      "antes": ["2024-08-10", "2024-09-18"],
+      "despues": ["2024-10-03", "2024-11-10"],
+      "oficial_ha": 42046,
+      "oficial_fuente": "IDECOR, informe anual de áreas afectadas 2024 (cartografía oficial)"
+    },
+    {
+      "id": "villarino-2026",
+      "nombre": "Villarino, Argerich – Ombucta (Buenos Aires)",
+      "ambiente": "Campo, pastizal y monte",
+      "semilla": [-38.77, -62.60],
+      "radio_semilla_km": 40,
+      "fuego": ["2025-12-31", "2026-01-03"],
+      "antes": ["2025-11-20", "2025-12-30"],
+      "despues": ["2026-01-04", "2026-02-10"],
+      "oficial_ha": 20000,
+      "oficial_fuente": "Municipio de Villarino, cifra PRELIMINAR (~20.000 ha, 2/1/2026)"
+    },
+    {
+      "id": "nahuel-huapi-los-manzanos-2025",
+      "nombre": "Los Manzanos – El Manso, PN Nahuel Huapi (Río Negro)",
+      "ambiente": "Bosque andino-patagónico",
+      "semilla": [-41.45, -71.75],
+      "radio_semilla_km": 45,
+      "fuego": ["2024-12-25", "2025-03-03"],
+      "antes": ["2024-11-01", "2024-12-24"],
+      "despues": ["2025-03-04", "2025-04-30"],
+      "oficial_ha": 11475,
+      "oficial_fuente": "Parque Nacional Nahuel Huapi, mapa al 25/2/2025 (sector Los Manzanos, lado argentino)"
+    },
+    {
+      "id": "chubut-puerto-patriada-2026",
+      "nombre": "Puerto Patriada – El Hoyo (Chubut)",
+      "ambiente": "Bosque nativo, plantaciones, matorral",
+      "semilla": [-42.10, -71.48],
+      "radio_semilla_km": 40,
+      "fuego": ["2026-01-05", "2026-02-15"],
+      "antes": ["2025-11-20", "2026-01-04"],
+      "despues": ["2026-02-16", "2026-04-15"],
+      "oficial_ha": 22293,
+      "oficial_fuente": "SPMF Chubut al 27/1/2026 (al declararse extinguido se informó 'más de 30.000')"
+    }
+  ]
+}
