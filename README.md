@@ -14,7 +14,7 @@ Plataforma de alerta temprana de incendios forestales para Argentina. Combina de
 | Satélite | Cadencia | Resolución | Rol |
 |---|---|---|---|
 | **NOAA GOES-19** (ABI-L2-FDCF) | 10 min | 2 km | Alerta preliminar rápida (preview) |
-| **NASA FIRMS** (VIIRS) | 15 min | 375 m | Confirmación precisa |
+| **NASA FIRMS** (VIIRS: Suomi-NPP, NOAA-20 y NOAA-21) | 15 min | 375 m | Confirmación precisa |
 
 Cuando GOES detecta un foco, te llega un **mensaje preliminar** ("⚠️ Posible foco a Xkm"). Cuando FIRMS valida la detección, te llega un **upgrade** ("✅ Foco confirmado"). Si pasan 4h sin que NASA confirme, el sistema te avisa "✅ Falsa alarma" y borra la detección.
 
@@ -176,7 +176,7 @@ chmod 600 scripts/sync-fires.env   # completar CRON_SECRET
 
 | Fuente | Uso | Costo |
 |---|---|---|
-| [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/) VIIRS | Focos confirmados (375m, ~15min) | Gratis |
+| [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/) VIIRS (Suomi-NPP, NOAA-20, NOAA-21) | Focos confirmados (375m, ~15min) | Gratis |
 | [NOAA GOES-19](https://www.star.nesdis.noaa.gov/goes/) ABI-L2-FDCF | Focos preliminares (2km, 10min) vía AWS Open Data | Gratis |
 | [Open-Meteo Air Quality](https://air-quality-api.open-meteo.com/) | Contaminantes (CAMS/Sentinel-5P) | Gratis |
 | [Open-Meteo Forecast](https://open-meteo.com/) | Viento, temperatura, humedad | Gratis |

@@ -70,3 +70,24 @@ export function countForestFireEvents(
 ): number {
   return countFireEvents(fires.filter(isForestFire), radiusKm);
 }
+
+/**
+ * Una detección por incendio, en el orden recibido: se queda con cada una que
+ * esté a más de `radiusKm` de todas las ya elegidas. Para listar "los focos más
+ * cercanos" sin repetir el mismo incendio — con tres satélites, el mismo fuego
+ * llega tres veces en lugares apenas distintos. Ordenar antes de llamarla
+ * (por distancia, por potencia) decide cuál detección representa a cada uno.
+ */
+export function onePerFire<F extends EventFire>(
+  fires: F[],
+  radiusKm: number = FIRE_EVENT_RADIUS_KM,
+): F[] {
+  const elegidas: F[] = [];
+  for (const f of fires) {
+    const repetida = elegidas.some(
+      (e) => haversineKm(e.latitude, e.longitude, f.latitude, f.longitude) <= radiusKm,
+    );
+    if (!repetida) elegidas.push(f);
+  }
+  return elegidas;
+}

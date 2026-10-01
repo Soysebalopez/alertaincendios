@@ -13,6 +13,7 @@ import { isCronAuthorized } from "@/lib/cron-auth";
 import { fetchAllRows } from "@/lib/paginate";
 import { selectAlertPairs } from "@/lib/alert-pairs";
 import { log } from "@/lib/logger";
+import { satelliteLabel } from "@/lib/viirs-sources";
 import {
   selectCampoPairs,
   campoFireKey,
@@ -20,6 +21,10 @@ import {
   CAMPO_KEY_PREFIX,
   CAMPO_INCIDENT_HOURS,
 } from "@/lib/campo-alerts";
+import {
+  INCIDENT_HOURS,
+  yaAvisadoMismoIncendio as yaAvisadoMismoIncendioDeBosque,
+} from "@/lib/fire-incident";
 
 /**
  * GET /api/alerts
@@ -83,21 +88,44 @@ export async function GET(request: Request) {
     // porque el foco no cae en zona forestal. Útil para ver el efecto del filtro.
     const { pairs, skippedNonForestCivilian } = selectAlertPairs(fires, subscribers);
 
+    // Un aviso por INCIDENTE (ver `lib/fire-incident.ts`): desde el 1/10 llegan
+    // los tres satélites con VIIRS, y cada uno ve el mismo incendio en otro
+    // lugar de su grilla. Las claves de bosque de las últimas 24 h de cada
+    // persona se leen una vez y se actualizan al avisar, así que dos
+    // detecciones del mismo incendio en la misma corrida también cuentan como uno.
+    const forestDesde = new Date(Date.now() - INCIDENT_HOURS * 3600e3).toISOString();
+    const forestRecientesPorChat = new Map<number, string[]>();
+    let skippedSameIncident = 0;
+
     for (const { fire, sub, distKm } of pairs) {
       const fireKey = buildFireKey(fire);
       const zoneName = forestZoneName(fire.forestZone);
 
-      // Pre-check de dedup. Es solo un fast-path para evitar hacer el fetch
-      // de viento si ya alertamos — la garantía real anti-duplicado vive en
-      // el INSERT ON CONFLICT más abajo, que serializa con otros cron runs.
-      const { data: existing } = await db
-        .from("ai_alerted_fires")
-        .select("fire_key")
-        .eq("fire_key", fireKey)
-        .eq("chat_id", sub.chat_id)
-        .limit(1);
-
-      if (existing && existing.length > 0) continue;
+      let recientes = forestRecientesPorChat.get(sub.chat_id);
+      if (recientes === undefined) {
+        const { data, error } = await db
+          .from("ai_alerted_fires")
+          .select("fire_key")
+          .eq("chat_id", sub.chat_id)
+          .not("fire_key", "like", `${CAMPO_KEY_PREFIX}%`)
+          .gte("alerted_at", forestDesde);
+        if (error) {
+          // Sin el historial no se distingue un incendio nuevo de uno ya
+          // avisado: se saltea a esta persona en esta corrida (la próxima, en
+          // 15 min, lo reintenta) antes que arriesgar avisos repetidos.
+          log.error({ event: "alerts.history_failed", chatId: sub.chat_id, err: error.message });
+          continue;
+        }
+        recientes = (data ?? []).map((r: { fire_key: string }) => r.fire_key);
+        forestRecientesPorChat.set(sub.chat_id, recientes);
+      }
+      // Cubre también el caso de la clave exacta: un foco ya avisado está a
+      // 0 km de sí mismo. La garantía contra dos corridas simultáneas sigue
+      // siendo el INSERT de abajo.
+      if (yaAvisadoMismoIncendioDeBosque(fire, recientes, "")) {
+        skippedSameIncident++;
+        continue;
+      }
 
       // Get wind at fire location (cached per fire — see windCache above)
       let wind = windCache.get(fireKey);
@@ -151,6 +179,7 @@ export async function GET(request: Request) {
         continue;
       }
       if (!claimed) continue;
+      recientes.push(fireKey);
 
       // WHI-547 — does this FIRMS fire confirm a recent GOES preliminary
       // alert we already sent to this subscriber?
@@ -228,6 +257,7 @@ export async function GET(request: Request) {
       // forestal. Si es mucho más alto que `alerts`, el filtro está cortando
       // ruido como esperamos.
       skippedNonForestCivilian,
+      skippedSameIncident,
       campoAlerts: campo.sent,
       campoSkippedSameIncident: campo.skippedSameIncident,
       revalidated: ["/", "/mapa"],
@@ -241,12 +271,11 @@ export async function GET(request: Request) {
   }
 }
 
-// Dedup granularity is INTENTIONAL: lat/lng rounded to 3 decimals (~111 m) +
-// acquisition date, deliberately WITHOUT acqTime. This collapses every FIRMS
-// detection of the same ~point on the same day into a single alert per
-// subscriber (one fire = one notification/day), trading "the fire escalated
-// later that day" re-alerts for not spamming. If per-escalation re-alerts are
-// ever wanted, add `level`/upwind state or a time window to the key.
+// Clave de un foco: lat/lng redondeados a 3 decimales (~111 m) + fecha, SIN
+// acqTime. Sólo junta las detecciones del MISMO píxel en el día; el mismo
+// incendio visto en otro píxel u otro satélite tiene otra clave. Lo que hace
+// "un incendio = un aviso" es `yaAvisadoMismoIncendio` (≤ 2 km, ≤ 24 h) en el
+// bucle de arriba. El formato importa: `posicionDeClave` lo lee de vuelta.
 function buildFireKey(fire: FirePoint): string {
   return `${fire.latitude.toFixed(3)}_${fire.longitude.toFixed(3)}_${fire.acqDate}`;
 }
@@ -324,7 +353,7 @@ async function formatAlert(
     msg += `🔥 Si el viento se mantiene, el fuego podría llegar en <b>${frontText}</b> (estimación de peor caso)\n`;
   }
   msg += `${frpBars(fire.frp)} ${fire.frp} MW — ${frpLabel(fire.frp).split(" (")[0]}\n`;
-  msg += `🛰️ Fuente: NASA FIRMS\n`;
+  msg += `🛰️ Fuente: NASA FIRMS · satélite ${satelliteLabel(fire.satellite)}\n`;
   msg += `⏱️ Detectado hace ${ageMin} min\n`;
   if (zoneName) msg += `🌲 Zona: ${escapeHtml(zoneName)}\n`;
 
@@ -471,7 +500,7 @@ async function formatConfirmedFromPreliminary(
     msg += `🔥 Si el viento se mantiene, el fuego podría llegar en <b>${frontText}</b> (estimación de peor caso)\n`;
   }
   msg += `${frpBars(fire.frp)} ${fire.frp} MW — ${frpLabel(fire.frp).split(" (")[0]}\n`;
-  msg += `🛰️ Validado por NASA FIRMS (VIIRS 375m)\n`;
+  msg += `🛰️ Validado por NASA FIRMS (VIIRS 375m, satélite ${satelliteLabel(fire.satellite)})\n`;
   msg += `⏱️ Alerta preliminar hace ${sinceMin} min, confirmada ahora\n`;
   if (zoneName) msg += `🌲 Zona: ${escapeHtml(zoneName)}\n`;
   msg += `\n<i>El foco preliminar GOES que te avisamos antes acaba de ser ` +
@@ -608,7 +637,7 @@ function formatCampoAlert(
     msg += `🔥 Si el viento se mantiene, el fuego podría llegar en <b>${frontText}</b> (estimación de peor caso)\n`;
   }
   msg += `${frpBars(fire.frp)} ${fire.frp} MW — ${frpLabel(fire.frp).split(" (")[0]}\n`;
-  msg += `🛰️ Fuente: NASA FIRMS · detectado hace ${ageMin} min\n`;
+  msg += `🛰️ Fuente: NASA FIRMS · satélite ${satelliteLabel(fire.satellite)} · detectado hace ${ageMin} min\n`;
   msg += `\n<i>Fuera de las zonas de bosque: puede ser pastizal, campo, arbustal o una quema agrícola que se extendió. Si ves humo o fuego cerca, llamá al 100 (bomberos).</i>\n`;
   msg += `\n${alertMapLinks(fire.latitude, fire.longitude)}`;
   msg += `\n\n—\nClara · AlertaForestal.org`;

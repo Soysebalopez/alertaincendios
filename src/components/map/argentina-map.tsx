@@ -7,6 +7,8 @@ import "leaflet/dist/leaflet.css";
 import { PROVINCES } from "@/lib/argentina-cities";
 import { AIR_LEVEL_COLORS, type AirLevel } from "@/lib/air-quality";
 import { forestZoneName } from "@/lib/forest-zones";
+import { onePerFire } from "@/lib/fire-events";
+import { satelliteLabel } from "@/lib/viirs-sources";
 import {
   computeGroundTrack,
   currentSubSatellitePoint,
@@ -21,6 +23,8 @@ interface FirePoint {
   type?: number;
   /** WHI-757: id de zona forestal, viene desde fetchFires() vía /api/fires. */
   forestZone?: string;
+  /** Satélite VIIRS que lo detectó (N, N20, N21). */
+  satellite?: string;
 }
 
 interface LayerState {
@@ -259,11 +263,14 @@ export function ArgentinaMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
         // default. Suma los no-forestales solo cuando el toggle está activo.
         setStats((s) => ({ ...s, fires: c.high + c.moderate + c.low }));
         // Panel: top focos forestales por FRP para la lista "Focos recientes".
+        // Uno por incendio: con tres satélites, el mismo fuego llega varias
+        // veces. Ordenado por potencia, queda la detección más fuerte de cada uno.
         setRecentFires(
-          fires
-            .filter((f) => f.forestZone)
-            .sort((a, b) => b.frp - a.frp)
-            .slice(0, 14),
+          onePerFire(
+            fires
+              .filter((f) => f.forestZone)
+              .sort((a, b) => b.frp - a.frp),
+          ).slice(0, 14),
         );
         setUpdatedAt(typeof data.updated === "string" ? data.updated : null);
       } catch {
@@ -664,7 +671,8 @@ export function ArgentinaMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
                     {forestZoneName(f.forestZone) ?? "Zona forestal"}
                   </div>
                   <div className="clp-fire-meta">
-                    FRP {f.frp.toFixed(1)} MW · {confLabel(f.confidence)}
+                    FRP {f.frp.toFixed(1)} MW · {confLabel(f.confidence)} ·{" "}
+                    {satelliteLabel(f.satellite)}
                   </div>
                 </div>
                 <span

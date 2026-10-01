@@ -22,6 +22,12 @@
  */
 import { haversineKm } from "@/lib/geo";
 import { isStaticHeatSource } from "@/lib/static-heat-sources";
+import {
+  INCIDENT_HOURS,
+  INCIDENT_KM,
+  posicionDeClave as posicionConPrefijo,
+  yaAvisadoMismoIncendio as mismoIncendio,
+} from "@/lib/fire-incident";
 
 /** Distancia máxima al suscriptor. */
 export const CAMPO_RADIUS_KM = 20;
@@ -29,10 +35,11 @@ export const CAMPO_RADIUS_KM = 20;
 export const CAMPO_MIN_FRP_MW = 10;
 /**
  * Un incendio = detecciones a ≤ 2 km en ≤ 24 h. Con esta unión se midieron los
- * volúmenes de arriba; avisar por detección los triplicaba.
+ * volúmenes de arriba; avisar por detección los triplicaba. Desde el 1/10 el
+ * criterio vive en `fire-incident.ts`, compartido con la capa de bosque.
  */
-export const CAMPO_INCIDENT_KM = 2;
-export const CAMPO_INCIDENT_HOURS = 24;
+export const CAMPO_INCIDENT_KM = INCIDENT_KM;
+export const CAMPO_INCIDENT_HOURS = INCIDENT_HOURS;
 
 /** Prefijo de sus filas en `ai_alerted_fires`: no se mezclan con las de bosque. */
 export const CAMPO_KEY_PREFIX = "c:";
@@ -86,9 +93,7 @@ export function campoFireKey(fire: CampoFire): string {
 
 /** Lee lat/lng de una clave de campo; null si no es una. */
 export function posicionDeClave(key: string): { lat: number; lng: number } | null {
-  if (!key.startsWith(CAMPO_KEY_PREFIX)) return null;
-  const [lat, lng] = key.slice(CAMPO_KEY_PREFIX.length).split("_").map(Number);
-  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+  return posicionConPrefijo(key, CAMPO_KEY_PREFIX);
 }
 
 /**
@@ -99,8 +104,5 @@ export function posicionDeClave(key: string): { lat: number; lng: number } | nul
  * `recientes` son sus claves de campo de las últimas 24 h (de `ai_alerted_fires`).
  */
 export function yaAvisadoMismoIncendio(fire: CampoFire, recientes: string[]): boolean {
-  return recientes.some((k) => {
-    const p = posicionDeClave(k);
-    return p != null && haversineKm(p.lat, p.lng, fire.latitude, fire.longitude) <= CAMPO_INCIDENT_KM;
-  });
+  return mismoIncendio(fire, recientes, CAMPO_KEY_PREFIX);
 }

@@ -1,6 +1,7 @@
 // `escapeHtml` es una función pura y `telegram.ts` no importa nada: traerla
 // acá no rompe la promesa de "sin I/O" de este módulo.
 import { escapeHtml } from "./telegram";
+import { VIIRS_SATELLITES, satelliteLabel } from "./viirs-sources";
 
 /**
  * Decide whether to notify about FIRMS data freshness. Pure — no I/O. The caller
@@ -132,4 +133,71 @@ export function buildRecoveredAlert(input: { ageLabel: string }): string {
     `✅ <b>Clara — FIRMS se recuperó</b>\n\n` +
     `Los focos de FIRMS volvieron a actualizar (hace ${input.ageLabel}).`
   );
+}
+
+/**
+ * 🔴 UN SATÉLITE CAÍDO NO PONE VIEJO EL CACHÉ.
+ *
+ * Desde el 2026-10-01 el sync pide tres fuentes (Suomi-NPP, NOAA-20 y NOAA-21)
+ * y actualiza `fires_cache` con las que llegaron bien, conservando los focos
+ * anteriores de la que falló. Bien para el mapa — pero `fetched_at` sigue
+ * avanzando, así que el aviso de dato viejo de arriba NUNCA se enteraría de que
+ * un satélite lleva un día sin traer nada. Una verificación que cubre una parte
+ * del problema informa éxito con la otra rota.
+ *
+ * Por eso cada fuente anota cuándo trajo dato bueno por última vez
+ * (`_fires_sync_state.source_ok_at`, lo escribe el paso 2 del sync) y esto
+ * decide, por satélite, si hay que avisar o dar por recuperado.
+ */
+export function decideSourceActions(input: {
+  /** `source_ok_at` tal como está en la base: código → timestamp ISO. */
+  lastOkBySource: Record<string, string> | null;
+  nowMs: number;
+  thresholdMinutes: number;
+  /** Satélites con un aviso ya mandado (flag `firms_sources_alerted`). */
+  alerted: string[];
+}): { alert: string[]; recovered: string[] } {
+  const okAt = input.lastOkBySource ?? {};
+  // Sin ninguna anotación, el sync de tres fuentes todavía no corrió (o la
+  // columna no existe aún): no hay nada que medir. NO es "los tres caídos".
+  if (Object.keys(okAt).length === 0) return { alert: [], recovered: [] };
+
+  const stale = VIIRS_SATELLITES.filter((sat) => {
+    const t = okAt[sat] ? Date.parse(okAt[sat]) : NaN;
+    // Una fuente sin anotación mientras las otras sí tienen nunca trajo dato
+    // bueno: cuenta como caída, no como "no sé".
+    if (Number.isNaN(t)) return true;
+    return (input.nowMs - t) / 60000 > input.thresholdMinutes;
+  });
+
+  return {
+    alert: stale.filter((s) => !input.alerted.includes(s)),
+    recovered: input.alerted.filter((s) => !stale.includes(s as (typeof VIIRS_SATELLITES)[number])),
+  };
+}
+
+export function buildSourceStaleAlert(input: {
+  sources: string[];
+  lastOkBySource: Record<string, string>;
+}): string {
+  const lineas = input.sources
+    .map((s) => {
+      const t = input.lastOkBySource[s];
+      return `• <b>${escapeHtml(satelliteLabel(s))}</b> — último dato bueno: ${t ? escapeHtml(t) : "nunca"}`;
+    })
+    .join("\n");
+  return (
+    `⚠️ <b>Clara — un satélite de FIRMS dejó de traer datos</b>\n\n` +
+    `${lineas}\n\n` +
+    `El sitio y el bot siguen funcionando con los otros satélites. Los focos ` +
+    `de éste quedan congelados en su último dato, así que un incendio nuevo ` +
+    `puede tardar más en aparecer. Se recupera solo cuando NASA vuelva a ` +
+    `servir esa fuente; si no vuelve, revisá en FIRMS si el satélite está ` +
+    `fuera de servicio.`
+  );
+}
+
+export function buildSourceRecoveredAlert(input: { sources: string[] }): string {
+  const nombres = input.sources.map((s) => escapeHtml(satelliteLabel(s))).join(", ");
+  return `✅ <b>Clara — ${nombres} volvió a traer datos de FIRMS</b>`;
 }

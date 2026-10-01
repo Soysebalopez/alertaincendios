@@ -5,6 +5,7 @@ import { bearingDegrees, haversineKm } from "@/lib/geo";
 import { cardinalToSpanish, degreesToCardinal } from "@/lib/wind";
 import { forestZoneName } from "@/lib/forest-zones";
 import { showsFire, type CityFireFilter } from "@/lib/city-fires";
+import { onePerFire } from "@/lib/fire-events";
 
 interface Fire {
   latitude: number;
@@ -58,16 +59,19 @@ export function CityForestFires({
       .then((r) => r.json())
       .then((data: { fires?: Fire[] }) => {
         if (cancelled) return;
-        const nearby = (data.fires ?? [])
-          .filter((f) => showsFire(f, fireFilter))
-          .map((f) => {
-            const distanceKm = haversineKm(lat, lng, f.latitude, f.longitude);
-            const bearing = bearingDegrees(lat, lng, f.latitude, f.longitude);
-            return { ...f, distanceKm, bearing };
-          })
-          .filter((f) => f.distanceKm <= RADIUS_KM)
-          .sort((a, b) => a.distanceKm - b.distanceKm)
-          .slice(0, MAX_DISPLAY);
+        // Uno por incendio (el más cercano de cada uno): con tres satélites el
+        // mismo fuego llega varias veces en lugares apenas distintos.
+        const nearby = onePerFire(
+          (data.fires ?? [])
+            .filter((f) => showsFire(f, fireFilter))
+            .map((f) => {
+              const distanceKm = haversineKm(lat, lng, f.latitude, f.longitude);
+              const bearing = bearingDegrees(lat, lng, f.latitude, f.longitude);
+              return { ...f, distanceKm, bearing };
+            })
+            .filter((f) => f.distanceKm <= RADIUS_KM)
+            .sort((a, b) => a.distanceKm - b.distanceKm),
+        ).slice(0, MAX_DISPLAY);
         setFires(nearby);
         setLoading(false);
       })
