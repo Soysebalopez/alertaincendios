@@ -1,0 +1,12 @@
+# Prueba de áreas quemadas (dNBR + Prithvi). Python 3.10–3.12.
+numpy
+requests
+shapely>=2
+pyproj
+rasterio
+earthaccess>=0.10
+matplotlib
+pyyaml
+huggingface_hub
+terratorch
+pytest
