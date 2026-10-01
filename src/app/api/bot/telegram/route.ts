@@ -10,6 +10,7 @@ import { isInArgentina } from "@/lib/argentina-polygon";
 import { fetchFires } from "@/lib/firms";
 import { haversineKm } from "@/lib/geo";
 import { countFireEvents, onePerFire } from "@/lib/fire-events";
+import { isReportedFire } from "@/lib/reported-fires";
 import { artHour } from "@/lib/time";
 import { log } from "@/lib/logger";
 import { validateMapKey, FIRMS_MAP_KEY_FORM_URL } from "@/lib/firms-key";
@@ -638,7 +639,10 @@ async function handleEstado(chatId: number) {
   }
 
   const fires = await fetchFires();
+  // Sin fuentes fijas (antorchas, acerías, refinerías): no son incendios, y
+  // hasta el 2026-10-01 se listaban acá como focos. Misma regla que la web.
   const nearby = fires
+    .filter(isReportedFire)
     .map((f) => ({
       ...f,
       distKm: haversineKm(sub.lat, sub.lng, f.latitude, f.longitude),

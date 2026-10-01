@@ -8,6 +8,13 @@ import { PROVINCES } from "@/lib/argentina-cities";
 import { AIR_LEVEL_COLORS, type AirLevel } from "@/lib/air-quality";
 import { forestZoneName } from "@/lib/forest-zones";
 import { onePerFire } from "@/lib/fire-events";
+import {
+  countReportedFireEvents,
+  fireKind,
+  frpBucket,
+  isReportedFire,
+  type Intensity,
+} from "@/lib/reported-fires";
 import { satelliteLabel } from "@/lib/viirs-sources";
 import {
   computeGroundTrack,
@@ -44,7 +51,6 @@ const SATELLITE_META: Record<number, { label: string; color: string }> = {
 
 const MARKER_REFRESH_MS = 5_000;
 
-type Intensity = "high" | "moderate" | "low";
 
 /**
  * Coordinado con el hero y src/components/fire-map.tsx — mismos tres
@@ -59,11 +65,6 @@ const INTENSITY_META: Record<
   low: { label: "Baja", color: "#f97316", range: "< 5 MW" },
 };
 
-function frpBucket(frp: number): Intensity {
-  if (frp >= 20) return "high";
-  if (frp >= 5) return "moderate";
-  return "low";
-}
 
 /** Etiqueta legible de confianza VIIRS (l/n/h) para la lista de focos. */
 function confLabel(c: string): string {
@@ -160,10 +161,12 @@ export function ArgentinaMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
     moderate: 0,
     low: 0,
   });
-  // WHI-757: por default mostramos solo focos en zona forestal. El usuario puede
-  // activar "ver no-forestal" para sumar quemas agrícolas/flaring (visual más bajo).
-  const [showNonForest, setShowNonForest] = useState(false);
-  const [nonForestCount, setNonForestCount] = useState(0);
+  // Desde el 1/10 se ven bosque y campo por default (lib/reported-fires); las
+  // fuentes fijas (antorchas, industrias) no se dibujan. Cada clase se oculta
+  // con su botón.
+  const [showBosque, setShowBosque] = useState(true);
+  const [showCampo, setShowCampo] = useState(true);
+  const [kindCounts, setKindCounts] = useState({ bosque: 0, campo: 0 });
   // M13 — explicit "fires loaded" signal for the repaint effect. Bumped once
   // fires land in allFires.current, so the layer repaints even when there are
   // zero forest fires (where intensityCounts wouldn't change from its initial).
@@ -251,24 +254,20 @@ export function ArgentinaMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
         const fires: FirePoint[] = data.fires || [];
         allFires.current = fires;
         setFiresVersion((v) => v + 1);
-        const c: Record<Intensity, number> = { high: 0, moderate: 0, low: 0 };
-        let nonForest = 0;
-        for (const f of fires) {
-          if (f.forestZone) c[frpBucket(f.frp)]++;
-          else nonForest++;
-        }
-        setIntensityCounts(c);
-        setNonForestCount(nonForest);
-        // El contador top-level "Focos" refleja únicamente los forestales por
-        // default. Suma los no-forestales solo cuando el toggle está activo.
-        setStats((s) => ({ ...s, fires: c.high + c.moderate + c.low }));
-        // Panel: top focos forestales por FRP para la lista "Focos recientes".
-        // Uno por incendio: con tres satélites, el mismo fuego llega varias
-        // veces. Ordenado por potencia, queda la detección más fuerte de cada uno.
+        // Misma función que la home: todos los números del panel son
+        // INCENDIOS (no detecciones) y salen del mismo agrupamiento, así el
+        // total, bosque/campo y las intensidades suman lo mismo.
+        const ev = countReportedFireEvents(fires);
+        setIntensityCounts(ev.byIntensity);
+        setKindCounts({ bosque: ev.bosque, campo: ev.campo });
+        setStats((s) => ({ ...s, fires: ev.total }));
+        // Panel: los focos más potentes, uno por incendio (con tres satélites
+        // el mismo fuego llega varias veces; ordenado por potencia, queda la
+        // detección más fuerte de cada uno).
         setRecentFires(
           onePerFire(
             fires
-              .filter((f) => f.forestZone)
+              .filter(isReportedFire)
               .sort((a, b) => b.frp - a.frp),
           ).slice(0, 14),
         );
@@ -455,42 +454,32 @@ export function ArgentinaMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
     return () => clearInterval(interval);
   }, [layers.satellites, selectedSats, renderableTles]);
 
-  // WHI-757: repinta la capa de focos cuando cambian los buckets seleccionados
-  // o el toggle de no-forestal. Focos no-forestales se renderizan con opacidad
-  // más baja y sin color de intensidad para no competir visualmente con los
-  // forestales (el mensaje del producto es prevención forestal).
+  // Repinta la capa de focos cuando cambian los filtros. Bosque = punto
+  // relleno, campo = anillo del mismo color: se distinguen de un vistazo. Las
+  // fuentes fijas no se dibujan (lib/reported-fires).
   useEffect(() => {
     const group = layerGroups.current.fires;
     if (!group) return;
     group.clearLayers();
     for (const f of allFires.current) {
-      const inForest = Boolean(f.forestZone);
-      if (!inForest && !showNonForest) continue;
-      if (inForest && !intensities.has(frpBucket(f.frp))) continue;
+      const kind = fireKind(f);
+      if (kind === "excluido") continue;
+      if (kind === "bosque" && !showBosque) continue;
+      if (kind === "campo" && !showCampo) continue;
+      if (!intensities.has(frpBucket(f.frp))) continue;
 
       const radius = Math.max(3, Math.min(8, f.frp / 4));
-      if (inForest) {
-        const color =
-          f.confidence === "h" || f.confidence === "high" ? "#ef4444" : "#f97316";
-        L.circleMarker([f.latitude, f.longitude], {
-          radius,
-          color,
-          fillColor: color,
-          fillOpacity: 0.7,
-          weight: 1,
-        }).addTo(group);
-      } else {
-        // No forestal: gris translúcido, sin border. Se ve pero no domina.
-        L.circleMarker([f.latitude, f.longitude], {
-          radius: Math.max(2, Math.min(5, f.frp / 6)),
-          color: "#8a8a7e",
-          fillColor: "#8a8a7e",
-          fillOpacity: 0.25,
-          weight: 0,
-        }).addTo(group);
-      }
+      const color =
+        f.confidence === "h" || f.confidence === "high" ? "#ef4444" : "#f97316";
+      L.circleMarker([f.latitude, f.longitude], {
+        radius,
+        color,
+        fillColor: color,
+        fillOpacity: kind === "bosque" ? 0.7 : 0.1,
+        weight: kind === "bosque" ? 1 : 2,
+      }).addTo(group);
     }
-  }, [intensities, showNonForest, firesVersion]);
+  }, [intensities, showBosque, showCampo, firesVersion]);
 
   return (
     <div className="clara-map-shell">
@@ -510,10 +499,9 @@ export function ArgentinaMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
           </span>
           <h2 className="clp-title">Argentina en vivo</h2>
           <p className="clp-sub">
-            {/* Says WHICH fires: the number is the forest ones, and the
-                summary below the map counts every fire — two different
-                totals side by side read as a bug (review 28/9). */}
-            {stats.fires} focos forestales · {nonForestCount} fuera de bosque
+            {/* Dice QUÉ focos: dos totales distintos lado a lado se leen
+                como un error (revisión 28/9). */}
+            {kindCounts.bosque} incendios en bosque · {kindCounts.campo} en campo
             {updatedAt ? ` · actualizado ${timeAgo(updatedAt)}` : ""}
             <br />
             {airLoading ? "Calidad del aire: cargando ciudades…" : `Calidad del aire en ${stats.cities} ciudades`}
@@ -530,7 +518,7 @@ export function ArgentinaMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
             onClick={() => setLayers((l) => ({ ...l, fires: !l.fires }))}
           >
             <span className="clp-layer-l">
-              <FireIcon /> Focos forestales
+              <FireIcon /> Focos de incendio
             </span>
             <span className="clp-layer-c">{stats.fires}</span>
           </button>
@@ -564,25 +552,31 @@ export function ArgentinaMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
               })}
             </div>
           )}
-          {/* WHI-757: toggle "ver no forestal" */}
-          {layers.fires && nonForestCount > 0 && (
+          {/* Bosque / campo: los dos visibles por default. */}
+          {layers.fires && stats.fires > 0 && (
             <div className="clp-sub-group">
-              <button
-                onClick={() => setShowNonForest((v) => !v)}
-                title="Quemas agrícolas, flaring y otra actividad fuera de zona forestal"
-                className="clp-chip"
-                style={{
-                  color: showNonForest ? "#8a8a7e" : "var(--muted)",
-                  opacity: showNonForest ? 1 : 0.6,
-                }}
-              >
-                <span
-                  className="clp-chip-dot"
-                  style={{ background: showNonForest ? "#8a8a7e" : "var(--border)" }}
-                />
-                + No forestal
-                <span className="clp-chip-c">{nonForestCount}</span>
-              </button>
+              {(
+                [
+                  { key: "bosque", label: "● Bosque", count: kindCounts.bosque, on: showBosque, set: setShowBosque,
+                    title: "Incendios en zonas de bosque" },
+                  { key: "campo", label: "○ Campo y pastizal", count: kindCounts.campo, on: showCampo, set: setShowCampo,
+                    title: "Incendios de campo, pastizal, arbustal y quemas, fuera de las zonas de bosque" },
+                ] as const
+              ).map((k) =>
+                k.count === 0 ? null : (
+                  <button
+                    key={k.key}
+                    onClick={() => k.set((v) => !v)}
+                    title={k.title}
+                    aria-pressed={k.on}
+                    className="clp-chip"
+                    style={{ color: k.on ? "#f97316" : "var(--muted)", opacity: k.on ? 1 : 0.6 }}
+                  >
+                    {k.label}
+                    <span className="clp-chip-c">{k.count}</span>
+                  </button>
+                )
+              )}
             </div>
           )}
 
@@ -656,19 +650,19 @@ export function ArgentinaMap({ tles = [] }: { tles?: SatelliteTLE[] }) {
 
         {/* Focos recientes */}
         <div className="clp-block clp-block--scroll">
-          <div className="clp-label">Focos forestales recientes</div>
+          <div className="clp-label">Focos más intensos</div>
           {recentFires.length === 0 ? (
             <p className="clp-empty">
               {loading
                 ? "Cargando focos…"
-                : "Sin focos forestales activos ahora mismo."}
+                : "Sin focos activos ahora mismo."}
             </p>
           ) : (
             recentFires.map((f, i) => (
               <div className="clp-fire" key={`${f.latitude}-${f.longitude}-${i}`}>
                 <div>
                   <div className="clp-fire-region">
-                    {forestZoneName(f.forestZone) ?? "Zona forestal"}
+                    {forestZoneName(f.forestZone) ?? "Campo o pastizal"}
                   </div>
                   <div className="clp-fire-meta">
                     FRP {f.frp.toFixed(1)} MW · {confLabel(f.confidence)} ·{" "}

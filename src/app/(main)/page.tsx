@@ -14,7 +14,7 @@ import { StaggerReveal } from "@/components/stagger-reveal";
 import { FireMapLoader } from "@/components/fire-map-loader";
 import { LiveCityGrid } from "@/components/live-city-grid";
 import { HeroAutoRefresh } from "@/components/hero-auto-refresh";
-import { countForestFireEvents } from "@/lib/fire-events";
+import { countReportedFireEvents, type FireEventCounts } from "@/lib/reported-fires";
 import { HeroRefreshFlash } from "@/components/hero-refresh-flash";
 import { Beacon, Pill, DataSourceLogo } from "@/components/clara-ui";
 import {
@@ -35,38 +35,21 @@ export const revalidate = 60;
 
 const TELEGRAM_BOT_URL = "https://t.me/alertaforestal_bot";
 
-/**
- * Umbral FRP (MW) para que un foco califique como "alta intensidad" en el
- * hero. 20 MW es el corte entre "incendio activo en desarrollo" y "incendio
- * forestal significativo" según la misma escala que muestra el popup del
- * mapa. Quemas agrícolas y flaring quedan abajo del corte y no inflan el
- * número grande de portada.
- */
-const HERO_FRP_THRESHOLD_MW = 20;
-
 interface FireCounts {
-  /** WHI-757: wildfires con FRP ≥ HERO_FRP_THRESHOLD_MW en zona forestal — número grande del hero. */
-  high: number;
-  /** WHI-757: 5 ≤ FRP < 20 en zona forestal — sub-line. */
-  moderate: number;
-  /** WHI-757: FRP < 5 en zona forestal — sub-line. */
-  low: number;
-  /** WHI-757: wildfires fuera de zona forestal — agrícolas/otros, informativo. */
-  nonForestWild: number;
-  /** Detecciones reclasificadas como flaring/offshore/volcano. */
-  industrial: number;
+  /**
+   * Incendios distintos detrás de las detecciones (WHI-920), bosque + campo.
+   * Desde el 2026-10-01 la home informa todo incendio, no sólo los forestales
+   * (ver `lib/reported-fires.ts`). El satélite ve un mismo fuego como varios
+   * píxeles, y con tres satélites lo ve varias veces: el número grande del
+   * hero dice "incendios", no "detecciones".
+   */
+  events: FireEventCounts;
   /**
    * Snapshot crudo de focos pasado al mini-mapa del hero como prop. Garantiza
    * que counter y puntos visualizados vienen del MISMO fetchFires() — antes
    * el mini-mapa hacía su propio fetch a /api/fires y podía mostrar otra cosa.
    */
   fires: import("@/lib/firms").FirePoint[];
-  /**
-   * Incendios distintos detrás de esas detecciones (WHI-920). El satélite ve
-   * un mismo fuego como varios píxeles: el 17/9 las 426 detecciones forestales
-   * del día eran 217 incendios. El número grande del hero dice "incendios".
-   */
-  forestEvents: number;
 }
 
 /**
@@ -85,36 +68,16 @@ async function getSatelliteData(): Promise<{
 
 async function getFireCounts(): Promise<FireCounts> {
   const empty: FireCounts = {
-    high: 0, moderate: 0, low: 0, nonForestWild: 0, industrial: 0, fires: [], forestEvents: 0,
+    events: { total: 0, bosque: 0, campo: 0, byIntensity: { high: 0, moderate: 0, low: 0 } },
+    fires: [],
   };
   try {
     const { fetchFires } = await import("@/lib/firms");
-
-    // fetchFires() ya aplica polígono ARG + classifyFireType + tag forestZone
-    // (WHI-757). El número grande del hero refleja únicamente focos en zona
-    // forestal — la misión del producto es prevención de incendios forestales,
-    // no monitoreo térmico general.
+    // fetchFires() ya aplica polígono ARG + classifyFireType + tag forestZone.
+    // Qué se informa y qué se descarta (fuentes fijas) lo decide
+    // `countReportedFireEvents`, la misma función que el refresco en vivo.
     const fires = await fetchFires();
-
-    let high = 0, moderate = 0, low = 0, nonForestWild = 0, industrial = 0;
-    for (const f of fires) {
-      const isWild = (f.type ?? 0) === 0 || f.type === 1;
-      if (!isWild) { industrial++; continue; }
-      if (!f.forestZone) { nonForestWild++; continue; }
-      if (f.frp >= HERO_FRP_THRESHOLD_MW) high++;
-      else if (f.frp >= 5) moderate++;
-      else low++;
-    }
-    return {
-      high,
-      moderate,
-      low,
-      nonForestWild,
-      industrial,
-      // Pasamos el snapshot al mini-mapa para garantizar consistencia con el counter.
-      fires,
-      forestEvents: countForestFireEvents(fires),
-    };
+    return { events: countReportedFireEvents(fires), fires };
   } catch {
     return empty;
   }
@@ -182,27 +145,8 @@ export default async function Home() {
     getSatelliteData(),
   ]);
   const { tles, nextPass } = satData;
-  const {
-    high,
-    moderate,
-    low,
-    nonForestWild,
-    industrial: industrialCount,
-    fires: heroFires,
-    forestEvents,
-  } = fireCounts;
-  // WHI-757: el hero refleja todos los focos forestales activos (no solo los
-  // de alta intensidad). En temporada baja el número de "destacados FRP≥20"
-  // suele ser 0, lo que daba un hero deprimente; mostrar el total da una
-  // señal más honesta de presencia/ausencia de actividad forestal.
-  // Detecciones de satélite. El número grande muestra `forestEvents` (incendios
-  // distintos); `forestTotal` sólo decide si hay actividad que mostrar.
-  const forestTotal = high + moderate + low;
-  const hasAnyForestActivity = forestTotal > 0;
-  // "Fuera de zona forestal" agrupa wildfires no forestales + industrial
-  // (flaring, offshore, volcánico). Lo presentamos como secundario para no
-  // confundir al usuario con quemas agrícolas planificadas.
-  const nonForestTotal = nonForestWild + industrialCount;
+  const { events, fires: heroFires } = fireCounts;
+  const hasAnyActivity = events.total > 0;
   const timestamp = new Date().toLocaleString("es-AR", {
     timeZone: "America/Argentina/Buenos_Aires",
     day: "2-digit",
@@ -226,7 +170,7 @@ export default async function Home() {
       {/* Auto-refresh discreto cuando entra un nuevo destacado al cache.
           Polea /api/fires cada 60s y dispara router.refresh() solo si
           high subió. No renderiza nada visible. */}
-      <HeroAutoRefresh initialCount={forestEvents} />
+      <HeroAutoRefresh initialCount={events.total} />
 
       {/* ─── HERO ─── */}
       <section className="relative border-b border-border">
@@ -305,7 +249,7 @@ export default async function Home() {
                 Incendios forestales en Argentina
               </h1>
 
-              {hasAnyForestActivity ? (
+              {hasAnyActivity ? (
                 <div>
                   {/*
                     🔴 EL CONTADOR YA NO ES EL H1 (WHI-919), Y NADA SE MOVIÓ DE
@@ -337,7 +281,7 @@ export default async function Home() {
                       className="text-accent tabular-nums"
                       style={{ fontVariantNumeric: "tabular-nums" }}
                     >
-                      <FireCounter count={forestEvents} />
+                      <FireCounter count={events.total} />
                     </span>
                     {/*
                       🔴 `display: block` NO SOBRA: SIN ÉL ESTA LÍNEA SE ABRE SOLA
@@ -363,23 +307,22 @@ export default async function Home() {
                         letterSpacing: "-0.02em",
                       }}
                     >
-                      {forestEvents === 1
+                      {events.total === 1
                         ? "foco activo en las últimas 24hs"
                         : "focos activos en las últimas 24hs"}
                     </span>
                   </div>
-                  {nonForestTotal > 0 && (
-                    <p
-                      className="font-mono mt-4 m-0"
-                      style={{
-                        fontSize: 13,
-                        color: "var(--muted)",
-                        letterSpacing: "0.02em",
-                      }}
-                    >
-                      + {nonForestTotal} fuera de zona forestal
-                    </p>
-                  )}
+                  {/* Desglose: las dos partes suman el número grande. */}
+                  <p
+                    className="font-mono mt-4 m-0"
+                    style={{
+                      fontSize: 13,
+                      color: "var(--muted)",
+                      letterSpacing: "0.02em",
+                    }}
+                  >
+                    {events.bosque} en zona de bosque · {events.campo} en campo y pastizal
+                  </p>
                 </div>
               ) : (
                 <div
@@ -404,21 +347,9 @@ export default async function Home() {
                         "color-mix(in oklab, var(--foreground) 75%, transparent)",
                     }}
                   >
-                    sin focos forestales activos
+                    sin focos activos
                   </span>
                 </div>
-              )}
-              {!hasAnyForestActivity && nonForestTotal > 0 && (
-                <p
-                  className="font-mono mt-4 m-0"
-                  style={{
-                    fontSize: 13,
-                    color: "var(--muted)",
-                    letterSpacing: "0.02em",
-                  }}
-                >
-                  {nonForestTotal} {nonForestTotal === 1 ? "foco detectado" : "focos detectados"} fuera de zona forestal
-                </p>
               )}
             </StaggerReveal>
 

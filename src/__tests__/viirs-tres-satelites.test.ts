@@ -167,3 +167,12 @@ describe("aviso por satélite caído", () => {
     expect(ruta).toMatch(/syncStateError \|\| cacheError \|\| keyError \|\| stale\s*\?/);
   });
 });
+
+describe("/estado del bot", () => {
+  it("🔴 descarta las fuentes fijas antes de contar y listar", () => {
+    const bot = leer("src/app/api/bot/telegram/route.ts");
+    const filtro = bot.indexOf(".filter(isReportedFire)");
+    expect(filtro).toBeGreaterThan(0);
+    expect(bot.indexOf("countFireEvents(nearby)")).toBeGreaterThan(filtro);
+  });
+});

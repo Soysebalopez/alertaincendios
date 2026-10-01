@@ -67,7 +67,7 @@ export function CityMap({
   lng,
   cityName,
   focus = null,
-  fireFilter = "forest",
+  fireFilter = "vegetation",
 }: {
   lat: number;
   lng: number;
@@ -270,13 +270,15 @@ export function CityMap({
             f.confidence === "h" || f.confidence === "high"
               ? "#ef4444"
               : "#f97316";
+          // Bosque = punto relleno, campo = anillo: como en los otros mapas.
+          const bosque = Boolean(f.forestZone);
           L.circleMarker([f.latitude, f.longitude], {
             pane: "fires",
             radius: Math.max(4, Math.min(8, f.frp / 4)),
             color,
             fillColor: color,
-            fillOpacity: 0.7,
-            weight: 1,
+            fillOpacity: bosque ? 0.7 : 0.1,
+            weight: bosque ? 1 : 2,
           }).addTo(map);
         });
         setFireCount(nearby.length);

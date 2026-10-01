@@ -111,8 +111,9 @@ export function CityContext({
             volcanes y plantas de energía.
           </p>
           <p style={P}>
-            Por eso acá los focos se muestran separando los que caen en zona
-            forestal de los que no. Un punto sobre un campo en época de quema
+            Por eso acá cada foco dice si cae en zona de bosque o en campo, y
+            no se muestran las antorchas ni las industrias que el satélite ve
+            todos los días. Un punto sobre un campo en época de quema
             planificada y otro sobre un bosque en enero no son la misma noticia,
             aunque el satélite los vea igual.
           </p>

@@ -9,6 +9,13 @@ import {
   currentSubSatellitePoint,
   type SatelliteTLE,
 } from "@/lib/satellites";
+import {
+  countReportedFireEvents,
+  fireKind,
+  frpBucket,
+  type FireKind,
+  type Intensity,
+} from "@/lib/reported-fires";
 
 // WHI-754 hero: tonos azules diferenciados por sat (alineado con /mapa).
 const SATELLITE_META: Record<number, { color: string }> = {
@@ -35,15 +42,14 @@ interface FirePoint {
 
 /* ─── Filter definitions ─── */
 
-type FireType = 0 | 1 | 2 | 3;
-type Intensity = "high" | "moderate" | "low";
 
 /**
  * Tres niveles de intensidad coordinados con el hero de portada:
  *  - high     → FRP ≥ 20 MW (Alta + Muy alta del popup)
  *  - moderate → 5 ≤ FRP < 20 MW (Moderada)
  *  - low      → FRP < 5 MW (Baja + Muy baja)
- * Solo aplica a wildfires (type 0/1) — flaring industrial no tiene gradiente útil.
+ * Aplica a bosque y campo por igual. Las fuentes fijas (antorchas, industrias)
+ * no se dibujan: ver `lib/reported-fires.ts`.
  */
 const INTENSITY_FILTERS: {
   key: Intensity;
@@ -72,7 +78,7 @@ const INTENSITY_LEGEND: {
     color: "#facc15",
     label: "Muy baja",
     range: "< 1 MW",
-    meaning: "quema menor o actividad industrial (flaring)",
+    meaning: "quema menor o foco incipiente",
   },
   {
     color: "#f97316",
@@ -90,7 +96,7 @@ const INTENSITY_LEGEND: {
     color: "#dc2626",
     label: "Alta",
     range: "20–50 MW",
-    meaning: "incendio forestal significativo",
+    meaning: "incendio significativo",
   },
   {
     color: "#991b1b",
@@ -100,11 +106,6 @@ const INTENSITY_LEGEND: {
   },
 ];
 
-function frpBucket(frp: number): Intensity {
-  if (frp >= 20) return "high";
-  if (frp >= 5) return "moderate";
-  return "low";
-}
 
 /* ─── Helpers ─── */
 
@@ -119,7 +120,7 @@ function frpLevel(frp: number): {
       label: "Muy baja",
       color: "#facc15",
       bars: 1,
-      description: "Quema menor o actividad industrial (flaring)",
+      description: "Quema menor o foco incipiente",
     };
   if (frp < 5)
     return {
@@ -140,7 +141,7 @@ function frpLevel(frp: number): {
       label: "Alta",
       color: "#dc2626",
       bars: 4,
-      description: "Incendio forestal significativo",
+      description: "Incendio significativo",
     };
   return {
     label: "Muy alta",
@@ -156,23 +157,16 @@ function confidenceLabel(c: string): string {
   return "Baja";
 }
 
-function typeLabel(type?: number): { label: string; color: string } {
-  switch (type) {
-    case 1:
-      return { label: "Volcan", color: "#ef4444" };
-    case 2:
-      return { label: "Flaring industrial", color: "#8a8a7e" };
-    case 3:
-      return { label: "Offshore", color: "#8a8a7e" };
-    default:
-      return { label: "Incendio", color: "#e8622c" };
-  }
+function kindLabel(kind: FireKind): { label: string; color: string } {
+  return kind === "bosque"
+    ? { label: "Incendio · zona de bosque", color: "#e8622c" }
+    : { label: "Incendio · campo o pastizal", color: "#b7791f" };
 }
 
-function buildPopup(f: FirePoint): string {
+function buildPopup(f: FirePoint, kind: FireKind): string {
   const level = frpLevel(f.frp);
   const conf = confidenceLabel(f.confidence);
-  const tl = typeLabel(f.type);
+  const tl = kindLabel(kind);
   const gMapsUrl = `https://www.google.com/maps?q=${f.latitude},${f.longitude}&z=12`;
 
   const bars = Array.from({ length: 5 }, (_, i) =>
@@ -211,34 +205,31 @@ function buildPopup(f: FirePoint): string {
   </div>`;
 }
 
-function createFireMarker(f: FirePoint): L.Layer {
-  const isWild = (f.type ?? 0) === 0 || f.type === 1;
+/**
+ * Bosque = punto relleno (como siempre). Campo = anillo del mismo color: se
+ * distinguen de un vistazo sin perder la escala de potencia. Las fuentes fijas
+ * no llegan acá.
+ */
+function createFireMarker(f: FirePoint, kind: Exclude<FireKind, "excluido">): L.Layer {
   const level = frpLevel(f.frp);
-
-  if (isWild) {
-    const size = Math.max(10, Math.min(22, f.frp / 2));
-    const icon = L.divIcon({
-      className: "",
-      iconSize: [size * 2, size * 2],
-      iconAnchor: [size, size],
-      html: `<div style="position:relative;width:${size * 2}px;height:${size * 2}px;display:flex;align-items:center;justify-content:center">
-        <span class="thermal-pulse" style="position:absolute;inset:0;border-radius:50%;background:${level.color};opacity:0.25"></span>
-        <span style="width:${size}px;height:${size}px;border-radius:50%;background:${level.color};opacity:0.9"></span>
-      </div>`,
-    });
-    return L.marker([f.latitude, f.longitude], { icon }).bindPopup(
-      buildPopup(f),
-      { maxWidth: 280, className: "fire-popup" }
-    );
-  }
-
-  return L.circleMarker([f.latitude, f.longitude], {
-    radius: Math.max(3, Math.min(6, f.frp / 4)),
-    color: "#8a8a7e",
-    fillColor: "#8a8a7e",
-    fillOpacity: 0.4,
-    weight: 1,
-  }).bindPopup(buildPopup(f), { maxWidth: 280, className: "fire-popup" });
+  const size = Math.max(10, Math.min(22, f.frp / 2));
+  const core =
+    kind === "bosque"
+      ? `<span style="width:${size}px;height:${size}px;border-radius:50%;background:${level.color};opacity:0.9"></span>`
+      : `<span style="width:${size}px;height:${size}px;border-radius:50%;border:3px solid ${level.color};box-sizing:border-box;background:${level.color}22"></span>`;
+  const icon = L.divIcon({
+    className: "",
+    iconSize: [size * 2, size * 2],
+    iconAnchor: [size, size],
+    html: `<div style="position:relative;width:${size * 2}px;height:${size * 2}px;display:flex;align-items:center;justify-content:center">
+      <span class="thermal-pulse" style="position:absolute;inset:0;border-radius:50%;background:${level.color};opacity:0.25"></span>
+      ${core}
+    </div>`,
+  });
+  return L.marker([f.latitude, f.longitude], { icon }).bindPopup(
+    buildPopup(f, kind),
+    { maxWidth: 280, className: "fire-popup" }
+  );
 }
 
 /* ─── Component ─── */
@@ -252,9 +243,8 @@ function createFireMarker(f: FirePoint): L.Layer {
  * pivote WHI-757 quedó solo aplicado al hero counter — el mini-mapa seguía
  * mostrando todos los focos.
  *
- * Mantiene paridad con /mapa: por default muestra solo focos forestales,
- * con toggle "+ no forestal" para sumar quemas agrícolas/flaring (gris
- * translúcido).
+ * Mantiene paridad con /mapa: muestra bosque (punto) y campo (anillo), cada
+ * uno con su botón; las fuentes fijas no se dibujan (lib/reported-fires).
  */
 export function FireMap({
   tles = [],
@@ -282,31 +272,17 @@ export function FireMap({
   const [activeIntensities, setActiveIntensities] = useState<Set<Intensity>>(
     new Set(["high", "moderate", "low"])
   );
-  // WHI-757: paridad con /mapa — por default solo forestal. El usuario puede
-  // sumar no-forestal con un toggle si quiere ver actividad agrícola/flaring.
-  const [showNonForest, setShowNonForest] = useState(false);
+  // Desde el 1/10 se ven bosque y campo por default (ver lib/reported-fires).
+  // Cada clase se puede ocultar con su botón.
+  const [showBosque, setShowBosque] = useState(true);
+  const [showCampo, setShowCampo] = useState(true);
 
-  // Conteos derivados del snapshot SSR. Memoized para no recalcular en cada
-  // render de filtros.
+  // Conteos derivados del snapshot SSR, con la MISMA función que usa /mapa.
   const counts = useMemo(() => {
-    const byIntensity: Record<Intensity, number> = { high: 0, moderate: 0, low: 0 };
-    let nonForestWild = 0;
-    let industrial = 0;
-    for (const f of fires) {
-      const t = (f.type ?? 0) as FireType;
-      const isWild = t === 0 || t === 1;
-      if (!isWild) {
-        industrial++;
-        continue;
-      }
-      if (!f.forestZone) {
-        nonForestWild++;
-        continue;
-      }
-      byIntensity[frpBucket(f.frp)]++;
-    }
-    const forestTotal = byIntensity.high + byIntensity.moderate + byIntensity.low;
-    return { byIntensity, forestTotal, nonForestWild, industrial };
+    // Todos los números de los botones son INCENDIOS y salen de la misma
+    // función que el número grande de la home: suman lo mismo que él.
+    const ev = countReportedFireEvents(fires);
+    return { byIntensity: ev.byIntensity, bosque: ev.bosque, campo: ev.campo, total: ev.total };
   }, [fires]);
 
   // Re-renderiza markers cada vez que cambian los filtros activos o
@@ -317,19 +293,14 @@ export function FireMap({
     if (!layer) return;
     layer.clearLayers();
     for (const f of fires) {
-      const t = (f.type ?? 0) as FireType;
-      const isWild = t === 0 || t === 1;
-      const inForest = Boolean(f.forestZone);
-      // WHI-757 paridad con hero counter:
-      //  - wildfire forestal       → siempre se ve (sujeto a chip intensidad)
-      //  - wildfire no forestal    → solo si toggle "+ no forestal" está on
-      //  - industrial (flaring/offshore/volcano) → solo si toggle on
-      if (!isWild && !showNonForest) continue;
-      if (isWild && !inForest && !showNonForest) continue;
-      if (isWild && inForest && !activeIntensities.has(frpBucket(f.frp))) continue;
-      createFireMarker(f).addTo(layer);
+      const kind = fireKind(f);
+      if (kind === "excluido") continue;
+      if (kind === "bosque" && !showBosque) continue;
+      if (kind === "campo" && !showCampo) continue;
+      if (!activeIntensities.has(frpBucket(f.frp))) continue;
+      createFireMarker(f, kind).addTo(layer);
     }
-  }, [fires, activeIntensities, showNonForest]);
+  }, [fires, activeIntensities, showBosque, showCampo]);
 
   const toggleIntensity = useCallback((key: Intensity) => {
     setActiveIntensities((prev) => {
@@ -422,19 +393,16 @@ export function FireMap({
     renderMarkers();
   }, [renderMarkers]);
 
-  const nonForestTotal = counts.nonForestWild + counts.industrial;
-
   return (
     <div className="relative w-full h-full">
       <div ref={mapRef} className="w-full h-full" />
 
-      {/* Filtros: paridad con /mapa — intensidad + toggle no-forestal. El total
-          forestal del hero matchea exactamente la suma de chips activos. */}
-      {counts.forestTotal > 0 && (
+      {/* Filtros: paridad con /mapa — intensidad + bosque/campo. */}
+      {counts.total > 0 && (
         <div className="absolute bottom-4 left-4 right-4 flex flex-col gap-2 z-[1000]">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-[9px] text-muted tracking-[0.15em] uppercase pr-1 select-none">
-              Forestal
+              Intensidad
             </span>
             {INTENSITY_FILTERS.map((f) => {
               const count = counts.byIntensity[f.key] || 0;
@@ -465,23 +433,34 @@ export function FireMap({
                 </button>
               );
             })}
-            {nonForestTotal > 0 && (
-              <button
-                onClick={() => setShowNonForest((v) => !v)}
-                title="Quemas agrícolas, flaring y otra actividad fuera de zona forestal"
-                className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-mono transition-all duration-200 border select-none cursor-pointer"
-                style={{
-                  background: showNonForest ? "#8a8a7e22" : "#ffffffcc",
-                  borderColor: showNonForest ? "#8a8a7e80" : "#e2ddd0cc",
-                  color: showNonForest ? "#1b1a15" : "#76705f",
-                  opacity: showNonForest ? 1 : 0.75,
-                  backdropFilter: "blur(4px)",
-                  WebkitBackdropFilter: "blur(4px)",
-                }}
-              >
-                <span>+ No forestal</span>
-                <span className="font-semibold tabular-nums">{nonForestTotal}</span>
-              </button>
+            {(
+              [
+                { key: "bosque", label: "● Bosque", count: counts.bosque, on: showBosque, set: setShowBosque,
+                  title: "Incendios en zonas de bosque" },
+                { key: "campo", label: "○ Campo", count: counts.campo, on: showCampo, set: setShowCampo,
+                  title: "Incendios de campo, pastizal, arbustal y quemas, fuera de las zonas de bosque" },
+              ] as const
+            ).map((k) =>
+              k.count === 0 ? null : (
+                <button
+                  key={k.key}
+                  onClick={() => k.set((v) => !v)}
+                  title={k.title}
+                  aria-pressed={k.on}
+                  className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-mono transition-all duration-200 border select-none cursor-pointer"
+                  style={{
+                    background: k.on ? "#8a8a7e22" : "#ffffffcc",
+                    borderColor: k.on ? "#8a8a7e80" : "#e2ddd0cc",
+                    color: k.on ? "#1b1a15" : "#76705f",
+                    opacity: k.on ? 1 : 0.75,
+                    backdropFilter: "blur(4px)",
+                    WebkitBackdropFilter: "blur(4px)",
+                  }}
+                >
+                  <span>{k.label}</span>
+                  <span className="font-semibold tabular-nums">{k.count}</span>
+                </button>
+              )
             )}
           </div>
           {/* Leyenda: una fila por color real de marker (5 bandas FRP). */}
