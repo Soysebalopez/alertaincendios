@@ -52,6 +52,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "monthly",
       priority: 0.7,
     },
+    // WHI-929 — textos legales.
+    ...["/aviso", "/terminos", "/privacidad"].map((path) => ({
+      url: `${baseUrl}${path}`,
+      lastModified: new Date("2026-10-02"),
+      changeFrequency: "yearly" as const,
+      priority: 0.3,
+    })),
   ];
 
   // WHI-907 — Bahía Blanca has its own page; its generic city URL redirects

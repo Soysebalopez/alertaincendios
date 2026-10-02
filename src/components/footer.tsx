@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BrandMark } from "./brand-mark";
+import { LEGAL_LINKS } from "./legal-page";
 
 const COLUMNS = [
   {
@@ -88,6 +89,14 @@ export function Footer() {
 
         <div className="max-w-[1400px] mx-auto mt-8 pt-6 border-t border-border flex flex-wrap justify-between gap-3 font-mono text-[10px] text-muted">
           <span>© {new Date().getFullYear()} Growing Bay · Código abierto</span>
+          {/* WHI-929 — los textos legales, a la vista en todas las páginas. */}
+          <nav aria-label="Textos legales" className="flex flex-wrap gap-x-4 gap-y-1">
+            {LEGAL_LINKS.map((l) => (
+              <Link key={l.href} href={l.href} className="hover:text-foreground transition-colors">
+                {l.label}
+              </Link>
+            ))}
+          </nav>
           <span>Hecho con ❤ en Argentina · Datos abiertos de NASA, NOAA, SMN, Copernicus y Open-Meteo</span>
         </div>
       </div>
