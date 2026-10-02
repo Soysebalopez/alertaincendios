@@ -83,16 +83,16 @@ async function getFireCounts(): Promise<FireCounts> {
   }
 }
 
-// WHI-907: the SMN licence (CC BY 2.5 AR) asks to be credited, and Xweather
-// lightning is shown in alerts. Sentinel-5P is a Copernicus mission and
-// Telegram is not a data source, so neither gets its own card.
+// WHI-907: the SMN licence (CC BY 2.5 AR) asks to be credited. Sentinel-5P is a
+// Copernicus mission and Telegram is not a data source, so neither gets its own
+// card. WHI-929: Vaisala Xweather left the free service (2026-10-02); lightning
+// comes only from GOES-19's GLM, already credited in the NOAA card.
 const DATA_SOURCES = [
   { name: "NASA FIRMS", org: "NASA", color: "#4b8bd4", icon: "nasa" },
   { name: "NOAA GOES-19", org: "NOAA · focos y rayos", color: "#3a9bdc", icon: "noaa" },
   { name: "SMN", org: "Servicio Meteorológico Nacional", color: "#5fa8a0", icon: "smn" },
   { name: "Copernicus", org: "ESA · Sentinel-5P", color: "#7fb3c7", icon: "esa" },
   { name: "Open-Meteo", org: "Open-Source", color: "#ff6b35", icon: "openmeteo" },
-  { name: "Vaisala Xweather", org: "Red de rayos", color: "#d4a72c", icon: "xweather" },
 ] as const;
 
 const STEPS = [

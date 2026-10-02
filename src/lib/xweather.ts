@@ -1,4 +1,10 @@
 /**
+ * 🔴 NOT CONNECTED since 2026-10-02 (WHI-929). Nothing imports this outside its
+ * own test. Xweather left the free service: its free plan forbids commercial
+ * use and showing its data to third parties, and it has no spending cap. Kept
+ * for when an agreement with a municipality pays for a plan that allows it —
+ * reconnect only then, with the scope confirmed in writing by Xweather.
+ *
  * Optional Xweather (Vaisala) lightning confirmation (WHI-907 part 3).
  *
  * GOES-19 GLM says a flash happened within ~8–14 km, but not whether it hit
