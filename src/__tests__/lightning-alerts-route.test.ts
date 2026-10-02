@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -145,65 +143,30 @@ describe("GET /api/lightning-alerts — real GLM flashes", () => {
 });
 
 /**
- * WHI-907 part 3 — when an alert is already going out from real GLM flashes,
- * Xweather (Vaisala) can say whether lightning actually hit the ground near
- * the subscriber in the last 5 minutes. Optional: without credentials, over
- * the month's budget, or on any failure, the alert goes out exactly as before.
+ * WHI-929 — Xweather (Vaisala) left the free service on 2026-10-02: its free
+ * plan forbids commercial use and showing its data to third parties, and has no
+ * spending cap. Even with credentials still loaded in the environment, the
+ * route must never call it nor credit it. Broken on purpose before trusting it:
+ * with the old route this test fails on both assertions.
  */
-describe("GET /api/lightning-alerts — Xweather cloud-to-ground confirmation", () => {
-  const fixture = JSON.parse(readFileSync(path.join(__dirname, "fixtures", "xweather-lightning-closest.json"), "utf8"));
-  const monthKey = () => {
-    const now = new Date();
-    return `xweather_queries_${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
-  };
-  const xweather = vi.fn();
+describe("GET /api/lightning-alerts — Xweather is not in the free service", () => {
+  const network = vi.fn();
 
   beforeEach(() => {
     state.flashes = { data: [nearFlash()], error: null };
     fetchDryConditions.mockResolvedValue({ humidity: 35, recentRainMm: 0 });
-    xweather.mockReset().mockImplementation(async () => new Response(JSON.stringify(fixture), { status: 200 }));
-    vi.stubGlobal("fetch", xweather);
+    network.mockReset().mockImplementation(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", network);
   });
 
-  it("adds the confirmed cloud-to-ground strike with attribution, and counts the query", async () => {
+  it("never asks Xweather nor credits it, even with credentials loaded", async () => {
     process.env.XWEATHER_API_KEY = "someid_somesecret";
 
     await GET(request());
 
+    expect(network).not.toHaveBeenCalled();
     const msg = String(sendMessage.mock.calls[0][1]);
-    expect(msg).toMatch(/Rayo nube-tierra confirmado a ~9 km/);
-    expect(msg).toContain("powered by Vaisala Xweather");
-    expect(xweather).toHaveBeenCalledTimes(1);
-    expect(state.upserts).toContainEqual({
-      table: "_clara_config",
-      row: expect.objectContaining({ key: monthKey(), value: "1" }),
-    });
-  });
-
-  it("without credentials it never asks Xweather and the alert stays as it was", async () => {
-    await GET(request());
-
-    expect(xweather).not.toHaveBeenCalled();
-    expect(String(sendMessage.mock.calls[0][1])).not.toMatch(/nube-tierra/);
-  });
-
-  it("once the month's budget is used it stops asking, and still alerts", async () => {
-    process.env.XWEATHER_API_KEY = "someid_somesecret";
-    state.config[monthKey()] = "1350";
-
-    await GET(request());
-
-    expect(xweather).not.toHaveBeenCalled();
-    expect(sendMessage).toHaveBeenCalledTimes(1);
-  });
-
-  it("an Xweather failure never blocks the alert", async () => {
-    process.env.XWEATHER_API_KEY = "someid_somesecret";
-    xweather.mockRejectedValue(new Error("network down"));
-
-    await GET(request());
-
-    expect(sendMessage).toHaveBeenCalledTimes(1);
-    expect(String(sendMessage.mock.calls[0][1])).not.toMatch(/nube-tierra/);
+    expect(msg).not.toMatch(/xweather|vaisala|nube-tierra/i);
+    expect(msg).toContain("NOAA GOES-19 (GLM)");
   });
 });

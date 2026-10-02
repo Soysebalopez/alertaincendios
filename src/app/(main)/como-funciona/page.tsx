@@ -94,7 +94,7 @@ const FAQS: {
     icon: <Bell size={18} weight="duotone" />,
     q: "¿Cuándo me llega una alerta?",
     plain:
-      "Sólo cuando hay algo sobre lo que se pueda actuar: si se detecta un foco a menos de 100 km de tu ubicación, si el viento puede traer humo hacia tu casa (con el tiempo estimado de llegada), o si hay tormenta eléctrica sin lluvia cerca, porque los rayos sobre campo seco son la principal causa natural de incendios en Argentina. Si no pasa nada, no llega ningún mensaje: en otoño e invierno podés no recibir nada por semanas.",
+      "Sólo cuando hay algo sobre lo que se pueda actuar: si se detecta un foco a menos de 100 km de tu ubicación, si el viento puede traer humo hacia tu casa (con el tiempo estimado de llegada), o si hay tormenta eléctrica sin lluvia cerca, porque los rayos sobre campo seco son la principal causa natural de incendios en Argentina. Los rayos los ve el satélite GOES-19 desde el espacio: detecta la descarga eléctrica, pero no distingue si el rayo tocó el suelo o quedó dentro de la nube, así que el aviso significa que hubo actividad eléctrica cerca, no que cayó un rayo en un lugar exacto. Si no pasa nada, no llega ningún mensaje: en otoño e invierno podés no recibir nada por semanas.",
     body: (
       <>
         <p>Solo cuando hay algo que vos podés actuar:</p>
@@ -110,7 +110,11 @@ const FAQS: {
           <li>
             Si hay <strong>tormenta eléctrica sin lluvia</strong> cerca tuyo
             (los rayos sobre campo seco son la principal causa natural de
-            incendios en Argentina).
+            incendios en Argentina). Los rayos los ve el satélite GOES-19
+            desde el espacio: detecta la descarga eléctrica, pero{" "}
+            <strong>no distingue si el rayo tocó el suelo</strong> o quedó
+            dentro de la nube. El aviso significa que hubo actividad eléctrica
+            cerca, no que cayó un rayo en un lugar exacto.
           </li>
         </ul>
         <p>

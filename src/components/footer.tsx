@@ -27,7 +27,6 @@ const COLUMNS = [
       { label: "SMN", href: "https://www.smn.gob.ar/", external: true },
       { label: "Copernicus", href: "https://atmosphere.copernicus.eu/", external: true },
       { label: "Open-Meteo", href: "https://open-meteo.com/", external: true },
-      { label: "Vaisala Xweather", href: "https://www.xweather.com/", external: true },
     ],
   },
 ];
@@ -89,7 +88,7 @@ export function Footer() {
 
         <div className="max-w-[1400px] mx-auto mt-8 pt-6 border-t border-border flex flex-wrap justify-between gap-3 font-mono text-[10px] text-muted">
           <span>© {new Date().getFullYear()} Growing Bay · Código abierto</span>
-          <span>Hecho con ❤ en Argentina · Datos de dominio público</span>
+          <span>Hecho con ❤ en Argentina · Datos abiertos de NASA, NOAA, SMN, Copernicus y Open-Meteo</span>
         </div>
       </div>
     </footer>

@@ -8,6 +8,12 @@ import { describe, expect, it } from "vitest";
  * Vaisala Xweather lightning were missing (the SMN licence asks to be credited),
  * Telegram is not a data source, Sentinel-5P repeated Copernicus, and the
  * roadmap still promised three things that now exist.
+ *
+ * WHI-929 (2026-10-02): Vaisala Xweather left the free service, so it must not
+ * be credited anywhere — crediting a source we no longer use is as wrong as not
+ * crediting one we do. And the footer said "Datos de dominio público", which was
+ * never true for every source (SMN is CC BY 2.5 AR, Open-Meteo CC BY 4.0,
+ * Copernicus has its own licence).
  */
 const root = path.join(__dirname, "..");
 const read = (file: string) => readFileSync(path.join(root, file), "utf8");
@@ -24,9 +30,9 @@ describe("homepage data sources", () => {
   const home = read("app/(main)/page.tsx");
   const sources = between(home, "const DATA_SOURCES = [", "] as const;");
 
-  it("credits the SMN and Vaisala Xweather", () => {
+  it("credits the SMN and no longer credits Xweather", () => {
     expect(sources).toContain('name: "SMN"');
-    expect(sources).toContain('name: "Vaisala Xweather"');
+    expect(sources).not.toMatch(/xweather|vaisala/i);
   });
 
   it("drops what is not a separate data source", () => {
@@ -43,9 +49,13 @@ describe("homepage data sources", () => {
 });
 
 describe("footer data sources", () => {
-  it("lists the same new sources", () => {
+  it("lists the same sources, without Xweather", () => {
     const datos = between(read("components/footer.tsx"), 'title: "Datos"', "],");
     expect(datos).toContain('label: "SMN"');
-    expect(datos).toContain('label: "Vaisala Xweather"');
+    expect(datos).not.toMatch(/xweather|vaisala/i);
+  });
+
+  it("does not claim every source is public domain", () => {
+    expect(read("components/footer.tsx")).not.toMatch(/dominio p[uú]blico/i);
   });
 });
