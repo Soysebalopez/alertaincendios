@@ -12,6 +12,7 @@ import { sendMessage, escapeHtml } from "@/lib/telegram";
 import { isCronAuthorized } from "@/lib/cron-auth";
 import { fetchAllRows } from "@/lib/paginate";
 import { log } from "@/lib/logger";
+import { markBlockedIfNeeded } from "@/lib/subscriber-blocks";
 
 /**
  * GET /api/lightning-alerts
@@ -56,7 +57,7 @@ export async function GET(request: Request) {
     db,
     "subscribers",
     "chat_id, lat, lng, city_name, lightning_enabled",
-    (q) => q.order("chat_id")
+    (q) => q.is("blocked_at", null).order("chat_id")
   );
 
   if (!subscribers || subscribers.length === 0) {
@@ -112,13 +113,18 @@ export async function GET(request: Request) {
     // closing it needs a UNIQUE constraint — see audit doc.)
     const sendResult = await sendMessage(sub.chat_id, msg);
     if (!sendResult.ok) {
-      log.error({
-        event: "lightning_alerts.send_failed",
-        chatId: sub.chat_id,
-        status: sendResult.status,
-        blocked: sendResult.blocked,
-        err: sendResult.description,
-      });
+      if (await markBlockedIfNeeded(db, sub.chat_id, sendResult)) {
+        // El usuario bloqueó el bot: esperado, no es un bug. Se marca inactivo
+        // (el próximo ciclo lo saltea) y se loguea como warn (no va a Sentry).
+        log.warn({ event: "lightning_alerts.subscriber_blocked", chatId: sub.chat_id });
+      } else {
+        log.error({
+          event: "lightning_alerts.send_failed",
+          chatId: sub.chat_id,
+          status: sendResult.status,
+          err: sendResult.description,
+        });
+      }
       continue;
     }
 

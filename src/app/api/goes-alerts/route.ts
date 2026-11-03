@@ -8,6 +8,7 @@ import { isCronAuthorized } from "@/lib/cron-auth";
 import { pingHealthcheck } from "@/lib/healthcheck";
 import { buildFeedbackKeyboard } from "@/lib/feedback-keyboard";
 import { fetchAllRows } from "@/lib/paginate";
+import { markBlockedIfNeeded } from "@/lib/subscriber-blocks";
 import { log } from "@/lib/logger";
 
 /**
@@ -86,7 +87,7 @@ export async function GET(request: Request) {
       db,
       "subscribers",
       "chat_id, lat, lng, city_name",
-      (q) => q.order("chat_id")
+      (q) => q.is("blocked_at", null).order("chat_id")
     );
 
     if (!subscribers || subscribers.length === 0) {
@@ -160,16 +161,18 @@ export async function GET(request: Request) {
           reply_markup: buildFeedbackKeyboard("g:" + det.id),
         });
         if (!sendResult.ok) {
-          log.error({
-            event: "goes_alerts.send_failed",
-            goesId: det.id,
-            chatId: sub.chat_id,
-            status: sendResult.status,
-            blocked: sendResult.blocked,
-            err: sendResult.description,
-          });
-          if (sendResult.blocked) {
+          if (await markBlockedIfNeeded(db, sub.chat_id, sendResult)) {
+            // El usuario bloqueó el bot: esperado, no es un bug. Se marca inactivo
+            // (el próximo ciclo lo saltea) y se loguea como warn (no va a Sentry).
             log.warn({ event: "goes_alerts.subscriber_blocked", chatId: sub.chat_id });
+          } else {
+            log.error({
+              event: "goes_alerts.send_failed",
+              goesId: det.id,
+              chatId: sub.chat_id,
+              status: sendResult.status,
+              err: sendResult.description,
+            });
           }
           continue;
         }

@@ -20,7 +20,8 @@ const state: {
   config: Record<string, string>;
   inserts: Array<{ table: string; row: unknown }>;
   upserts: Array<{ table: string; row: unknown }>;
-} = { flashes: { data: [], error: null }, heartbeat: null, config: {}, inserts: [], upserts: [] };
+  updates: Array<{ table: string; row: unknown }>;
+} = { flashes: { data: [], error: null }, heartbeat: null, config: {}, inserts: [], upserts: [], updates: [] };
 
 vi.mock("@/lib/telegram", () => ({
   sendMessage: (...args: unknown[]) => sendMessage(...args),
@@ -35,7 +36,7 @@ vi.mock("@/lib/paginate", () => ({ fetchAllRows: async () => [SUB] }));
 function query(table: string) {
   const q: Record<string, unknown> = {};
   let configKey: string | null = null;
-  for (const method of ["select", "gte", "lte", "order", "limit"]) q[method] = () => q;
+  for (const method of ["select", "gte", "lte", "order", "limit", "is"]) q[method] = () => q;
   q.eq = (column: string, value: unknown) => {
     if (column === "key") configKey = String(value);
     return q;
@@ -52,6 +53,10 @@ function query(table: string) {
   q.upsert = async (row: unknown) => {
     state.upserts.push({ table, row });
     return { error: null };
+  };
+  q.update = (row: unknown) => {
+    state.updates.push({ table, row });
+    return q;
   };
   q.then = (resolve: (value: QueryResult) => void) =>
     resolve(table === "lightning_flashes" ? state.flashes : { data: [], error: null });
@@ -75,6 +80,7 @@ beforeEach(() => {
   state.config = {};
   state.inserts = [];
   state.upserts = [];
+  state.updates = [];
   delete process.env.XWEATHER_API_KEY;
   delete process.env.XWEATHER_CLIENT_ID;
   delete process.env.XWEATHER_CLIENT_SECRET;
@@ -93,6 +99,29 @@ describe("GET /api/lightning-alerts — real GLM flashes", () => {
     expect(String(sendMessage.mock.calls[0][1])).toMatch(/Rayo detectado a ~10 km/);
     expect(fetchLightningRisk).not.toHaveBeenCalled();
     expect(state.inserts.map((insert) => insert.table)).toEqual(["lightning_alerted"]);
+  });
+
+  it("marca al suscriptor bloqueado y no lo cuenta como enviado cuando bloqueó el bot", async () => {
+    state.flashes = { data: [nearFlash()], error: null };
+    fetchDryConditions.mockResolvedValue({ humidity: 35, recentRainMm: 0 });
+    sendMessage.mockResolvedValue({
+      ok: false,
+      status: 403,
+      blocked: true,
+      description: "Forbidden: bot was blocked by the user",
+    });
+
+    await GET(request());
+
+    // Se marcó como bloqueado en subscribers (los crons lo saltean después)...
+    expect(state.updates).toContainEqual(
+      expect.objectContaining({
+        table: "subscribers",
+        row: expect.objectContaining({ blocked_at: expect.any(String) }),
+      })
+    );
+    // ...y NO se registró el dedup: no se contó como enviado.
+    expect(state.inserts.map((insert) => insert.table)).not.toContain("lightning_alerted");
   });
 
   it("does not alert when the only flashes are far away", async () => {
