@@ -19,6 +19,7 @@ interface QueryStub {
   select(): QueryStub;
   eq(col: string, val: unknown): QueryStub;
   in(col: string, vals: unknown[]): QueryStub;
+  is(col: string, val: unknown): QueryStub;
   order(): QueryStub;
   limit(): QueryStub;
   range(): QueryStub;
@@ -57,6 +58,7 @@ function buildQuery(table: string): QueryStub {
     select() { return q; },
     eq(col: string, val: unknown) { q._filters[col] = val; return q; },
     in(col: string, vals: unknown[]) { q._inFilters[col] = vals; return q; },
+    is() { return q; },
     order() { return q; },
     limit() { return q; },
     range() { return q; }, // paginated reads (fetchAllRows) — no-op in the stub

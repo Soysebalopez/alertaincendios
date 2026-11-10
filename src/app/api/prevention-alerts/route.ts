@@ -7,6 +7,7 @@ import { evaluatePreventionTrigger, type ForecastDay } from "@/lib/prevention-tr
 import { formatPreventionAlert, formatDailyBriefing } from "@/lib/prevention-messages";
 import { PREVENTION_PROVINCE_IDS, type DangerClass } from "@/lib/fire-danger";
 import { fetchAllRows } from "@/lib/paginate";
+import { markBlockedIfNeeded } from "@/lib/subscriber-blocks";
 import { artToday } from "@/lib/time";
 import { log } from "@/lib/logger";
 
@@ -63,7 +64,7 @@ export async function GET(request: Request) {
       db,
       "subscribers",
       "chat_id, lat, lng, prevention_mode",
-      (q) => q.in("prevention_mode", ["alerts", "daily"]).order("chat_id")
+      (q) => q.is("blocked_at", null).in("prevention_mode", ["alerts", "daily"]).order("chat_id")
     );
 
     let alerts = 0;
@@ -102,13 +103,17 @@ export async function GET(request: Request) {
           const sendResult = await sendMessage(sub.chat_id, message);
           if (!sendResult.ok) {
             // Don't mark as alerted — let the next run retry this hazard alert.
-            log.error({
-              event: "prevention_alerts.alert_send_failed",
-              chatId: sub.chat_id,
-              status: sendResult.status,
-              blocked: sendResult.blocked,
-              err: sendResult.description,
-            });
+            if (await markBlockedIfNeeded(db, sub.chat_id, sendResult)) {
+              // Bloqueó el bot: esperado. Se marca inactivo y se loguea warn (no Sentry).
+              log.warn({ event: "prevention_alerts.subscriber_blocked", chatId: sub.chat_id });
+            } else {
+              log.error({
+                event: "prevention_alerts.alert_send_failed",
+                chatId: sub.chat_id,
+                status: sendResult.status,
+                err: sendResult.description,
+              });
+            }
             continue;
           }
           // mark AFTER a successful send (prioritise not-losing a hazard alert)
@@ -147,13 +152,16 @@ export async function GET(request: Request) {
               .delete()
               .eq("chat_id", sub.chat_id)
               .eq("sent_date", today);
-            log.error({
-              event: "prevention_alerts.briefing_send_failed",
-              chatId: sub.chat_id,
-              status: sendResult.status,
-              blocked: sendResult.blocked,
-              err: sendResult.description,
-            });
+            if (await markBlockedIfNeeded(db, sub.chat_id, sendResult)) {
+              log.warn({ event: "prevention_alerts.subscriber_blocked", chatId: sub.chat_id });
+            } else {
+              log.error({
+                event: "prevention_alerts.briefing_send_failed",
+                chatId: sub.chat_id,
+                status: sendResult.status,
+                err: sendResult.description,
+              });
+            }
             continue;
           }
           briefings++;

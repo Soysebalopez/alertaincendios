@@ -11,6 +11,7 @@ import { buildFeedbackKeyboard } from "@/lib/feedback-keyboard";
 import { forestZoneName } from "@/lib/forest-zones";
 import { isCronAuthorized } from "@/lib/cron-auth";
 import { fetchAllRows } from "@/lib/paginate";
+import { markBlockedIfNeeded } from "@/lib/subscriber-blocks";
 import { selectAlertPairs } from "@/lib/alert-pairs";
 import { log } from "@/lib/logger";
 import { satelliteLabel } from "@/lib/viirs-sources";
@@ -63,7 +64,7 @@ export async function GET(request: Request) {
       db,
       "subscribers",
       "chat_id, lat, lng, city_name, campo_enabled",
-      (q) => q.order("chat_id")
+      (q) => q.is("blocked_at", null).order("chat_id")
     );
 
     if (!subscribers || subscribers.length === 0) {
@@ -200,18 +201,18 @@ export async function GET(request: Request) {
       if (!sendResult.ok) {
         // Telegram rejected the send (403 block, 400 bad HTML, 429, timeout).
         // Do NOT count it as sent. The dedup row stays (documented tradeoff).
-        log.error({
-          event: "alerts.send_failed",
-          fireKey,
-          chatId: sub.chat_id,
-          status: sendResult.status,
-          blocked: sendResult.blocked,
-          err: sendResult.description,
-        });
-        if (sendResult.blocked) {
-          // User blocked/deactivated the bot — surface for cleanup. (Removal
-          // needs a soft-delete column + explicit OK, so we only log here.)
+        if (await markBlockedIfNeeded(db, sub.chat_id, sendResult)) {
+          // El usuario bloqueó el bot: esperado, no es un bug. Se marca inactivo
+          // (el próximo ciclo lo saltea) y se loguea como warn (no va a Sentry).
           log.warn({ event: "alerts.subscriber_blocked", chatId: sub.chat_id });
+        } else {
+          log.error({
+            event: "alerts.send_failed",
+            fireKey,
+            chatId: sub.chat_id,
+            status: sendResult.status,
+            err: sendResult.description,
+          });
         }
         continue;
       }
