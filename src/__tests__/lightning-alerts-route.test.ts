@@ -101,6 +101,19 @@ describe("GET /api/lightning-alerts — real GLM flashes", () => {
     expect(state.inserts.map((insert) => insert.table)).toEqual(["lightning_alerted"]);
   });
 
+  it("incluye la dirección hacia el rayo y un enlace al punto en el mapa", async () => {
+    // Rayo al noroeste del suscriptor: más al norte y más al oeste.
+    const nw = { flash_at: minutesAgo(4), lat: SUB.lat + 0.06, lng: SUB.lng - 0.08 };
+    state.flashes = { data: [nw], error: null };
+    fetchDryConditions.mockResolvedValue({ humidity: 35, recentRainMm: 0 });
+
+    await GET(request());
+
+    const msg = String(sendMessage.mock.calls[0][1]);
+    expect(msg).toContain("al noroeste");
+    expect(msg).toContain(`maps?q=${nw.lat},${nw.lng}`);
+  });
+
   it("marca al suscriptor bloqueado y no lo cuenta como enviado cuando bloqueó el bot", async () => {
     state.flashes = { data: [nearFlash()], error: null };
     fetchDryConditions.mockResolvedValue({ humidity: 35, recentRainMm: 0 });
