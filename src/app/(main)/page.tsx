@@ -307,9 +307,12 @@ export default async function Home() {
                         letterSpacing: "-0.02em",
                       }}
                     >
+                      {/* «detectados», no «activos»: el satélite ve el foco en
+                          la ventana de 24 h; no afirma que siga ardiendo ahora
+                          (aclaración pedida por Seba, 12/11). */}
                       {events.total === 1
-                        ? "foco activo en las últimas 24hs"
-                        : "focos activos en las últimas 24hs"}
+                        ? "foco detectado en las últimas 24 h"
+                        : "focos detectados en las últimas 24 h"}
                     </span>
                   </div>
                   {/* Desglose: las dos partes suman el número grande. */}
