@@ -61,8 +61,11 @@ describe("el contador de la home cuenta incendios, no detecciones", () => {
   });
 
   it("el texto acota la ventana de tiempo y no vuelve al «ahora mismo»", () => {
-    expect(page).toContain("focos activos en las últimas 24hs");
+    expect(page).toContain("focos detectados en las últimas 24 h");
     expect(page).not.toContain("focos activos ahora mismo");
+    // «detectados», no «activos»: el satélite ve el foco en la ventana de 24 h,
+    // no garantiza que siga ardiendo ahora (aclaración de Seba, 12/11).
+    expect(page).not.toContain("focos activos en las últimas");
   });
 
   it("🔴 el desglose bosque/campo sale de la misma cuenta, así suma el total", () => {

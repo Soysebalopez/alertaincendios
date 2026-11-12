@@ -9,6 +9,8 @@ import {
   type Flash,
 } from "@/lib/lightning-near";
 import { sendMessage, escapeHtml } from "@/lib/telegram";
+import { bearingDegrees } from "@/lib/geo";
+import { cardinalToSpanish, degreesToCardinal } from "@/lib/wind";
 import { isCronAuthorized } from "@/lib/cron-auth";
 import { fetchAllRows } from "@/lib/paginate";
 import { log } from "@/lib/logger";
@@ -100,7 +102,7 @@ export async function GET(request: Request) {
       if (near.length === 0) continue;
       const dry = await fetchDryConditions(sub.lat, sub.lng);
       if (!isDryLightningRisk({ flashesNearby: near.length, ...dry })) continue;
-      msg = glmMessage(sub.city_name, near, dry, now);
+      msg = glmMessage(sub.city_name, sub.lat, sub.lng, near, dry, now);
     } else {
       const risk = await fetchLightningRisk(sub.lat, sub.lng);
       if (!risk.hasFireRisk) continue;
@@ -211,6 +213,8 @@ async function nearbyFlashes(
 
 function glmMessage(
   cityName: string,
+  subLat: number,
+  subLng: number,
   near: Array<Flash & { distKm: number }>,
   dry: DryConditions,
   now: Date
@@ -218,10 +222,18 @@ function glmMessage(
   const nearest = near[0];
   const minutesAgo = Math.max(0, Math.round((now.getTime() - Date.parse(nearest.flashAt)) / 60000));
   const others = near.length > 1 ? ` · ${near.length} rayos en ${GLM_NEAR_RADIUS_KM} km` : "";
+  // Dirección y punto exacto del rayo, para que se sepa PARA QUÉ LADO cayó y no
+  // sólo a cuántos km (pedido de Seba, 12/11). El rumbo reusa el conversor del
+  // viento; el enlace abre el punto en Google Maps, igual que las alertas de foco.
+  const rumbo = cardinalToSpanish(
+    degreesToCardinal(bearingDegrees(subLat, subLng, nearest.lat, nearest.lng))
+  ).toLowerCase();
+  const gMaps = `https://www.google.com/maps?q=${nearest.lat},${nearest.lng}&z=12`;
   return (
     `⚡ <b>Clara — Rayo con tormenta seca</b>\n\n` +
     `📍 <b>${escapeHtml(cityName)}</b>\n` +
-    `⚡ Rayo detectado a ~${Math.round(nearest.distKm)} km (hace ${minutesAgo} min)${others}\n` +
+    `⚡ Rayo detectado a ~${Math.round(nearest.distKm)} km al ${rumbo} (hace ${minutesAgo} min)${others}\n` +
+    `📍 <a href="${gMaps}">Ver el punto en el mapa</a>\n` +
     `💧 Humedad: ${Math.round(dry.humidity ?? 0)}%\n` +
     `🌧 Lluvia última hora: ${(dry.recentRainMm ?? 0).toFixed(1)} mm\n\n` +
     `Un rayo con aire seco puede iniciar un incendio. Prestá atención a los próximos minutos.\n\n` +
